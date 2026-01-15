@@ -1,0 +1,75 @@
+package ua.com.programmer.pick.data.local.database.entity
+
+import androidx.room.ColumnInfo
+import androidx.room.Entity
+import androidx.room.Index
+import androidx.room.PrimaryKey
+
+@Entity(
+    tableName = "documents",
+    indices = [
+        Index(value = ["type"]),
+        Index(value = ["state"]),
+        Index(value = ["external_id"]),
+        Index(value = ["assigned_user_id"])
+    ]
+)
+data class DocumentEntity(
+    @PrimaryKey
+    @ColumnInfo(name = "id")
+    val id: String,
+
+    @ColumnInfo(name = "external_id")
+    val externalId: String?,
+
+    @ColumnInfo(name = "type")
+    val type: String,
+
+    @ColumnInfo(name = "number")
+    val number: String,
+
+    @ColumnInfo(name = "date")
+    val date: Long,
+
+    @ColumnInfo(name = "state")
+    val state: String,
+
+    @ColumnInfo(name = "client_id")
+    val clientId: String?,
+
+    @ColumnInfo(name = "client_name")
+    val clientName: String?,
+
+    @ColumnInfo(name = "warehouse_id")
+    val warehouseId: String?,
+
+    @ColumnInfo(name = "warehouse_name")
+    val warehouseName: String?,
+
+    @ColumnInfo(name = "notes")
+    val notes: String?,
+
+    @ColumnInfo(name = "total_planned")
+    val totalPlanned: Double,
+
+    @ColumnInfo(name = "total_actual")
+    val totalActual: Double,
+
+    @ColumnInfo(name = "assigned_user_id")
+    val assignedUserId: String?,
+
+    @ColumnInfo(name = "taken_at")
+    val takenAt: Long?,
+
+    @ColumnInfo(name = "completed_at")
+    val completedAt: Long?,
+
+    @ColumnInfo(name = "last_modified")
+    val lastModified: Long,
+
+    @ColumnInfo(name = "version")
+    val version: Int,
+
+    @ColumnInfo(name = "is_dirty")
+    val isDirty: Boolean = false
+)

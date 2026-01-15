@@ -14,6 +14,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import ua.com.programmer.pick.data.local.database.AppDatabase
 import ua.com.programmer.pick.data.local.database.dao.ClientDao
+import ua.com.programmer.pick.data.local.database.dao.DocumentDao
+import ua.com.programmer.pick.data.local.database.dao.DocumentLineDao
+import ua.com.programmer.pick.data.local.database.dao.OutgoingOperationDao
 import ua.com.programmer.pick.data.local.database.dao.ProductDao
 import ua.com.programmer.pick.data.local.database.dao.SyncStateDao
 import ua.com.programmer.pick.data.local.database.dao.UserDao
@@ -95,4 +98,16 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideWarehouseDao(database: AppDatabase): WarehouseDao = database.warehouseDao()
+
+    @Provides
+    @Singleton
+    fun provideDocumentDao(database: AppDatabase): DocumentDao = database.documentDao()
+
+    @Provides
+    @Singleton
+    fun provideDocumentLineDao(database: AppDatabase): DocumentLineDao = database.documentLineDao()
+
+    @Provides
+    @Singleton
+    fun provideOutgoingOperationDao(database: AppDatabase): OutgoingOperationDao = database.outgoingOperationDao()
 }
