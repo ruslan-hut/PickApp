@@ -9,9 +9,6 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import ua.com.programmer.pick.data.local.database.AppDatabase
 import ua.com.programmer.pick.data.local.database.dao.ClientDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentDao
@@ -29,63 +26,56 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
 
-    @Volatile
-    private var INSTANCE: AppDatabase? = null
-
     @Provides
     @Singleton
     fun provideAppDatabase(
         @ApplicationContext context: Context
     ): AppDatabase {
-        return INSTANCE ?: synchronized(this) {
-            val instance = Room.databaseBuilder(
-                context,
-                AppDatabase::class.java,
-                AppDatabase.DATABASE_NAME
-            )
-                .fallbackToDestructiveMigration(dropAllTables = true)
-                .addCallback(object : RoomDatabase.Callback() {
-                    override fun onCreate(db: SupportSQLiteDatabase) {
-                        super.onCreate(db)
+        return Room.databaseBuilder(
+            context,
+            AppDatabase::class.java,
+            AppDatabase.DATABASE_NAME
+        )
+            .fallbackToDestructiveMigration(dropAllTables = true)
+            .addCallback(object : RoomDatabase.Callback() {
+                override fun onCreate(db: SupportSQLiteDatabase) {
+                    super.onCreate(db)
+                    insertDemoUser(db)
+                }
+
+                override fun onOpen(db: SupportSQLiteDatabase) {
+                    super.onOpen(db)
+                    // Ensure demo user exists (in case onCreate wasn't called)
+                    val cursor = db.query("SELECT COUNT(*) FROM users WHERE login = 'demo'")
+                    cursor.moveToFirst()
+                    val count = cursor.getInt(0)
+                    cursor.close()
+                    if (count == 0) {
                         insertDemoUser(db)
                     }
+                }
 
-                    override fun onOpen(db: SupportSQLiteDatabase) {
-                        super.onOpen(db)
-                        // Ensure demo user exists (in case onCreate wasn't called)
-                        val cursor = db.query("SELECT COUNT(*) FROM users WHERE login = 'demo'")
-                        cursor.moveToFirst()
-                        val count = cursor.getInt(0)
-                        cursor.close()
-                        if (count == 0) {
-                            insertDemoUser(db)
-                        }
-                    }
-
-                    private fun insertDemoUser(db: SupportSQLiteDatabase) {
-                        val demoUser = createDemoUser()
-                        db.execSQL(
-                            """
-                            INSERT OR REPLACE INTO users (id, login, name, password_hash, role, is_active, last_login_at, last_updated)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            """.trimIndent(),
-                            arrayOf(
-                                demoUser.id,
-                                demoUser.login,
-                                demoUser.name,
-                                demoUser.passwordHash,
-                                demoUser.role,
-                                if (demoUser.isActive) 1 else 0,
-                                demoUser.lastLoginAt,
-                                demoUser.lastUpdated
-                            )
+                private fun insertDemoUser(db: SupportSQLiteDatabase) {
+                    val demoUser = createDemoUser()
+                    db.execSQL(
+                        """
+                        INSERT OR REPLACE INTO users (id, login, name, password_hash, role, is_active, last_login_at, last_updated)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """.trimIndent(),
+                        arrayOf(
+                            demoUser.id,
+                            demoUser.login,
+                            demoUser.name,
+                            demoUser.passwordHash,
+                            demoUser.role,
+                            if (demoUser.isActive) 1 else 0,
+                            demoUser.lastLoginAt,
+                            demoUser.lastUpdated
                         )
-                    }
-                })
-                .build()
-            INSTANCE = instance
-            instance
-        }
+                    )
+                }
+            })
+            .build()
     }
 
     private fun createDemoUser(): UserEntity {
