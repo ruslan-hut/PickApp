@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import dagger.hilt.android.HiltAndroidApp
+import ua.com.programmer.pick.core.scanner.BarcodeService
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.data.sync.SyncScheduler
 import javax.inject.Inject
@@ -20,6 +21,9 @@ class PickApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var syncOrchestrator: SyncOrchestrator
 
+    @Inject
+    lateinit var barcodeService: BarcodeService
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -33,5 +37,8 @@ class PickApplication : Application(), Configuration.Provider {
 
         // Schedule periodic background sync
         syncScheduler.schedulePeriodicSync()
+
+        // Initialize barcode service
+        barcodeService.initialize()
     }
 }
