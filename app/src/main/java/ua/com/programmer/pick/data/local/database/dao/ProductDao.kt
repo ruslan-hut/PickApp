@@ -30,6 +30,9 @@ interface ProductDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProducts(products: List<ProductEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertProduct(product: ProductEntity)
+
     @Query("DELETE FROM products WHERE id = :id")
     suspend fun deleteProduct(id: String)
 
@@ -46,8 +49,14 @@ interface ProductDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBarcodes(barcodes: List<ProductBarcodeEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBarcode(barcode: ProductBarcodeEntity)
+
     @Query("DELETE FROM product_barcodes WHERE product_id = :productId")
     suspend fun deleteBarcodesByProductId(productId: String)
+
+    @Query("DELETE FROM product_barcodes WHERE product_id = :productId")
+    suspend fun deleteBarcodesForProduct(productId: String)
 
     @Query("DELETE FROM product_barcodes")
     suspend fun deleteAllBarcodes()

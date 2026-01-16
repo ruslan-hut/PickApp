@@ -1,0 +1,142 @@
+package ua.com.programmer.pick.data.remote.dto
+
+import com.google.gson.annotations.SerializedName
+
+/**
+ * DTO for document header received from server
+ */
+data class DocumentDto(
+    @SerializedName("id")
+    val id: String,
+
+    @SerializedName("external_id")
+    val externalId: String?,
+
+    @SerializedName("type")
+    val type: String,
+
+    @SerializedName("number")
+    val number: String,
+
+    @SerializedName("date")
+    val date: Long,
+
+    @SerializedName("state")
+    val state: String,
+
+    @SerializedName("client_id")
+    val clientId: String?,
+
+    @SerializedName("client_name")
+    val clientName: String?,
+
+    @SerializedName("warehouse_id")
+    val warehouseId: String?,
+
+    @SerializedName("warehouse_name")
+    val warehouseName: String?,
+
+    @SerializedName("notes")
+    val notes: String?,
+
+    @SerializedName("total_planned")
+    val totalPlanned: Double,
+
+    @SerializedName("total_actual")
+    val totalActual: Double,
+
+    @SerializedName("assigned_user_id")
+    val assignedUserId: String?,
+
+    @SerializedName("taken_at")
+    val takenAt: Long?,
+
+    @SerializedName("completed_at")
+    val completedAt: Long?,
+
+    @SerializedName("last_modified")
+    val lastModified: Long,
+
+    @SerializedName("version")
+    val version: Int,
+
+    @SerializedName("lines")
+    val lines: List<DocumentLineDto>? = null
+)
+
+/**
+ * DTO for document update request to server
+ */
+data class DocumentUpdateRequestDto(
+    @SerializedName("id")
+    val id: String,
+
+    @SerializedName("state")
+    val state: String,
+
+    @SerializedName("notes")
+    val notes: String?,
+
+    @SerializedName("total_actual")
+    val totalActual: Double,
+
+    @SerializedName("version")
+    val version: Int,
+
+    @SerializedName("lines")
+    val lines: List<DocumentLineUpdateDto>? = null
+)
+
+/**
+ * DTO for taking document into work
+ */
+data class TakeDocumentRequestDto(
+    @SerializedName("document_id")
+    val documentId: String,
+
+    @SerializedName("user_id")
+    val userId: String,
+
+    @SerializedName("timestamp")
+    val timestamp: Long
+)
+
+/**
+ * DTO for completing document
+ */
+data class CompleteDocumentRequestDto(
+    @SerializedName("document_id")
+    val documentId: String,
+
+    @SerializedName("user_id")
+    val userId: String,
+
+    @SerializedName("completed_at")
+    val completedAt: Long,
+
+    @SerializedName("version")
+    val version: Int,
+
+    @SerializedName("lines")
+    val lines: List<DocumentLineUpdateDto>
+)
+
+/**
+ * Server response for document operations
+ */
+data class DocumentOperationResponseDto(
+    @SerializedName("success")
+    val success: Boolean,
+
+    @SerializedName("document_id")
+    val documentId: String,
+
+    @SerializedName("new_version")
+    val newVersion: Int?,
+
+    @SerializedName("error")
+    val error: String?,
+
+    @SerializedName("error_code")
+    val errorCode: String?
+)

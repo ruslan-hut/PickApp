@@ -30,5 +30,17 @@ object Constants {
     object Work {
         const val SYNC_WORK_NAME = "sync_work"
         const val UPLOAD_WORK_NAME = "upload_work"
+        const val SYNC_WORK_TAG = "sync_tag"
+        const val UPLOAD_WORK_TAG = "upload_tag"
+        const val SYNC_INTERVAL_MINUTES = 15L
+        const val BACKOFF_DELAY_SECONDS = 30L
+    }
+
+    // Sync
+    object Sync {
+        const val MAX_RETRIES = 5
+        const val INITIAL_BACKOFF_MS = 1000L
+        const val MAX_BACKOFF_MS = 60000L
+        const val BACKOFF_MULTIPLIER = 2.0
     }
 }

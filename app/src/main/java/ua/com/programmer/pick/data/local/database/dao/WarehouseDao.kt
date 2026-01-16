@@ -27,6 +27,9 @@ interface WarehouseDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertWarehouses(warehouses: List<WarehouseEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertWarehouse(warehouse: WarehouseEntity)
+
     @Query("DELETE FROM warehouses WHERE id = :id")
     suspend fun deleteWarehouse(id: String)
 
@@ -42,6 +45,9 @@ interface WarehouseDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLocations(locations: List<WarehouseLocationEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertLocation(location: WarehouseLocationEntity)
 
     @Query("DELETE FROM warehouse_locations WHERE warehouse_id = :warehouseId")
     suspend fun deleteLocationsByWarehouseId(warehouseId: String)

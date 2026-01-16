@@ -50,6 +50,9 @@ interface DocumentLineDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLines(lines: List<DocumentLineEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertLine(line: DocumentLineEntity)
+
     @Update
     suspend fun updateLine(line: DocumentLineEntity)
 

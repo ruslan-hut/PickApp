@@ -2,10 +2,43 @@ package ua.com.programmer.pick.data.mapper
 
 import ua.com.programmer.pick.data.local.database.entity.ProductBarcodeEntity
 import ua.com.programmer.pick.data.local.database.entity.ProductEntity
+import ua.com.programmer.pick.data.remote.dto.ProductDto
 import ua.com.programmer.pick.domain.model.Barcode
 import ua.com.programmer.pick.domain.model.BarcodeType
 import ua.com.programmer.pick.domain.model.Product
+import javax.inject.Inject
+import javax.inject.Singleton
 
+@Singleton
+class ProductMapper @Inject constructor() {
+
+    fun toEntity(dto: ProductDto): ProductEntity {
+        return ProductEntity(
+            id = dto.id,
+            code = dto.code,
+            name = dto.name,
+            description = dto.description,
+            unit = dto.unit,
+            supportsBatches = dto.supportsBatches,
+            isActive = dto.isActive,
+            lastUpdated = System.currentTimeMillis()
+        )
+    }
+
+    fun toBarcodeEntityList(dto: ProductDto): List<ProductBarcodeEntity> {
+        return dto.barcodes?.map { barcodeDto ->
+            ProductBarcodeEntity(
+                id = barcodeDto.id,
+                productId = dto.id,
+                barcode = barcodeDto.barcode,
+                type = barcodeDto.type,
+                isPrimary = barcodeDto.isPrimary
+            )
+        } ?: emptyList()
+    }
+}
+
+// Extension functions for domain mapping (keeping backward compatibility)
 fun ProductEntity.toDomain(barcodes: List<ProductBarcodeEntity> = emptyList()): Product {
     return Product(
         id = id,

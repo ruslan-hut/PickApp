@@ -2,11 +2,65 @@ package ua.com.programmer.pick.data.mapper
 
 import ua.com.programmer.pick.data.local.database.entity.DocumentEntity
 import ua.com.programmer.pick.data.local.database.entity.DocumentLineEntity
+import ua.com.programmer.pick.data.remote.dto.DocumentDto
+import ua.com.programmer.pick.data.remote.dto.DocumentLineDto
 import ua.com.programmer.pick.domain.model.Document
 import ua.com.programmer.pick.domain.model.DocumentLine
 import ua.com.programmer.pick.domain.model.DocumentState
 import ua.com.programmer.pick.domain.model.DocumentType
+import javax.inject.Inject
+import javax.inject.Singleton
 
+@Singleton
+class DocumentMapper @Inject constructor() {
+
+    fun toEntity(dto: DocumentDto): DocumentEntity {
+        return DocumentEntity(
+            id = dto.id,
+            externalId = dto.externalId,
+            type = dto.type,
+            number = dto.number,
+            date = dto.date,
+            state = dto.state,
+            clientId = dto.clientId,
+            clientName = dto.clientName,
+            warehouseId = dto.warehouseId,
+            warehouseName = dto.warehouseName,
+            notes = dto.notes,
+            totalPlanned = dto.totalPlanned,
+            totalActual = dto.totalActual,
+            assignedUserId = dto.assignedUserId,
+            takenAt = dto.takenAt,
+            completedAt = dto.completedAt,
+            lastModified = dto.lastModified,
+            version = dto.version,
+            isDirty = false
+        )
+    }
+
+    fun toLineEntity(dto: DocumentLineDto): DocumentLineEntity {
+        return DocumentLineEntity(
+            id = dto.id,
+            documentId = dto.documentId,
+            lineNumber = dto.lineNumber,
+            productId = dto.productId,
+            productCode = dto.productCode,
+            productName = dto.productName,
+            unit = dto.unit,
+            plannedQuantity = dto.plannedQuantity,
+            actualQuantity = dto.actualQuantity,
+            batchNumber = dto.batchNumber,
+            expirationDate = dto.expirationDate,
+            locationId = dto.locationId,
+            locationPath = dto.locationPath,
+            notes = dto.notes,
+            isCompleted = dto.isCompleted,
+            isDirty = false
+        )
+    }
+}
+
+// Extension functions for domain mapping (keeping backward compatibility)
 fun DocumentEntity.toDomain(): Document {
     return Document(
         id = id,

@@ -44,6 +44,9 @@ interface DocumentDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDocuments(documents: List<DocumentEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertDocument(document: DocumentEntity)
+
     @Update
     suspend fun updateDocument(document: DocumentEntity)
 
@@ -61,6 +64,9 @@ interface DocumentDao {
 
     @Query("UPDATE documents SET is_dirty = 0 WHERE id = :documentId")
     suspend fun markDocumentAsSynced(documentId: String)
+
+    @Query("UPDATE documents SET assigned_user_id = :userId, last_modified = :lastModified WHERE id = :documentId")
+    suspend fun updateAssignedUser(documentId: String, userId: String, lastModified: Long = System.currentTimeMillis())
 
     @Query("DELETE FROM documents WHERE id = :id")
     suspend fun deleteDocument(id: String)

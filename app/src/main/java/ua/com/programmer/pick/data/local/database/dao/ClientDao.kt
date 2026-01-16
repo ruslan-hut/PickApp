@@ -28,6 +28,9 @@ interface ClientDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertClients(clients: List<ClientEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertClient(client: ClientEntity)
+
     @Query("DELETE FROM clients WHERE id = :id")
     suspend fun deleteClient(id: String)
 
