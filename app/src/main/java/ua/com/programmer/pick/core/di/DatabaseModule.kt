@@ -47,10 +47,39 @@ object DatabaseModule {
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
-                        // Insert demo user on database creation
-                        CoroutineScope(Dispatchers.IO).launch {
-                            INSTANCE?.userDao()?.insertUser(createDemoUser())
+                        insertDemoUser(db)
+                    }
+
+                    override fun onOpen(db: SupportSQLiteDatabase) {
+                        super.onOpen(db)
+                        // Ensure demo user exists (in case onCreate wasn't called)
+                        val cursor = db.query("SELECT COUNT(*) FROM users WHERE login = 'demo'")
+                        cursor.moveToFirst()
+                        val count = cursor.getInt(0)
+                        cursor.close()
+                        if (count == 0) {
+                            insertDemoUser(db)
                         }
+                    }
+
+                    private fun insertDemoUser(db: SupportSQLiteDatabase) {
+                        val demoUser = createDemoUser()
+                        db.execSQL(
+                            """
+                            INSERT OR REPLACE INTO users (id, login, name, password_hash, role, is_active, last_login_at, last_updated)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """.trimIndent(),
+                            arrayOf(
+                                demoUser.id,
+                                demoUser.login,
+                                demoUser.name,
+                                demoUser.passwordHash,
+                                demoUser.role,
+                                if (demoUser.isActive) 1 else 0,
+                                demoUser.lastLoginAt,
+                                demoUser.lastUpdated
+                            )
+                        )
                     }
                 })
                 .build()

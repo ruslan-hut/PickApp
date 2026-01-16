@@ -88,14 +88,10 @@ class UserRepositoryImpl @Inject constructor(
     override suspend fun loginOffline(login: String, password: String): Result<User> =
         withContext(ioDispatcher) {
             try {
-                val userEntity = userDao.getUserByLogin(login)
-
-                if (userEntity == null) {
-                    return@withContext Result.Error(
-                        Exception("User not found"),
-                        "User not found. Please connect to network for first login."
-                    )
-                }
+                val userEntity = userDao.getUserByLogin(login) ?: return@withContext Result.Error(
+                    Exception("User not found"),
+                    "User not found. Please connect to network for first login."
+                )
 
                 // Verify password hash
                 val passwordHash = passwordHasher.hash(password, login)
