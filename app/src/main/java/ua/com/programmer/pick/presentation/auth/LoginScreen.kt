@@ -15,6 +15,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,15 +24,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import ua.com.programmer.pick.presentation.common.ErrorSnackbar
+import ua.com.programmer.pick.presentation.common.OfflineBanner
+import ua.com.programmer.pick.R
 
 @Composable
 fun LoginScreen(
     uiState: LoginUiState,
     onLoginClick: (String, String) -> Unit,
     onLoginSuccess: () -> Unit,
+    hostState: SnackbarHostState,
+    onClearError: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var login by remember { mutableStateOf("") }
@@ -40,6 +47,23 @@ fun LoginScreen(
     LaunchedEffect(uiState.isLoggedIn) {
         if (uiState.isLoggedIn) {
             onLoginSuccess()
+        }
+    }
+
+    // Compute mapped error text in composable scope (stringResource is @Composable)
+    val mappedErrorText = uiState.errorMessage?.let { errKey ->
+        when (errKey) {
+            LoginViewModel.ERROR_EMPTY_CREDENTIALS -> stringResource(R.string.error_empty_credentials)
+            LoginViewModel.ERROR_LOGIN_FAILED -> stringResource(R.string.error_login_failed)
+            else -> errKey
+        }
+    }
+
+    // Show error as snackbar when the mapped text changes using LaunchedEffect's coroutine
+    LaunchedEffect(mappedErrorText) {
+        mappedErrorText?.let { errText ->
+            hostState.showSnackbar(errText)
+            onClearError()
         }
     }
 
@@ -55,7 +79,7 @@ fun LoginScreen(
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                text = "Pick",
+                text = stringResource(R.string.title_app),
                 style = MaterialTheme.typography.headlineLarge,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -63,26 +87,19 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Warehouse Management",
+                text = stringResource(R.string.subtitle_warehouse),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            if (uiState.isOfflineMode) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "Offline Mode",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
+            OfflineBanner(isOffline = uiState.isOfflineMode)
 
             Spacer(modifier = Modifier.height(48.dp))
 
             OutlinedTextField(
                 value = login,
                 onValueChange = { login = it },
-                label = { Text("Login") },
+                label = { Text(stringResource(R.string.label_login)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !uiState.isLoading
@@ -93,22 +110,13 @@ fun LoginScreen(
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
-                label = { Text("Password") },
+                label = { Text(stringResource(R.string.label_password)) },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !uiState.isLoading
             )
-
-            uiState.errorMessage?.let { error ->
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = error,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
 
             Spacer(modifier = Modifier.height(32.dp))
 
@@ -124,9 +132,11 @@ fun LoginScreen(
                         strokeWidth = 2.dp
                     )
                 } else {
-                    Text("Login")
+                    Text(stringResource(R.string.login_button))
                 }
             }
+
+            ErrorSnackbar(hostState = hostState)
         }
     }
 }

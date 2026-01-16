@@ -1,3 +1,49 @@
 <resources>
     <string name="app_name">Pick</string>
+
+    <!-- General -->
+    <string name="retry">Retry</string>
+    <string name="app_logo_description">App logo</string>
+    <string name="search_label">Search</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="plus">+</string>
+    <string name="minus">-</string>
+
+    <!-- Home -->
+    <string name="title_app">Pick</string>
+    <string name="logout_cd">Logout</string>
+    <string name="online">Online</string>
+    <string name="offline">Offline</string>
+    <string name="welcome_fmt">Welcome, %1$s</string>
+    <string name="dashboard_coming_soon">Dashboard Coming Soon</string>
+    <string name="documents">Documents</string>
+    <string name="user_default">User</string>
+
+    <!-- Splash -->
+    <string name="initialization_error">Initialization error</string>
+
+    <!-- Login -->
+    <string name="subtitle_warehouse">Warehouse Management</string>
+    <string name="label_login">Login</string>
+    <string name="label_password">Password</string>
+    <string name="offline_mode">Offline Mode</string>
+    <string name="login_button">Login</string>
+    <string name="error_empty_credentials">Please enter login and password</string>
+    <string name="error_login_failed">Login failed</string>
+
+    <!-- Documents list -->
+    <string name="planned">Planned: %1$.0f</string>
+    <string name="actual">Actual: %1$.0f</string>
+    <string name="document_item_title_fmt">%1$s — %2$s</string>
+    <string name="error_loading_documents">Error loading documents</string>
+    <string name="error_loading_document">Error loading document</string>
+    <string name="error_saving">Error saving</string>
+
+    <!-- Sync status -->
+    <string name="sync_idle">Idle</string>
+    <string name="sync_syncing">Syncing</string>
+    <string name="sync_success">Synced</string>
+    <string name="sync_error">Error</string>
+
 </resources>

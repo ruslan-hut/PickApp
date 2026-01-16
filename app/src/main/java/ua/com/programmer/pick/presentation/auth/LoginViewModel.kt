@@ -19,6 +19,11 @@ class LoginViewModel @Inject constructor(
     private val networkMonitor: NetworkMonitor
 ) : ViewModel() {
 
+    companion object {
+        const val ERROR_EMPTY_CREDENTIALS = "ERROR_EMPTY_CREDENTIALS"
+        const val ERROR_LOGIN_FAILED = "ERROR_LOGIN_FAILED"
+    }
+
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
@@ -36,7 +41,7 @@ class LoginViewModel @Inject constructor(
 
     fun login(login: String, password: String) {
         if (login.isBlank() || password.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Please enter login and password") }
+            _uiState.update { it.copy(errorMessage = ERROR_EMPTY_CREDENTIALS) }
             return
         }
 
@@ -57,7 +62,7 @@ class LoginViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            errorMessage = result.message ?: result.exception.message ?: "Login failed"
+                            errorMessage = result.message ?: result.exception.message ?: ERROR_LOGIN_FAILED
                         )
                     }
                 }
