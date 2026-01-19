@@ -136,6 +136,14 @@ class UserRepositoryImpl @Inject constructor(
         userDao.getUserById(id)?.toDomain()
     }
 
+    override suspend fun updateUser(user: User) = withContext(ioDispatcher) {
+        val existingEntity = userDao.getUserById(user.id)
+        if (existingEntity != null) {
+            val updatedEntity = existingEntity.copy(name = user.name)
+            userDao.updateUser(updatedEntity)
+        }
+    }
+
     override suspend fun syncUsers(): Result<Unit> = withContext(ioDispatcher) {
         // TODO: Implement user sync from server
         Result.Success(Unit)

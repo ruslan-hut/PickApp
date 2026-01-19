@@ -30,6 +30,8 @@ fun HomeScreen(
     uiState: HomeUiState,
     onLogoutClick: () -> Unit,
     onDocumentsClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+    onProfileClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -83,6 +85,20 @@ fun HomeScreen(
             // Documents shortcut button
             Button(onClick = onDocumentsClick) {
                 Text(stringResource(R.string.documents))
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Settings button
+            Button(onClick = onSettingsClick) {
+                Text(stringResource(R.string.settings))
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Profile button
+            Button(onClick = onProfileClick) {
+                Text(stringResource(R.string.profile))
             }
 
             Spacer(modifier = Modifier.height(16.dp))

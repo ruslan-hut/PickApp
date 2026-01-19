@@ -16,5 +16,7 @@ interface UserRepository {
 
     suspend fun getUserById(id: String): User?
 
+    suspend fun updateUser(user: User)
+
     suspend fun syncUsers(): Result<Unit>
 }

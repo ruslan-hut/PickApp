@@ -19,6 +19,8 @@ import ua.com.programmer.pick.presentation.home.HomeViewModel
 import ua.com.programmer.pick.presentation.splash.SplashScreen
 import ua.com.programmer.pick.presentation.splash.SplashViewModel
 import ua.com.programmer.pick.presentation.document.DocumentDetailScreen
+import ua.com.programmer.pick.presentation.settings.SettingsScreen
+import ua.com.programmer.pick.presentation.profile.ProfileScreen
 
 @Composable
 fun PickNavGraph(
@@ -79,6 +81,12 @@ fun PickNavGraph(
                 },
                 onDocumentsClick = {
                     navController.navigate(Screen.Documents.route)
+                },
+                onSettingsClick = {
+                    navController.navigate(Screen.Settings.route)
+                },
+                onProfileClick = {
+                    navController.navigate(Screen.Profile.route)
                 }
             )
         }
@@ -92,6 +100,18 @@ fun PickNavGraph(
         composable(route = Screen.DocumentDetail.route, arguments = listOf(navArgument(Screen.DOCUMENT_ID_ARG) { defaultValue = "" })) { backStackEntry ->
             val documentId = backStackEntry.arguments?.getString(Screen.DOCUMENT_ID_ARG) ?: ""
             DocumentDetailScreen(documentId = documentId)
+        }
+
+        composable(route = Screen.Settings.route) {
+            SettingsScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(route = Screen.Profile.route) {
+            ProfileScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
         }
     }
 }
