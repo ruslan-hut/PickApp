@@ -1,39 +1,51 @@
 package ua.com.programmer.pick.presentation.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import ua.com.programmer.pick.R
+import ua.com.programmer.pick.presentation.common.LoadingButton
+import ua.com.programmer.pick.presentation.common.PickAppBar
+import ua.com.programmer.pick.presentation.common.SectionHeader
+import ua.com.programmer.pick.ui.theme.ButtonShape
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,6 +55,7 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
 
     // Handle error messages
     val errorMessage = uiState.errorMessage
@@ -78,17 +91,12 @@ fun SettingsScreen(
     }
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.settings)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back_cd)
-                        )
-                    }
-                }
+            PickAppBar(
+                title = stringResource(R.string.settings),
+                onNavigateBack = onNavigateBack,
+                scrollBehavior = scrollBehavior
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -105,85 +113,135 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .padding(16.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                // Server URL section
-                Text(
-                    text = stringResource(R.string.server_settings),
-                    style = MaterialTheme.typography.titleMedium
+                // Server Settings Section
+                SectionHeader(
+                    title = stringResource(R.string.server_settings),
+                    icon = R.drawable.baseline_link_24
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = uiState.serverUrl,
-                    onValueChange = viewModel::updateServerUrl,
-                    label = { Text(stringResource(R.string.server_url)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Button(
-                    onClick = viewModel::saveSettings,
-                    enabled = !uiState.isSaving,
-                    modifier = Modifier.fillMaxWidth()
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
                 ) {
-                    if (uiState.isSaving) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.height(20.dp),
-                            strokeWidth = 2.dp
+                    OutlinedTextField(
+                        value = uiState.serverUrl,
+                        onValueChange = viewModel::updateServerUrl,
+                        label = { Text(stringResource(R.string.server_url)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = ButtonShape,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
                         )
-                    } else {
-                        Text(stringResource(R.string.save_settings))
-                    }
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    LoadingButton(
+                        text = stringResource(R.string.save_settings),
+                        onClick = viewModel::saveSettings,
+                        isLoading = uiState.isSaving,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
-                HorizontalDivider()
-                Spacer(modifier = Modifier.height(24.dp))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
-                // Sync section
-                Text(
-                    text = stringResource(R.string.sync_settings),
-                    style = MaterialTheme.typography.titleMedium
+                // Sync Section
+                SectionHeader(
+                    title = stringResource(R.string.sync_settings),
+                    icon = R.drawable.outline_cloud_sync_24
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                SettingsItem(
+                    icon = R.drawable.outline_sync_24,
+                    title = stringResource(R.string.force_sync),
+                    subtitle = stringResource(R.string.force_sync_description),
+                    onClick = viewModel::forceSync
+                )
 
-                OutlinedButton(
-                    onClick = viewModel::forceSync,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(stringResource(R.string.force_sync))
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedButton(
+                SettingsItem(
+                    icon = R.drawable.outline_delete_24,
+                    title = stringResource(R.string.clear_cache),
+                    subtitle = stringResource(R.string.clear_cache_description),
                     onClick = viewModel::clearCache,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(stringResource(R.string.clear_cache))
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-                HorizontalDivider()
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // App info section
-                Text(
-                    text = stringResource(R.string.app_info),
-                    style = MaterialTheme.typography.titleMedium
+                    isDestructive = true
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(24.dp))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
+                // App Info Section
+                SectionHeader(
+                    title = stringResource(R.string.app_info),
+                    icon = R.drawable.outline_info_24
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.app_version_fmt, uiState.appVersion),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsItem(
+    icon: Int,
+    title: String,
+    subtitle: String? = null,
+    onClick: () -> Unit,
+    isDestructive: Boolean = false
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = if (isDestructive) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.primary
+            }
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (isDestructive) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                }
+            )
+            if (subtitle != null) {
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = stringResource(R.string.app_version_fmt, uiState.appVersion),
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }

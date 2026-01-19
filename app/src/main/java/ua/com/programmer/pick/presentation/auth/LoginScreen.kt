@@ -6,16 +6,22 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,13 +30,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import ua.com.programmer.pick.presentation.common.ErrorSnackbar
-import ua.com.programmer.pick.presentation.common.OfflineBanner
 import ua.com.programmer.pick.R
+import ua.com.programmer.pick.presentation.common.BrandLogo
+import ua.com.programmer.pick.presentation.common.ErrorSnackbar
+import ua.com.programmer.pick.presentation.common.LoadingButton
+import ua.com.programmer.pick.presentation.common.OfflineBanner
+import ua.com.programmer.pick.ui.theme.ButtonShape
 
 @Composable
 fun LoginScreen(
@@ -43,6 +57,8 @@ fun LoginScreen(
 ) {
     var login by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
 
     LaunchedEffect(uiState.isLoggedIn) {
         if (uiState.isLoggedIn) {
@@ -50,7 +66,7 @@ fun LoginScreen(
         }
     }
 
-    // Compute mapped error text in composable scope (stringResource is @Composable)
+    // Compute mapped error text in composable scope
     val mappedErrorText = uiState.errorMessage?.let { errKey ->
         when (errKey) {
             LoginViewModel.ERROR_EMPTY_CREDENTIALS -> stringResource(R.string.error_empty_credentials)
@@ -59,7 +75,7 @@ fun LoginScreen(
         }
     }
 
-    // Show error as snackbar when the mapped text changes using LaunchedEffect's coroutine
+    // Show error as snackbar
     LaunchedEffect(mappedErrorText) {
         mappedErrorText?.let { errText ->
             hostState.showSnackbar(errText)
@@ -74,68 +90,124 @@ fun LoginScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .imePadding()
         ) {
-            Text(
-                text = stringResource(R.string.title_app),
-                style = MaterialTheme.typography.headlineLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = stringResource(R.string.subtitle_warehouse),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
+            // Offline banner at top
             OfflineBanner(isOffline = uiState.isOfflineMode)
 
-            Spacer(modifier = Modifier.height(48.dp))
-
-            OutlinedTextField(
-                value = login,
-                onValueChange = { login = it },
-                label = { Text(stringResource(R.string.label_login)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !uiState.isLoading
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text(stringResource(R.string.label_password)) },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !uiState.isLoading
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            Button(
-                onClick = { onLoginClick(login, password) },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !uiState.isLoading && login.isNotBlank() && password.isNotBlank()
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                if (uiState.isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp
+                Spacer(modifier = Modifier.weight(0.3f))
+
+                // Branding header
+                BrandLogo()
+
+                Spacer(modifier = Modifier.height(48.dp))
+
+                // Login input
+                OutlinedTextField(
+                    value = login,
+                    onValueChange = { login = it },
+                    label = { Text(stringResource(R.string.label_login)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !uiState.isLoading,
+                    shape = ButtonShape,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                    ),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Next
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Down) }
                     )
-                } else {
-                    Text(stringResource(R.string.login_button))
-                }
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Password input with visibility toggle
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text(stringResource(R.string.label_password)) },
+                    leadingIcon = {
+                        Icon(
+                            painter = painterResource(R.drawable.baseline_lock_24),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                painter = painterResource(if (passwordVisible) {
+                                    R.drawable.outline_visibility_off_24
+                                } else {
+                                    R.drawable.outline_visibility_24
+                                }),
+                                contentDescription = stringResource(R.string.toggle_password_visibility_cd),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    singleLine = true,
+                    visualTransformation = if (passwordVisible) {
+                        VisualTransformation.None
+                    } else {
+                        PasswordVisualTransformation()
+                    },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            focusManager.clearFocus()
+                            if (login.isNotBlank() && password.isNotBlank()) {
+                                onLoginClick(login, password)
+                            }
+                        }
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !uiState.isLoading,
+                    shape = ButtonShape,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // Login button
+                LoadingButton(
+                    text = stringResource(R.string.login_button),
+                    onClick = { onLoginClick(login, password) },
+                    modifier = Modifier.fillMaxWidth(),
+                    isLoading = uiState.isLoading,
+                    enabled = login.isNotBlank() && password.isNotBlank()
+                )
+
+                Spacer(modifier = Modifier.weight(0.5f))
             }
 
+            // Snackbar host at the bottom
             ErrorSnackbar(hostState = hostState)
         }
     }

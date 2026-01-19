@@ -1,27 +1,39 @@
 package ua.com.programmer.pick.presentation.home
 
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import ua.com.programmer.pick.R
+import ua.com.programmer.pick.domain.model.SyncStatus
+import ua.com.programmer.pick.presentation.common.OfflineBanner
+import ua.com.programmer.pick.presentation.common.PickAppBar
+import ua.com.programmer.pick.presentation.common.PickElevatedCard
+import ua.com.programmer.pick.presentation.common.SectionHeader
+import ua.com.programmer.pick.presentation.common.StatusIndicator
 import ua.com.programmer.pick.presentation.common.SyncStatusChip
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -34,15 +46,18 @@ fun HomeScreen(
     onProfileClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+
     Scaffold(
-        modifier = modifier,
+        modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.title_app)) },
+            PickAppBar(
+                title = stringResource(R.string.title_app),
+                scrollBehavior = scrollBehavior,
                 actions = {
                     IconButton(onClick = onLogoutClick) {
                         Icon(
-                            imageVector = Icons.Filled.Close,
+                            painter = painterResource(R.drawable.baseline_logout_24),
                             contentDescription = stringResource(R.string.logout_cd)
                         )
                     }
@@ -54,63 +69,177 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp)
         ) {
-            // Connection status
-            Text(
-                text = if (uiState.isOnline) stringResource(R.string.online) else stringResource(R.string.offline),
-                style = MaterialTheme.typography.labelMedium,
-                color = if (uiState.isOnline)
-                    MaterialTheme.colorScheme.primary
-                else
-                    MaterialTheme.colorScheme.error
-            )
+            // Offline banner
+            OfflineBanner(isOffline = !uiState.isOnline)
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Sync chip preview
-            val syncStatus = uiState.syncStates.firstOrNull()?.status ?: ua.com.programmer.pick.domain.model.SyncStatus.IDLE
-            SyncStatusChip(status = syncStatus)
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Welcome message
-            Text(
-                text = stringResource(R.string.welcome_fmt, uiState.currentUser?.name ?: stringResource(R.string.user_default)),
-                style = MaterialTheme.typography.headlineSmall
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Documents shortcut button
-            Button(onClick = onDocumentsClick) {
-                Text(stringResource(R.string.documents))
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Settings button
-            Button(onClick = onSettingsClick) {
-                Text(stringResource(R.string.settings))
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Profile button
-            Button(onClick = onProfileClick) {
-                Text(stringResource(R.string.profile))
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Placeholder for document cards/actions
-            Box(
+            LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
+                contentPadding = PaddingValues(vertical = 8.dp)
             ) {
+                // Welcome section
+                item {
+                    WelcomeCard(
+                        userName = uiState.currentUser?.name ?: stringResource(R.string.user_default),
+                        isOnline = uiState.isOnline
+                    )
+                }
+
+                // Sync status section
+                item {
+                    SectionHeader(
+                        title = stringResource(R.string.sync_settings),
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+
+                item {
+                    val syncStatus = uiState.syncStates.firstOrNull()?.status ?: SyncStatus.IDLE
+                    SyncStatusCard(syncStatus = syncStatus)
+                }
+
+                // Quick actions section
+                item {
+                    SectionHeader(
+                        title = stringResource(R.string.quick_actions),
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+
+                // Action cards
+                item {
+                    QuickActionCard(
+                        icon = R.drawable.baseline_description_24,
+                        title = stringResource(R.string.documents),
+                        description = stringResource(R.string.documents_description),
+                        onClick = onDocumentsClick
+                    )
+                }
+
+                item {
+                    QuickActionCard(
+                        icon = R.drawable.baseline_person_24,
+                        title = stringResource(R.string.profile),
+                        description = stringResource(R.string.profile_description),
+                        onClick = onProfileClick
+                    )
+                }
+
+                item {
+                    QuickActionCard(
+                        icon = R.drawable.baseline_settings_24,
+                        title = stringResource(R.string.settings),
+                        description = stringResource(R.string.settings_description),
+                        onClick = onSettingsClick
+                    )
+                }
+
+                item {
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WelcomeCard(
+    userName: String,
+    isOnline: Boolean,
+    modifier: Modifier = Modifier
+) {
+    PickElevatedCard(
+        modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        containerColor = MaterialTheme.colorScheme.primaryContainer
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = stringResource(R.string.dashboard_coming_soon),
-                    style = MaterialTheme.typography.bodyLarge,
+                    text = stringResource(R.string.welcome_fmt, userName),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatusIndicator(isOnline = isOnline, size = 10.dp)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isOnline) stringResource(R.string.online) else stringResource(R.string.offline),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncStatusCard(
+    syncStatus: SyncStatus,
+    modifier: Modifier = Modifier
+) {
+    PickElevatedCard(
+        modifier = modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+        elevation = 1.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.sync_status_label),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            SyncStatusChip(status = syncStatus)
+        }
+    }
+}
+
+@Composable
+private fun QuickActionCard(
+    icon: Int,
+    title: String,
+    description: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    PickElevatedCard(
+        onClick = onClick,
+        modifier = modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+        elevation = 1.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = null,
+                modifier = Modifier.size(32.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
