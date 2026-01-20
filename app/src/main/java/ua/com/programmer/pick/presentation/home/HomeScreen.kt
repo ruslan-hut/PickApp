@@ -17,6 +17,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
@@ -28,6 +31,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import ua.com.programmer.pick.R
+import ua.com.programmer.pick.domain.model.OperatingMode
 import ua.com.programmer.pick.domain.model.SyncStatus
 import ua.com.programmer.pick.presentation.common.OfflineBanner
 import ua.com.programmer.pick.presentation.common.PickAppBar
@@ -44,6 +48,7 @@ fun HomeScreen(
     onDocumentsClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onProfileClick: () -> Unit,
+    onModeChange: (OperatingMode) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
@@ -82,6 +87,14 @@ fun HomeScreen(
                     WelcomeCard(
                         userName = uiState.currentUser?.name ?: stringResource(R.string.user_default),
                         isOnline = uiState.isOnline
+                    )
+                }
+
+                // Operating mode selector
+                item {
+                    OperatingModeSelector(
+                        selectedMode = uiState.currentUser?.operatingMode ?: OperatingMode.RECEIPT,
+                        onModeSelected = onModeChange
                     )
                 }
 
@@ -242,6 +255,54 @@ private fun QuickActionCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OperatingModeSelector(
+    selectedMode: OperatingMode,
+    onModeSelected: (OperatingMode) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    PickElevatedCard(
+        modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        elevation = 2.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.operating_mode),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            SingleChoiceSegmentedButtonRow(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OperatingMode.entries.forEachIndexed { index, mode ->
+                    SegmentedButton(
+                        selected = selectedMode == mode,
+                        onClick = { onModeSelected(mode) },
+                        shape = SegmentedButtonDefaults.itemShape(
+                            index = index,
+                            count = OperatingMode.entries.size
+                        )
+                    ) {
+                        Text(
+                            text = when (mode) {
+                                OperatingMode.RECEIPT -> stringResource(R.string.mode_receipt)
+                                OperatingMode.SHIPMENT -> stringResource(R.string.mode_shipment)
+                                OperatingMode.INVENTORY -> stringResource(R.string.mode_inventory)
+                            }
+                        )
+                    }
+                }
             }
         }
     }

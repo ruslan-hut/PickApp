@@ -14,6 +14,10 @@
 
     <!-- Home -->
     <string name="title_app">Pick</string>
+    <string name="operating_mode">Operating Mode</string>
+    <string name="mode_receipt">Receipt</string>
+    <string name="mode_shipment">Shipment</string>
+    <string name="mode_inventory">Inventory</string>
     <string name="logout_cd">Logout</string>
     <string name="online">Online</string>
     <string name="offline">Offline</string>

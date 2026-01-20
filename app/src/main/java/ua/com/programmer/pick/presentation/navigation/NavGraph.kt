@@ -146,7 +146,8 @@ fun PickNavGraph(
                             launchSingleTop = true
                             restoreState = true
                         }
-                    }
+                    },
+                    onModeChange = viewModel::setOperatingMode
                 )
             }
 

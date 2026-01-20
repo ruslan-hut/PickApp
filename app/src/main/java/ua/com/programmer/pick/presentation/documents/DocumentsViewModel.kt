@@ -3,19 +3,24 @@ package ua.com.programmer.pick.presentation.documents
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import ua.com.programmer.pick.domain.model.Document
+import ua.com.programmer.pick.domain.model.OperatingMode
 import ua.com.programmer.pick.domain.repository.DocumentRepository
+import ua.com.programmer.pick.domain.repository.UserRepository
 import javax.inject.Inject
 
 @HiltViewModel
 class DocumentsViewModel @Inject constructor(
-    private val documentRepository: DocumentRepository
+    private val documentRepository: DocumentRepository,
+    private val userRepository: UserRepository
 ) : ViewModel() {
 
     companion object {
@@ -25,16 +30,31 @@ class DocumentsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(DocumentsUiState())
     val uiState: StateFlow<DocumentsUiState> = _uiState.asStateFlow()
 
-    fun loadDocuments() {
+    init {
+        observeDocuments()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun observeDocuments() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {
-                val docs = documentRepository.getDocumentsByType(ua.com.programmer.pick.domain.model.DocumentType.OUTGOING_SHIPMENT).first()
-                _uiState.update { it.copy(documents = docs, isLoading = false) }
+                userRepository.getCurrentUser()
+                    .flatMapLatest { user ->
+                        val mode = user?.operatingMode ?: OperatingMode.RECEIPT
+                        documentRepository.getDocumentsByType(mode.toDocumentType())
+                    }
+                    .collectLatest { docs ->
+                        _uiState.update { it.copy(documents = docs, isLoading = false) }
+                    }
             } catch (ex: Exception) {
                 _uiState.update { it.copy(errorMessage = ERROR_LOADING_DOCUMENTS, isLoading = false) }
             }
         }
+    }
+
+    fun loadDocuments() {
+        // Documents are now observed reactively, this method kept for compatibility
     }
 
     fun onDocumentClick(documentId: String, onNavigate: (String) -> Unit) {

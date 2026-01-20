@@ -1,7 +1,10 @@
 package ua.com.programmer.pick.data.repository
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.util.NetworkMonitor
@@ -30,9 +33,14 @@ class UserRepositoryImpl @Inject constructor(
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : UserRepository {
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     override fun getCurrentUser(): Flow<User?> {
-        return appPreferences.currentUserId.map { userId ->
-            userId?.let { userDao.getUserById(it)?.toDomain() }
+        return appPreferences.currentUserId.flatMapLatest { userId ->
+            if (userId != null) {
+                userDao.getUserByIdFlow(userId).map { it?.toDomain() }
+            } else {
+                flowOf(null)
+            }
         }
     }
 
@@ -139,7 +147,10 @@ class UserRepositoryImpl @Inject constructor(
     override suspend fun updateUser(user: User) = withContext(ioDispatcher) {
         val existingEntity = userDao.getUserById(user.id)
         if (existingEntity != null) {
-            val updatedEntity = existingEntity.copy(name = user.name)
+            val updatedEntity = existingEntity.copy(
+                name = user.name,
+                operatingMode = user.operatingMode.name
+            )
             userDao.updateUser(updatedEntity)
         }
     }

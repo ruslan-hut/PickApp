@@ -2,6 +2,7 @@ package ua.com.programmer.pick.data.mapper
 
 import ua.com.programmer.pick.data.local.database.entity.UserEntity
 import ua.com.programmer.pick.data.remote.dto.UserDto
+import ua.com.programmer.pick.domain.model.OperatingMode
 import ua.com.programmer.pick.domain.model.User
 import ua.com.programmer.pick.domain.model.UserRole
 
@@ -16,7 +17,12 @@ fun UserEntity.toDomain(): User {
             UserRole.WAREHOUSE_WORKER
         },
         isActive = isActive,
-        lastLoginAt = lastLoginAt
+        lastLoginAt = lastLoginAt,
+        operatingMode = try {
+            OperatingMode.valueOf(operatingMode)
+        } catch (e: IllegalArgumentException) {
+            OperatingMode.RECEIPT
+        }
     )
 }
 
@@ -29,6 +35,7 @@ fun User.toEntity(passwordHash: String, lastUpdated: Long): UserEntity {
         role = role.name,
         isActive = isActive,
         lastLoginAt = lastLoginAt,
+        operatingMode = operatingMode.name,
         lastUpdated = lastUpdated
     )
 }

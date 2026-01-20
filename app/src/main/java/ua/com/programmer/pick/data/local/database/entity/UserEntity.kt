@@ -28,6 +28,9 @@ data class UserEntity(
     @ColumnInfo(name = "last_login_at")
     val lastLoginAt: Long? = null,
 
+    @ColumnInfo(name = "operating_mode", defaultValue = "RECEIPT")
+    val operatingMode: String = "RECEIPT",
+
     @ColumnInfo(name = "last_updated")
     val lastUpdated: Long
 )

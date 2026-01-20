@@ -6,5 +6,6 @@ data class User(
     val name: String,
     val role: UserRole,
     val isActive: Boolean,
-    val lastLoginAt: Long? = null
+    val lastLoginAt: Long? = null,
+    val operatingMode: OperatingMode = OperatingMode.RECEIPT
 )
