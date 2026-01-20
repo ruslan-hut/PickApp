@@ -15,6 +15,7 @@ import ua.com.programmer.pick.data.local.database.dao.DocumentDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentLineDao
 import ua.com.programmer.pick.data.local.database.dao.OutgoingOperationDao
 import ua.com.programmer.pick.data.local.database.dao.ProductDao
+import ua.com.programmer.pick.data.local.database.dao.ProductImageDao
 import ua.com.programmer.pick.data.local.database.dao.SyncStateDao
 import ua.com.programmer.pick.data.local.database.dao.UserDao
 import ua.com.programmer.pick.data.local.database.dao.WarehouseDao
@@ -87,6 +88,9 @@ object DatabaseModule {
                 private fun insertDemoDocuments(db: SupportSQLiteDatabase) {
                     val currentTime = System.currentTimeMillis()
                     val dayInMs = 24 * 60 * 60 * 1000L
+
+                    // Simple placeholder image (valid 48x48 blue PNG)
+                    val img = "UklGRsAFAABXRUJQVlA4WAoAAAAQAAAAOAAAOAAAQUxQSIABAAABkHNrmyIp79fVu7i75nuI3Mk4hJbyC5zIIXJCd9fMJXOHkA1xd3fpqu9Fp6q+bLOImAA0gQrQbPDMdcfPXjuzf+OsYc0hYqNApzVvWfur5a3g8pUY9JRBI1R5od5lEun4RANTBo5BmaPEUnomDrwhLl2JO16Z3rNnmUpw0zNrxW5lGoeJI5m5YlkmwSWlZqJ/C0lQjFUa9CuKOAGDBWVziZvhadIfi8M3tUE2kwhpoFVdEIPtauYdYp/R7M4o2h1RF9HBTmiE1NZgh1yE2odZuhoxwtKtiP6GqpMRvczoSaKutmZm6Iq9iPxipfouIhFn1Qgr9kXtMsEMtxYRKGlVPWLlXLByJqroSqv9JAZyxZuo7iK+qKMaUHZ2cXDjTEwukVIO+WzhGtIKblSZPOHSwOFhlUU52iF1ietVBtW5BdI7bKJPFThPkFNkKL2mUM8RRR6gwHoGjdHAA3DILg4LP5DUWr6tbCkCk4JOk048Df/40riwN0Rgu651mxaCJlNWUDggxAMAADASAJ0BKjkAOQA+bS6SRyQiIaEoDACADYlsALyRFltkbm3v6Gtt9zz/od3kjeVP9DdgHUAdv4tisCDHVV4yTxufSH69fAN+sf/J9ar1jfth7FP6ksdazAHb3L22Pwa+Ic2fZrPNj3v8pnq3suYp2/+4jpDCNx7XY4Xfi2M1bRjRx9au0hxfM9bkujVHsA/Eqhaqyo1SuoX3jgAA/vfKoP/2h1+R9ZnQMmKu6Jl/nly2gN/5VsdemfJw0v+wjPLgyCBsPtsOl5FeHXmUKlNCkTO6hBjj9DzySMzhAPINWTnILdqfAvMRirX+0B/34/7pl0DVtm5BEJzg9jk1liL7zb+V5lJVb9yZKLLaWyuizlPD1mh7S3Oolu8ONXED5R4tWhBCalrq7JPXl0EteGyKl+vyT8qSCuJ54co/3DeIiLv47sY5LcH8uFbNQ8Z4Y2WOP0Us7lF/+MSQseDD/uc950SxQldb2UM1y6ei9xYGoGtCNh6bPTxtSEPgKvrNAQ7o9Q/h2iPiKayLLaDSOX7+TEYHUdBj60QeBQBoP/h4vpoh8fvwdDIEguTL+E6l7zAd+CpkEbC/uaDH0v81Bf84iSw00rofH3X75A7Slut9hNPmFKkVDsvkkmO78M4LZ3S6WZIRKfwACXt4Ipn3Y0SjHnIzaBXth5VEkORq3oCaZ4aT72PGk2dQ14xPs44kiPqRoR2C33x9xoqNmbhp9dWO2//dPWdjsDvkfAa7CUT34if4z+XeuaE3bSeMOjhtCqSjzJ2hAk133UloHdjBzmV4o4ZXvfUs8juPpzQD/T9gYZpNIPFmM8nrZqXkrLB9L+PVnEsLTWzHkXmuDHOWO5Q0jz6tDqOUJSMNXhW5iLGAI17Azp5k7ScW9wLqSG0fDnf+sswOKyL/wkaiWNtGXktXykxAFiX8del/m/09/1LkW6LncbunY36/4om9p7GM/sHggVBI67fOczrwdjS+Krjw6WHzcVz0oSoafhsBXldAD9w2dglEZmB0m1MxTljETzeevvqVeAL6JgGeeevCR9KaqPe87Ggs4pArCrg1gKFmvNswzfbqaVye/o9jnePzrwJaf23JaAEcGbesxY0egOVt55cRTtkge9wCPG9JPkz5+5FTAc2boXlkT6ns3tLJhgQQY2Ye+N51P1zbtgYt1fs4hR1WMn43MEs5Q8TR8l0m9wkM1Hl2jUqA5j+h4p4x8yBAw8WRg5HQA7EJ28g5md2CspMQul/yC1JjBP/+goCj84WxZZ0//0OL2A6UGs0kAVSIwo5gAABQU0FJTgAAADhCSU0D7QAAAAAAEACQAAAAAQABAJAAAAABAAE4QklNBCgAAAAAAAwAAAACP/AAAAAAAAA4QklNBEMAAAAAAA5QYmVXARAABgBQAAAAAA=="
 
                     // Document 1: Outgoing Shipment - LOADED
                     db.execSQL(
@@ -235,9 +239,45 @@ object DatabaseModule {
                         """.trimIndent(),
                         arrayOf("line_005_2", "doc_005", 2, "prod_011", "SKU-011", "Screen Protector", "pcs", 75.0, 0.0, null, null, "loc_011", "E-01-02", null, 0, 0)
                     )
+
+                    // Product Images
+                    insertProductImages(db, img, img, img, img, img, img, img, img, img, img, img)
                 }
             })
             .build()
+    }
+
+    private fun insertProductImages(
+        db: SupportSQLiteDatabase,
+        imgLaptop: String,
+        imgMouse: String,
+        imgCable: String,
+        imgMonitor: String,
+        imgKeyboard: String,
+        imgWebcam: String,
+        imgHeadphones: String,
+        imgPowerBank: String,
+        imgPhoneCase: String,
+        imgTabletStand: String,
+        imgScreenProtector: String
+    ) {
+        val insertSql = """
+            INSERT OR REPLACE INTO product_images (id, product_id, url, base64)
+            VALUES (?, ?, ?, ?)
+        """.trimIndent()
+
+        // Insert product images - url is null, using base64 for demo
+        db.execSQL(insertSql, arrayOf("img_001", "prod_001", null, imgLaptop))
+        db.execSQL(insertSql, arrayOf("img_002", "prod_002", null, imgMouse))
+        db.execSQL(insertSql, arrayOf("img_003", "prod_003", null, imgCable))
+        db.execSQL(insertSql, arrayOf("img_004", "prod_004", null, imgMonitor))
+        db.execSQL(insertSql, arrayOf("img_005", "prod_005", null, imgKeyboard))
+        db.execSQL(insertSql, arrayOf("img_006", "prod_006", null, imgWebcam))
+        db.execSQL(insertSql, arrayOf("img_007", "prod_007", null, imgHeadphones))
+        db.execSQL(insertSql, arrayOf("img_008", "prod_008", null, imgPowerBank))
+        db.execSQL(insertSql, arrayOf("img_009", "prod_009", null, imgPhoneCase))
+        db.execSQL(insertSql, arrayOf("img_010", "prod_010", null, imgTabletStand))
+        db.execSQL(insertSql, arrayOf("img_011", "prod_011", null, imgScreenProtector))
     }
 
     private fun createDemoUser(): UserEntity {
@@ -271,6 +311,10 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideProductDao(database: AppDatabase): ProductDao = database.productDao()
+
+    @Provides
+    @Singleton
+    fun provideProductImageDao(database: AppDatabase): ProductImageDao = database.productImageDao()
 
     @Provides
     @Singleton

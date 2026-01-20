@@ -10,13 +10,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import ua.com.programmer.pick.data.local.database.dao.ProductImageDao
+import ua.com.programmer.pick.domain.model.ProductImage
 import ua.com.programmer.pick.domain.repository.DocumentRepository
 import javax.inject.Inject
 
 @HiltViewModel
 class DocumentDetailViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
-    private val documentRepository: DocumentRepository
+    private val documentRepository: DocumentRepository,
+    private val productImageDao: ProductImageDao
 ) : ViewModel() {
 
     companion object {
@@ -33,7 +36,27 @@ class DocumentDetailViewModel @Inject constructor(
             try {
                 val doc = documentRepository.getDocumentById(documentId)
                 val lines = documentRepository.getLinesByDocumentId(documentId).first()
-                _uiState.update { it.copy(document = doc, lines = lines, isLoading = false) }
+
+                // Load product images
+                val productIds = lines.map { it.productId }
+                val images = productImageDao.getByProductIds(productIds)
+                val imagesMap = images.associate { entity ->
+                    entity.productId to ProductImage(
+                        id = entity.id,
+                        productId = entity.productId,
+                        url = entity.url,
+                        base64 = entity.base64
+                    )
+                }
+
+                _uiState.update {
+                    it.copy(
+                        document = doc,
+                        lines = lines,
+                        productImages = imagesMap,
+                        isLoading = false
+                    )
+                }
             } catch (ex: Exception) {
                 _uiState.update { it.copy(errorMessage = ERROR_LOADING_DOCUMENT, isLoading = false) }
             }

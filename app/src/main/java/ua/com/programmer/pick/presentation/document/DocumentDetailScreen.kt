@@ -135,6 +135,7 @@ fun DocumentDetailScreen(
                             ) { line ->
                                 DocumentLineRow(
                                     line = line,
+                                    productImage = uiState.productImages[line.productId],
                                     onQuantityChange = { lineId, qty ->
                                         viewModel.updateLineQuantity(lineId, qty)
                                     }

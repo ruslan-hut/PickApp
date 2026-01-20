@@ -1,5 +1,6 @@
 package ua.com.programmer.pick.presentation.document
 
+import android.util.Base64
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -7,25 +8,33 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
+import com.bumptech.glide.integration.compose.GlideImage
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.domain.model.DocumentLine
+import ua.com.programmer.pick.domain.model.ProductImage
 import ua.com.programmer.pick.presentation.common.PickOutlinedCard
 import ua.com.programmer.pick.ui.theme.CardShape
 
+@OptIn(ExperimentalGlideComposeApi::class)
 @Composable
 fun DocumentLineRow(
     line: DocumentLine,
+    productImage: ProductImage?,
     onQuantityChange: (String, Double) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -48,14 +57,32 @@ fun DocumentLineRow(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // Product name
-            Text(
-                text = line.productName,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+            // Product header with image
+            Row(
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Product image
+                if (productImage != null) {
+                    ProductImageView(
+                        productImage = productImage,
+                        contentDescription = line.productName,
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CardShape)
+                    )
+                }
+
+                // Product name
+                Text(
+                    text = line.productName,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -106,6 +133,47 @@ fun DocumentLineRow(
                 QuantityStepper(
                     value = line.actualQuantity,
                     onChange = { newVal -> onQuantityChange(line.id, newVal) }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalGlideComposeApi::class)
+@Composable
+private fun ProductImageView(
+    productImage: ProductImage,
+    contentDescription: String,
+    modifier: Modifier = Modifier
+) {
+    val hasUrl = !productImage.url.isNullOrBlank()
+    val hasBase64 = !productImage.base64.isNullOrBlank()
+
+    when {
+        hasUrl -> {
+            // Use Glide for URL - it handles caching automatically
+            GlideImage(
+                model = productImage.url,
+                contentDescription = contentDescription,
+                modifier = modifier,
+                contentScale = ContentScale.Crop
+            )
+        }
+        hasBase64 -> {
+            // Decode base64 to byte array and use Glide
+            val imageBytes = remember(productImage.base64) {
+                try {
+                    Base64.decode(productImage.base64, Base64.DEFAULT)
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            if (imageBytes != null) {
+                GlideImage(
+                    model = imageBytes,
+                    contentDescription = contentDescription,
+                    modifier = modifier,
+                    contentScale = ContentScale.Crop
                 )
             }
         }

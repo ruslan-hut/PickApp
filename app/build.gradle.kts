@@ -112,6 +112,10 @@ dependencies {
     // ML Kit Barcode Scanning
     implementation(libs.mlkit.barcode)
 
+    // Glide
+    implementation(libs.glide)
+    implementation(libs.glide.compose)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

@@ -1,8 +1,8 @@
 {
   "formatVersion": 1,
   "database": {
-    "version": 2,
-    "identityHash": "0f25eb16ccaa000ec52e709f3f229daa",
+    "version": 4,
+    "identityHash": "4bd9ea1033cc650464350066af881392",
     "entities": [
       {
         "tableName": "users",
@@ -240,6 +240,51 @@
             "referencedColumns": [
               "id"
             ]
+          }
+        ]
+      },
+      {
+        "tableName": "product_images",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `product_id` TEXT NOT NULL, `url` TEXT, `base64` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "productId",
+            "columnName": "product_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "url",
+            "columnName": "url",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "base64",
+            "columnName": "base64",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_product_images_product_id",
+            "unique": true,
+            "columnNames": [
+              "product_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_product_images_product_id` ON `${TABLE_NAME}` (`product_id`)"
           }
         ]
       },
@@ -602,7 +647,7 @@
       },
       {
         "tableName": "document_lines",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `document_id` TEXT NOT NULL, `line_number` INTEGER NOT NULL, `product_id` TEXT NOT NULL, `product_code` TEXT NOT NULL, `product_name` TEXT NOT NULL, `unit` TEXT NOT NULL, `planned_quantity` REAL NOT NULL, `actual_quantity` REAL NOT NULL, `batch_number` TEXT, `expiration_date` INTEGER, `location_id` TEXT, `location_path` TEXT, `notes` TEXT, `image` TEXT, `is_completed` INTEGER NOT NULL, `is_dirty` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`document_id`) REFERENCES `documents`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `document_id` TEXT NOT NULL, `line_number` INTEGER NOT NULL, `product_id` TEXT NOT NULL, `product_code` TEXT NOT NULL, `product_name` TEXT NOT NULL, `unit` TEXT NOT NULL, `planned_quantity` REAL NOT NULL, `actual_quantity` REAL NOT NULL, `batch_number` TEXT, `expiration_date` INTEGER, `location_id` TEXT, `location_path` TEXT, `notes` TEXT, `is_completed` INTEGER NOT NULL, `is_dirty` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`document_id`) REFERENCES `documents`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
         "fields": [
           {
             "fieldPath": "id",
@@ -681,11 +726,6 @@
           {
             "fieldPath": "notes",
             "columnName": "notes",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "image",
-            "columnName": "image",
             "affinity": "TEXT"
           },
           {
@@ -838,7 +878,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '0f25eb16ccaa000ec52e709f3f229daa')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '4bd9ea1033cc650464350066af881392')"
     ]
   }
 }
