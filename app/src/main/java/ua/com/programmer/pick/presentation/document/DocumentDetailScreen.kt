@@ -165,7 +165,7 @@ private fun DocumentHeaderCard(
         (totalActual / totalPlanned).toFloat().coerceIn(0f, 1f)
     } else 0f
 
-    val isComplete = totalActual >= totalPlanned && totalPlanned > 0
+    val isComplete = linesCompleted >= linesTotal
 
     PickElevatedCard(
         modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp),

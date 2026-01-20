@@ -44,7 +44,9 @@ class DocumentDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { current ->
                 val updated = current.lines.map { if (it.id == lineId) it.copy(actualQuantity = newQuantity) else it }
-                current.copy(lines = updated, isSaving = true)
+                val newTotalActual = updated.sumOf { it.actualQuantity }
+                val updatedDocument = current.document?.copy(totalActual = newTotalActual)
+                current.copy(document = updatedDocument, lines = updated, isSaving = true)
             }
 
             try {
