@@ -41,12 +41,17 @@ object DatabaseModule {
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     super.onCreate(db)
+                    val currentTime = System.currentTimeMillis()
                     insertDemoUser(db)
+                    insertDemoProducts(db, currentTime)
+                    insertProductBarcodes(db)
                     insertDemoDocuments(db)
                 }
 
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     super.onOpen(db)
+                    val currentTime = System.currentTimeMillis()
+
                     // Ensure demo user exists (in case onCreate wasn't called)
                     val cursor = db.query("SELECT COUNT(*) FROM users WHERE login = 'demo'")
                     cursor.moveToFirst()
@@ -55,6 +60,17 @@ object DatabaseModule {
                     if (count == 0) {
                         insertDemoUser(db)
                     }
+
+                    // Ensure demo products exist
+                    val prodCursor = db.query("SELECT COUNT(*) FROM products")
+                    prodCursor.moveToFirst()
+                    val prodCount = prodCursor.getInt(0)
+                    prodCursor.close()
+                    if (prodCount == 0) {
+                        insertDemoProducts(db, currentTime)
+                        insertProductBarcodes(db)
+                    }
+
                     // Ensure demo documents exist
                     val docCursor = db.query("SELECT COUNT(*) FROM documents")
                     docCursor.moveToFirst()
@@ -240,8 +256,66 @@ object DatabaseModule {
                         arrayOf("line_005_2", "doc_005", 2, "prod_011", "SKU-011", "Screen Protector", "pcs", 75.0, 0.0, null, null, "loc_011", "E-01-02", null, 0, 0)
                     )
 
+                    // Products
+                    insertDemoProducts(db, currentTime)
+
+                    // Product Barcodes
+                    insertProductBarcodes(db)
+
                     // Product Images
                     insertProductImages(db, img, img, img, img, img, img, img, img, img, img, img)
+                }
+
+                private fun insertDemoProducts(db: SupportSQLiteDatabase, currentTime: Long) {
+                    val insertSql = """
+                        INSERT OR REPLACE INTO products (id, code, name, description, unit, supports_batches, is_active, last_updated)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """.trimIndent()
+
+                    db.execSQL(insertSql, arrayOf("prod_001", "SKU-001", "Laptop Dell XPS 15", "15.6 inch, Intel i7, 16GB RAM", "pcs", 0, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_002", "SKU-002", "Wireless Mouse Logitech", "Bluetooth, ergonomic design", "pcs", 0, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_003", "SKU-003", "USB-C Cable 2m", "Fast charging, data transfer", "pcs", 0, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_004", "SKU-004", "Monitor Samsung 27\"", "4K UHD, IPS panel", "pcs", 0, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_005", "SKU-005", "Keyboard Mechanical", "RGB backlight, Cherry MX switches", "pcs", 0, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_006", "SKU-006", "Webcam HD 1080p", "Built-in microphone, autofocus", "pcs", 0, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_007", "SKU-007", "Headphones Wireless", "Active noise cancellation, 30h battery", "pcs", 0, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_008", "SKU-008", "Power Bank 20000mAh", "USB-C PD, fast charging", "pcs", 1, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_009", "SKU-009", "Phone Case Universal", "Shockproof, clear design", "pcs", 1, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_010", "SKU-010", "Tablet Stand", "Adjustable angle, aluminum", "pcs", 0, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_011", "SKU-011", "Screen Protector", "Tempered glass, 9H hardness", "pcs", 0, 1, currentTime))
+                }
+
+                private fun insertProductBarcodes(db: SupportSQLiteDatabase) {
+                    val insertSql = """
+                        INSERT OR REPLACE INTO product_barcodes (id, product_id, barcode, type, is_primary)
+                        VALUES (?, ?, ?, ?, ?)
+                    """.trimIndent()
+
+                    // EAN-13 barcodes for easy testing (can be generated as QR codes too)
+                    db.execSQL(insertSql, arrayOf("bc_001", "prod_001", "4901234567001", "EAN13", 1))
+                    db.execSQL(insertSql, arrayOf("bc_002", "prod_002", "4901234567002", "EAN13", 1))
+                    db.execSQL(insertSql, arrayOf("bc_003", "prod_003", "4901234567003", "EAN13", 1))
+                    db.execSQL(insertSql, arrayOf("bc_004", "prod_004", "4901234567004", "EAN13", 1))
+                    db.execSQL(insertSql, arrayOf("bc_005", "prod_005", "4901234567005", "EAN13", 1))
+                    db.execSQL(insertSql, arrayOf("bc_006", "prod_006", "4901234567006", "EAN13", 1))
+                    db.execSQL(insertSql, arrayOf("bc_007", "prod_007", "4901234567007", "EAN13", 1))
+                    db.execSQL(insertSql, arrayOf("bc_008", "prod_008", "4901234567008", "EAN13", 1))
+                    db.execSQL(insertSql, arrayOf("bc_009", "prod_009", "4901234567009", "EAN13", 1))
+                    db.execSQL(insertSql, arrayOf("bc_010", "prod_010", "4901234567010", "EAN13", 1))
+                    db.execSQL(insertSql, arrayOf("bc_011", "prod_011", "4901234567011", "EAN13", 1))
+
+                    // Additional SKU-based barcodes (product codes as barcodes)
+                    db.execSQL(insertSql, arrayOf("bc_sku_001", "prod_001", "SKU-001", "CODE128", 0))
+                    db.execSQL(insertSql, arrayOf("bc_sku_002", "prod_002", "SKU-002", "CODE128", 0))
+                    db.execSQL(insertSql, arrayOf("bc_sku_003", "prod_003", "SKU-003", "CODE128", 0))
+                    db.execSQL(insertSql, arrayOf("bc_sku_004", "prod_004", "SKU-004", "CODE128", 0))
+                    db.execSQL(insertSql, arrayOf("bc_sku_005", "prod_005", "SKU-005", "CODE128", 0))
+                    db.execSQL(insertSql, arrayOf("bc_sku_006", "prod_006", "SKU-006", "CODE128", 0))
+                    db.execSQL(insertSql, arrayOf("bc_sku_007", "prod_007", "SKU-007", "CODE128", 0))
+                    db.execSQL(insertSql, arrayOf("bc_sku_008", "prod_008", "SKU-008", "CODE128", 0))
+                    db.execSQL(insertSql, arrayOf("bc_sku_009", "prod_009", "SKU-009", "CODE128", 0))
+                    db.execSQL(insertSql, arrayOf("bc_sku_010", "prod_010", "SKU-010", "CODE128", 0))
+                    db.execSQL(insertSql, arrayOf("bc_sku_011", "prod_011", "SKU-011", "CODE128", 0))
                 }
             })
             .build()

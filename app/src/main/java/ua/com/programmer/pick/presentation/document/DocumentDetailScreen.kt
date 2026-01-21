@@ -73,6 +73,17 @@ fun DocumentDetailScreen(
         }
     }
 
+    // Auto-scroll to selected line when barcode is scanned
+    LaunchedEffect(uiState.selectedLineId) {
+        val selectedId = uiState.selectedLineId ?: return@LaunchedEffect
+        val lineIndex = uiState.lines.indexOfFirst { it.id == selectedId }
+        if (lineIndex >= 0) {
+            // Account for header items: DocumentHeaderCard (0) + SectionHeader (1)
+            val scrollIndex = lineIndex + 2
+            listState.animateScrollToItem(scrollIndex)
+        }
+    }
+
     Scaffold(
         modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {

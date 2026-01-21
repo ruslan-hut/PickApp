@@ -49,6 +49,11 @@ class DocumentDetailViewModel @Inject constructor(
 
     private var currentDocumentId: String? = null
 
+    init {
+        // Subscribe to barcode scans once when ViewModel is created
+        subscribeToScans()
+    }
+
     fun load(documentId: String) {
         currentDocumentId = documentId
 
@@ -79,9 +84,6 @@ class DocumentDetailViewModel @Inject constructor(
                     )
                 }
 
-                // Subscribe to barcode scans while this document is open
-                subscribeToScans()
-
             } catch (_: Exception) {
                 _uiState.update { it.copy(errorMessage = ERROR_LOADING_DOCUMENT, isLoading = false) }
             }
@@ -89,11 +91,10 @@ class DocumentDetailViewModel @Inject constructor(
     }
 
     private fun subscribeToScans() {
-        // Use launchIn to keep collecting in viewModelScope
         Log.d("DocumentDetailViewModel", "subscribeToScans")
         barcodeService.scannedBarcodes
             .onEach { scanned ->
-                viewModelScope.launch { handleScannedBarcode(scanned) }
+                handleScannedBarcode(scanned)
             }
             .launchIn(viewModelScope)
     }
@@ -154,17 +155,70 @@ class DocumentDetailViewModel @Inject constructor(
             }
 
             DocumentType.INVENTORY -> {
-                // For inventory: if product known, create a new line with actual=1
-                if (scanned.isKnownProduct && scanned.productId != null) {
-                    // create a new DocumentLine
+                // For inventory: first try to find existing line, then increment or add new
+
+                // Resolve product info
+                val productId = scanned.productId ?: run {
+                    // Try to lookup product by barcode if not already resolved
+                    try {
+                        productRepository.getProductByBarcode(identifier)?.id
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+
+                if (productId == null) {
+                    _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.PRODUCT_NOT_FOUND))
+                    return
+                }
+
+                // Check if product already exists in document lines
+                val existingLine = _uiState.value.lines.find { it.productId == productId }
+
+                if (existingLine != null) {
+                    // Increment existing line quantity
+                    val newQty = existingLine.actualQuantity + 1.0
+                    _uiState.update { current ->
+                        val updated = current.lines.map {
+                            if (it.id == existingLine.id) it.copy(actualQuantity = newQty) else it
+                        }
+                        val newTotalActual = updated.sumOf { it.actualQuantity }
+                        val updatedDocument = current.document?.copy(totalActual = newTotalActual)
+                        current.copy(document = updatedDocument, lines = updated, selectedLineId = existingLine.id)
+                    }
+
+                    // Persist change
+                    try {
+                        documentRepository.incrementLineQuantity(existingLine.id, 1.0)
+                    } catch (_: Exception) {
+                        try {
+                            documentRepository.updateLine(existingLine.id, newQty, null)
+                        } catch (_: Exception) {
+                            _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
+                        }
+                    }
+                } else {
+                    // Add new line for this product
+                    val product = if (scanned.isKnownProduct && scanned.productId != null) {
+                        // Use info from scanned barcode
+                        null
+                    } else {
+                        // Lookup full product info
+                        try {
+                            productRepository.getProductByBarcode(identifier)
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+
                     val newLine = DocumentLine(
                         id = java.util.UUID.randomUUID().toString(),
                         documentId = docId,
                         lineNumber = (_uiState.value.lines.maxOfOrNull { it.lineNumber } ?: 0) + 1,
-                        productId = scanned.productId,
-                        productCode = scanned.productCode ?: identifier,
-                        productName = scanned.productName ?: scanned.productCode ?: identifier,
-                        unit = "pcs",
+                        productId = productId,
+                        productCode = product?.code ?: scanned.productCode ?: identifier,
+                        productName = product?.name ?: scanned.productName ?: scanned.productCode ?: identifier,
+                        unit = product?.unit ?: "pcs",
                         plannedQuantity = 0.0,
                         actualQuantity = 1.0,
                         batchNumber = null,
@@ -176,7 +230,6 @@ class DocumentDetailViewModel @Inject constructor(
                         isDirty = true
                     )
 
-                    // Update UI immediately: append and select
                     _uiState.update { current ->
                         val updated = current.lines + newLine
                         val newTotalActual = updated.sumOf { it.actualQuantity }
@@ -184,54 +237,10 @@ class DocumentDetailViewModel @Inject constructor(
                         current.copy(document = updatedDocument, lines = updated, selectedLineId = newLine.id)
                     }
 
-                    // Persist
                     try {
                         documentRepository.saveLine(newLine)
                     } catch (_: Exception) {
                         _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
-                    }
-                } else {
-                    // Try to lookup product in product repository by barcode and then add
-                    val product = try {
-                        productRepository.getProductByBarcode(identifier)
-                    } catch (_: Exception) {
-                        null
-                    }
-
-                    if (product != null) {
-                        val newLine = DocumentLine(
-                            id = java.util.UUID.randomUUID().toString(),
-                            documentId = docId,
-                            lineNumber = (_uiState.value.lines.maxOfOrNull { it.lineNumber } ?: 0) + 1,
-                            productId = product.id,
-                            productCode = product.code,
-                            productName = product.name,
-                            unit = product.unit,
-                            plannedQuantity = 0.0,
-                            actualQuantity = 1.0,
-                            batchNumber = null,
-                            expirationDate = null,
-                            locationId = null,
-                            locationPath = null,
-                            notes = null,
-                            isCompleted = false,
-                            isDirty = true
-                        )
-
-                        _uiState.update { current ->
-                            val updated = current.lines + newLine
-                            val newTotalActual = updated.sumOf { it.actualQuantity }
-                            val updatedDocument = current.document?.copy(totalActual = newTotalActual)
-                            current.copy(document = updatedDocument, lines = updated, selectedLineId = newLine.id)
-                        }
-
-                        try {
-                            documentRepository.saveLine(newLine)
-                        } catch (_: Exception) {
-                            _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
-                        }
-                    } else {
-                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.PRODUCT_NOT_FOUND))
                     }
                 }
             }
@@ -244,7 +253,8 @@ class DocumentDetailViewModel @Inject constructor(
                 val updated = current.lines.map { if (it.id == lineId) it.copy(actualQuantity = newQuantity) else it }
                 val newTotalActual = updated.sumOf { it.actualQuantity }
                 val updatedDocument = current.document?.copy(totalActual = newTotalActual)
-                current.copy(document = updatedDocument, lines = updated, isSaving = true)
+                // Clear selection when manually editing quantity
+                current.copy(document = updatedDocument, lines = updated, isSaving = true, selectedLineId = null)
             }
 
             try {

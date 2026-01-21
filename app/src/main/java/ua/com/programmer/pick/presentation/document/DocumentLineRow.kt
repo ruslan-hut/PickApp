@@ -51,6 +51,11 @@ fun DocumentLineRow(
             isSelected -> MaterialTheme.colorScheme.primary
             isComplete -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)
             else -> MaterialTheme.colorScheme.outlineVariant
+        },
+        containerColor = if (isSelected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surface
         }
     ) {
         Column(
