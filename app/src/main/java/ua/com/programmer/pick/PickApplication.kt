@@ -40,5 +40,8 @@ class PickApplication : Application(), Configuration.Provider {
 
         // Initialize barcode service
         barcodeService.initialize()
+
+        // Start hardware scanner so we receive scanner intents (registers receiver)
+        barcodeService.startHardwareScanner()
     }
 }

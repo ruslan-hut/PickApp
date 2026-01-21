@@ -1,6 +1,8 @@
 package ua.com.programmer.pick.core.scanner
 
 import android.util.Log
+import android.view.InputDevice
+import android.view.KeyEvent
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -54,6 +56,10 @@ class BarcodeService @Inject constructor(
 
     private var isInitialized = false
 
+    // Buffer and timing for keyboard-style hardware scanners (key events)
+    private val hardwareBarcodeBuffer = StringBuilder()
+    private var hardwareLastKeystrokeTime = 0L
+
     /**
      * Initialize the barcode service.
      * Call this once during app startup.
@@ -82,6 +88,54 @@ class BarcodeService @Inject constructor(
         cameraScannerManager.scanResults
             .onEach { handleScanResult(it, ScannerType.CAMERA) }
             .launchIn(scope)
+    }
+
+
+    fun onHardwareKeyEvent(event: KeyEvent): Boolean {
+
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            val currentTime = System.currentTimeMillis()
+            if (hardwareBarcodeBuffer.isNotEmpty() && currentTime - hardwareLastKeystrokeTime > 60) {
+                hardwareBarcodeBuffer.clear()
+            }
+
+            val char = event.unicodeChar.toChar()
+            if (char.isLetterOrDigit()) {
+                hardwareBarcodeBuffer.append(char)
+            }
+            hardwareLastKeystrokeTime = currentTime
+
+        } else if (event.action == KeyEvent.ACTION_UP) {
+            if (event.keyCode == KeyEvent.KEYCODE_ENTER || event.keyCode == KeyEvent.KEYCODE_TAB) {
+                if (hardwareBarcodeBuffer.isNotEmpty()) {
+                    val barcode = hardwareBarcodeBuffer.toString()
+                    hardwareBarcodeBuffer.clear()
+
+                    // Process the assembled barcode asynchronously
+                    scope.launch {
+
+                        val format = detectBarcodeFormat(barcode)
+                        val gs1Data = if (format.supportsGS1() && gs1Parser.isGS1Barcode(barcode)) {
+                            gs1Parser.parse(barcode)
+                        } else {
+                            null
+                        }
+
+                        val result = ScanResult.Success(
+                            rawValue = barcode,
+                            format = format,
+                            gs1Data = gs1Data,
+                            source = ScanSource.HARDWARE_SCANNER
+                        )
+
+                        handleScanResult(result, ScannerType.HARDWARE)
+                    }
+                }
+                return true
+            }
+        }
+
+        return true
     }
 
     /**

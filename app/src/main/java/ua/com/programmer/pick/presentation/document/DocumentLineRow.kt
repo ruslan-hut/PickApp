@@ -36,7 +36,8 @@ fun DocumentLineRow(
     line: DocumentLine,
     productImage: ProductImage?,
     onQuantityChange: (String, Double) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isSelected: Boolean = false
 ) {
     val progress = if (line.plannedQuantity > 0) {
         (line.actualQuantity / line.plannedQuantity).toFloat().coerceIn(0f, 1f)
@@ -46,10 +47,10 @@ fun DocumentLineRow(
 
     PickOutlinedCard(
         modifier = modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-        borderColor = if (isComplete) {
-            MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)
-        } else {
-            MaterialTheme.colorScheme.outlineVariant
+        borderColor = when {
+            isSelected -> MaterialTheme.colorScheme.primary
+            isComplete -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)
+            else -> MaterialTheme.colorScheme.outlineVariant
         }
     ) {
         Column(
