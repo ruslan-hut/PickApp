@@ -23,7 +23,7 @@ Authenticate user and obtain tokens.
 {
   "login": "string",
   "password": "string",
-  "deviceId": "string (optional)"
+  "device_id": "string (optional)"
 }
 ```
 
@@ -31,15 +31,15 @@ Authenticate user and obtain tokens.
 ```json
 {
   "token": "string (JWT access token)",
-  "refreshToken": "string",
-  "expiresAt": 1234567890000,
+  "refresh_token": "string",
+  "expires_at": 1234567890000,
   "user": {
     "id": "string (UUID)",
     "login": "string",
     "name": "string",
     "role": "string (WAREHOUSE_WORKER | PICKER | ADMINISTRATOR)",
-    "isActive": true,
-    "lastUpdated": 1234567890000
+    "is_active": true,
+    "last_updated": 1234567890000
   }
 }
 ```
@@ -51,7 +51,7 @@ Refresh expired access token.
 **Request:**
 ```json
 {
-  "refreshToken": "string"
+  "refresh_token": "string"
 }
 ```
 
@@ -81,12 +81,12 @@ Get complete dataset for an entity type. Used on first sync.
 **Response:**
 ```json
 {
-  "syncId": "string (UUID)",
-  "entityType": "string",
+  "sync_id": "string (UUID)",
+  "entity_type": "string",
   "timestamp": 1234567890000,
-  "isFullSync": true,
+  "is_full_sync": true,
   "data": [...],
-  "deletedIds": []
+  "deleted_ids": []
 }
 ```
 
@@ -98,7 +98,7 @@ Get incremental changes since last sync.
 - `entity` - Entity type
 - `since` - Last sync timestamp (milliseconds)
 
-**Response:** Same structure as `/sync/full` with `isFullSync: false`.
+**Response:** Same structure as `/sync/full` with `is_full_sync: false`.
 
 ### POST `/sync/ack`
 
@@ -107,8 +107,8 @@ Acknowledge successful sync. Server can clean up pending changes.
 **Request:**
 ```json
 {
-  "entityType": "string",
-  "syncId": "string",
+  "entity_type": "string",
+  "sync_id": "string",
   "timestamp": 1234567890000
 }
 ```
@@ -127,8 +127,8 @@ Acknowledge successful sync. Server can clean up pending changes.
   "login": "string (unique)",
   "name": "string",
   "role": "WAREHOUSE_WORKER | PICKER | ADMINISTRATOR",
-  "isActive": true,
-  "lastUpdated": 1234567890000
+  "is_active": true,
+  "last_updated": 1234567890000
 }
 ```
 
@@ -141,17 +141,17 @@ Acknowledge successful sync. Server can clean up pending changes.
   "name": "string",
   "description": "string (optional)",
   "unit": "string (e.g., kg, pcs)",
-  "supportsBatches": false,
-  "isActive": true,
+  "supports_batches": false,
+  "is_active": true,
   "barcodes": [
     {
       "id": "string (UUID)",
       "barcode": "string",
-      "type": "EAN13 | CODE128 | QR | OTHER",
-      "isPrimary": false
+      "type": "EAN13 | EAN8 | CODE128 | CODE39 | QR | DATAMATRIX | GS1_DATAMATRIX | UNKNOWN",
+      "is_primary": false
     }
   ],
-  "imageUrl": "string (optional)"
+  "image_url": "string (optional)"
 }
 ```
 
@@ -164,7 +164,7 @@ Acknowledge successful sync. Server can clean up pending changes.
   "name": "string",
   "address": "string (optional)",
   "phone": "string (optional)",
-  "isActive": true
+  "is_active": true
 }
 ```
 
@@ -175,15 +175,15 @@ Acknowledge successful sync. Server can clean up pending changes.
   "id": "string (UUID)",
   "code": "string (unique)",
   "name": "string",
-  "isAddressed": false,
-  "isActive": true,
+  "is_addressed": false,
+  "is_active": true,
   "locations": [
     {
       "id": "string (UUID)",
       "row": "string",
       "shelf": "string",
       "barcode": "string (optional)",
-      "isActive": true
+      "is_active": true
     }
   ]
 }
@@ -194,40 +194,40 @@ Acknowledge successful sync. Server can clean up pending changes.
 ```json
 {
   "id": "string (UUID)",
-  "externalId": "string (optional, ERP reference)",
+  "external_id": "string (optional, ERP reference)",
   "type": "INCOMING_RECEIPT | OUTGOING_SHIPMENT | INVENTORY",
   "number": "string",
   "date": 1234567890000,
   "state": "LOADED | IN_PROGRESS | COMPLETED | SENT | ERROR",
-  "clientId": "string (optional)",
-  "clientName": "string (optional)",
-  "warehouseId": "string (optional)",
-  "warehouseName": "string (optional)",
+  "client_id": "string (optional)",
+  "client_name": "string (optional)",
+  "warehouse_id": "string (optional)",
+  "warehouse_name": "string (optional)",
   "notes": "string (optional)",
-  "totalPlanned": 100.0,
-  "totalActual": 0.0,
-  "assignedUserId": "string (optional)",
-  "takenAt": 1234567890000,
-  "completedAt": null,
-  "lastModified": 1234567890000,
+  "total_planned": 100.0,
+  "total_actual": 0.0,
+  "assigned_user_id": "string (optional)",
+  "taken_at": 1234567890000,
+  "completed_at": null,
+  "last_modified": 1234567890000,
   "version": 1,
   "lines": [
     {
       "id": "string (UUID)",
-      "documentId": "string",
-      "lineNumber": 1,
-      "productId": "string",
-      "productCode": "string",
-      "productName": "string",
+      "document_id": "string",
+      "line_number": 1,
+      "product_id": "string",
+      "product_code": "string",
+      "product_name": "string",
       "unit": "string",
-      "plannedQuantity": 10.0,
-      "actualQuantity": 0.0,
-      "batchNumber": "string (optional)",
-      "expirationDate": 1234567890000,
-      "locationId": "string (optional)",
-      "locationPath": "A/1/2 (optional)",
+      "planned_quantity": 10.0,
+      "actual_quantity": 0.0,
+      "batch_number": "string (optional)",
+      "expiration_date": 1234567890000,
+      "location_id": "string (optional)",
+      "location_path": "A/1/2 (optional)",
       "notes": "string (optional)",
-      "isCompleted": false
+      "is_completed": false
     }
   ]
 }
@@ -410,8 +410,8 @@ Mark document as completed.
 ### Delta Sync Flow
 
 1. Client requests `GET /sync/delta?entity=products&since=<lastSyncTime>`
-2. Server returns all records with `lastModified > since`
-3. Server includes `deletedIds` for soft-deleted records
+2. Server returns all records with `last_modified > since`
+3. Server includes `deleted_ids` for soft-deleted records
 4. Client applies changes locally
 5. Client sends `POST /sync/ack` to confirm
 6. Client updates local `lastSyncTime` to response `timestamp`

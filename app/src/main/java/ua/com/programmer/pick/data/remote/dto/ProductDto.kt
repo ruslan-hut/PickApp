@@ -28,7 +28,10 @@ data class ProductDto(
     val isActive: Boolean = true,
 
     @SerializedName("barcodes")
-    val barcodes: List<BarcodeDto>? = null
+    val barcodes: List<BarcodeDto>? = null,
+
+    @SerializedName("image_url")
+    val imageUrl: String? = null
 )
 
 /**

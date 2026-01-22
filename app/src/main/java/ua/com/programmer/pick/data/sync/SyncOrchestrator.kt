@@ -19,6 +19,7 @@ import ua.com.programmer.pick.data.local.database.dao.ClientDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentLineDao
 import ua.com.programmer.pick.data.local.database.dao.ProductDao
+import ua.com.programmer.pick.data.local.database.dao.ProductImageDao
 import ua.com.programmer.pick.data.local.database.dao.SyncStateDao
 import ua.com.programmer.pick.data.local.database.dao.UserDao
 import ua.com.programmer.pick.data.local.database.dao.WarehouseDao
@@ -87,6 +88,7 @@ class SyncOrchestrator @Inject constructor(
     private val documentDao: DocumentDao,
     private val documentLineDao: DocumentLineDao,
     private val productDao: ProductDao,
+    private val productImageDao: ProductImageDao,
     private val clientDao: ClientDao,
     private val warehouseDao: WarehouseDao,
     private val userDao: UserDao,
@@ -499,11 +501,19 @@ class SyncOrchestrator @Inject constructor(
                 barcodes.forEach { barcode ->
                     productDao.insertBarcode(barcode)
                 }
+
+                // Save product image if present
+                val imageEntity = productMapper.toImageEntity(dto)
+                if (imageEntity != null) {
+                    productImageDao.deleteByProductId(dto.id)
+                    productImageDao.insert(imageEntity)
+                }
             }
         }
 
         deletedIds?.forEach { id ->
             productDao.deleteProduct(id)
+            productImageDao.deleteByProductId(id)
         }
     }
 

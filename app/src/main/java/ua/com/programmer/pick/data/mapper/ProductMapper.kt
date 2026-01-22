@@ -2,10 +2,12 @@ package ua.com.programmer.pick.data.mapper
 
 import ua.com.programmer.pick.data.local.database.entity.ProductBarcodeEntity
 import ua.com.programmer.pick.data.local.database.entity.ProductEntity
+import ua.com.programmer.pick.data.local.database.entity.ProductImageEntity
 import ua.com.programmer.pick.data.remote.dto.ProductDto
 import ua.com.programmer.pick.domain.model.Barcode
 import ua.com.programmer.pick.domain.model.BarcodeType
 import ua.com.programmer.pick.domain.model.Product
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -35,6 +37,16 @@ class ProductMapper @Inject constructor() {
                 isPrimary = barcodeDto.isPrimary
             )
         } ?: emptyList()
+    }
+
+    fun toImageEntity(dto: ProductDto): ProductImageEntity? {
+        val imageUrl = dto.imageUrl ?: return null
+        return ProductImageEntity(
+            id = UUID.randomUUID().toString(),
+            productId = dto.id,
+            url = imageUrl,
+            base64 = null
+        )
     }
 }
 
