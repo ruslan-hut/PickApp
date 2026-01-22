@@ -68,6 +68,9 @@ interface DocumentDao {
     @Query("UPDATE documents SET assigned_user_id = :userId, last_modified = :lastModified WHERE id = :documentId")
     suspend fun updateAssignedUser(documentId: String, userId: String, lastModified: Long = System.currentTimeMillis())
 
+    @Query("UPDATE documents SET version = :version, is_dirty = 0, last_modified = :lastModified WHERE id = :documentId")
+    suspend fun updateDocumentVersion(documentId: String, version: Int, lastModified: Long = System.currentTimeMillis())
+
     @Query("DELETE FROM documents WHERE id = :id")
     suspend fun deleteDocument(id: String)
 

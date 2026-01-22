@@ -335,6 +335,9 @@ class SyncOrchestrator @Inject constructor(
 
         // Try WebSocket first, fall back to REST
         if (webSocketManager.isConnected()) {
+            // Mark as processing so it won't be re-queued while waiting for ACK
+            outgoingOperationRepository.markOperationProcessing(operation.id)
+
             val message = SyncMessage.TakeIntoWork(
                 messageId = operation.id,
                 documentId = request.documentId,
@@ -355,6 +358,9 @@ class SyncOrchestrator @Inject constructor(
         if (webSocketManager.isConnected()) {
             val document = documentDao.getDocumentById(operation.entityId)
             if (document != null) {
+                // Mark processing
+                outgoingOperationRepository.markOperationProcessing(operation.id)
+
                 val message = SyncMessage.DocumentUpdate(
                     messageId = operation.id,
                     documentId = document.id,
@@ -374,6 +380,9 @@ class SyncOrchestrator @Inject constructor(
         if (webSocketManager.isConnected()) {
             val line = documentLineDao.getLineById(operation.entityId)
             if (line != null) {
+                // Mark processing
+                outgoingOperationRepository.markOperationProcessing(operation.id)
+
                 val message = SyncMessage.LineUpdate(
                     messageId = operation.id,
                     documentId = line.documentId,
@@ -395,6 +404,9 @@ class SyncOrchestrator @Inject constructor(
         val request = gson.fromJson(operation.payload, CompleteDocumentRequestDto::class.java)
 
         if (webSocketManager.isConnected()) {
+            // Mark processing
+            outgoingOperationRepository.markOperationProcessing(operation.id)
+
             val message = SyncMessage.CompleteDocument(
                 messageId = operation.id,
                 documentId = request.documentId,
@@ -554,12 +566,20 @@ class SyncOrchestrator @Inject constructor(
                 }
                 is SyncMessage.Acknowledgment -> {
                     Log.d(TAG, "Received ACK for ${message.originalMessageId}: ${message.success}")
+                    // Resolve original operation to determine entity/document id
+                    val originalOperation = outgoingOperationRepository.getOperationById(message.originalMessageId)
+
                     if (message.success) {
                         outgoingOperationRepository.markOperationCompleted(message.originalMessageId)
 
                         // Update version if provided
                         message.newVersion?.let { newVersion ->
-                            // Could update document version here
+                            try {
+                                val documentId = originalOperation?.entityId ?: message.originalMessageId
+                                documentDao.updateDocumentVersion(documentId, newVersion)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Failed to update document version: ${e.message}")
+                            }
                         }
                     } else {
                         outgoingOperationRepository.markOperationFailed(

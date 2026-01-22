@@ -105,6 +105,16 @@ class OutgoingOperationRepositoryImpl @Inject constructor(
         }
     }
 
+    // New: mark an operation as PROCESSING to avoid re-picking it while awaiting ACK
+    override suspend fun markOperationProcessing(operationId: String): Result<Unit> = withContext(ioDispatcher) {
+        try {
+            outgoingOperationDao.updateOperationStatus(operationId, OperationStatus.PROCESSING.name)
+            Result.Success(Unit)
+        } catch (e: Exception) {
+            Result.Error(e, e.message ?: "Failed to mark operation as processing")
+        }
+    }
+
     override suspend fun deleteCompletedOperations() = withContext(ioDispatcher) {
         outgoingOperationDao.deleteCompletedOperations()
     }

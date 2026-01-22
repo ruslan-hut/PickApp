@@ -28,6 +28,8 @@ interface OutgoingOperationRepository {
 
     suspend fun retryOperation(operationId: String): Result<Unit>
 
+    suspend fun markOperationProcessing(operationId: String): Result<Unit>
+
     suspend fun deleteCompletedOperations()
 
     suspend fun deleteFailedOperations(maxRetries: Int)
@@ -61,6 +63,7 @@ enum class EntityType {
 
 enum class OperationStatus {
     PENDING,
+    PROCESSING,
     RETRYING,
     COMPLETED,
     FAILED
