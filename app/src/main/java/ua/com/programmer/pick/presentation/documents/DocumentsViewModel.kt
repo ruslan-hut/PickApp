@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import ua.com.programmer.pick.domain.model.OperatingMode
 import ua.com.programmer.pick.domain.repository.DocumentRepository
 import ua.com.programmer.pick.domain.repository.UserRepository
+import ua.com.programmer.pick.presentation.navigation.Screen
 import javax.inject.Inject
 
 @HiltViewModel
@@ -53,11 +54,7 @@ class DocumentsViewModel @Inject constructor(
         }
     }
 
-    fun loadDocuments() {
-        // Documents are now observed reactively, this method kept for compatibility
-    }
-
     fun onDocumentClick(documentId: String, onNavigate: (String) -> Unit) {
-        onNavigate(ua.com.programmer.pick.presentation.navigation.Screen.DocumentDetail.createRoute(documentId))
+        onNavigate(Screen.DocumentDetail.createRoute(documentId))
     }
 }

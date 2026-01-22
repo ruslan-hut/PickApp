@@ -49,6 +49,28 @@ class AppPreferences @Inject constructor(
         context.dataStore.data.first()[AUTH_TOKEN]
     }
 
+    // Synchronous getter for authenticator (use with caution)
+    fun getRefreshTokenSync(): String? = runBlocking {
+        context.dataStore.data.first()[REFRESH_TOKEN]
+    }
+
+    // Synchronous setter for authenticator (use with caution)
+    fun setTokensSync(authToken: String, refreshToken: String) = runBlocking {
+        context.dataStore.edit { preferences ->
+            preferences[AUTH_TOKEN] = authToken
+            preferences[REFRESH_TOKEN] = refreshToken
+        }
+    }
+
+    // Synchronous clear for authenticator (use with caution)
+    fun clearSessionSync() = runBlocking {
+        context.dataStore.edit { preferences ->
+            preferences.remove(AUTH_TOKEN)
+            preferences.remove(REFRESH_TOKEN)
+            preferences.remove(CURRENT_USER_ID)
+        }
+    }
+
     suspend fun setAuthToken(token: String?) {
         context.dataStore.edit { preferences ->
             if (token != null) {

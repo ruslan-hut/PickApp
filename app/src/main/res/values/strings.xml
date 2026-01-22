@@ -58,6 +58,23 @@
     <string name="error_saving">Error saving</string>
     <string name="product_not_in_document">Product not found in this document</string>
     <string name="product_not_found">Product not found in database</string>
+    <string name="take_into_work">Take into Work</string>
+    <string name="complete_document">Complete</string>
+    <string name="document_taken_into_work">Document taken into work</string>
+    <string name="document_completed">Document completed</string>
+    <string name="error_take_into_work">Failed to take document into work</string>
+    <string name="error_complete_document">Failed to complete document</string>
+    <string name="document_already_taken">Document is already being processed</string>
+    <string name="document_released">Document released</string>
+    <string name="error_release_document">Failed to release document</string>
+    <string name="document_taken_by_other">Document is taken by another user</string>
+    <string name="cannot_edit_document">You cannot edit this document</string>
+    <string name="release_document">Release</string>
+    <string name="document_state_loaded">New</string>
+    <string name="document_state_in_progress">In Progress</string>
+    <string name="document_state_completed">Completed</string>
+    <string name="document_state_sent">Sent</string>
+    <string name="document_state_error">Error</string>
 
     <!-- Sync status -->
     <string name="sync_idle">Idle</string>

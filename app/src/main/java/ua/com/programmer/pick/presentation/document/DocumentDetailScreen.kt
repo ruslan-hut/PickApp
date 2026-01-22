@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
@@ -21,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
@@ -38,6 +41,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import ua.com.programmer.pick.R
+import ua.com.programmer.pick.domain.model.DocumentState
 import ua.com.programmer.pick.presentation.common.EmptyState
 import ua.com.programmer.pick.presentation.common.PickAppBar
 import ua.com.programmer.pick.presentation.common.PickElevatedCard
@@ -93,7 +97,17 @@ fun DocumentDetailScreen(
                 scrollBehavior = scrollBehavior
             )
         },
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        bottomBar = {
+            DocumentActionBar(
+                documentState = uiState.document?.state,
+                isProcessing = uiState.isProcessingAction,
+                canTake = uiState.canTakeIntoWork,
+                canComplete = uiState.canComplete,
+                onTakeIntoWork = { viewModel.takeIntoWork() },
+                onComplete = { viewModel.completeDocument() }
+            )
+        }
     ) { paddingValues ->
         Box(
             modifier = Modifier
@@ -283,6 +297,82 @@ private fun DocumentHeaderCard(
                         }
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentActionBar(
+    documentState: DocumentState?,
+    isProcessing: Boolean,
+    canTake: Boolean,
+    canComplete: Boolean,
+    onTakeIntoWork: () -> Unit,
+    onComplete: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (documentState == null) return
+
+    // Only show action bar for LOADED or IN_PROGRESS states
+    if (documentState != DocumentState.LOADED && documentState != DocumentState.IN_PROGRESS) {
+        return
+    }
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        tonalElevation = 3.dp,
+        shadowElevation = 8.dp
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            when (documentState) {
+                DocumentState.LOADED -> {
+                    if (canTake) {
+                        Button(
+                            onClick = onTakeIntoWork,
+                            enabled = !isProcessing,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (isProcessing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Text(stringResource(R.string.take_into_work))
+                            }
+                        }
+                    }
+                }
+                DocumentState.IN_PROGRESS -> {
+                    // Show Complete button only if the current user owns the document
+                    if (canComplete) {
+                        Button(
+                            onClick = onComplete,
+                            enabled = !isProcessing,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondary
+                            )
+                        ) {
+                            if (isProcessing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = MaterialTheme.colorScheme.onSecondary,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Text(stringResource(R.string.complete_document))
+                            }
+                        }
+                    }
+                }
+                else -> { /* No action bar for other states */ }
             }
         }
     }

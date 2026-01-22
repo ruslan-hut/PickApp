@@ -20,17 +20,21 @@ import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.scanner.BarcodeService
 import ua.com.programmer.pick.core.scanner.ScannedBarcode
 import ua.com.programmer.pick.data.local.database.dao.ProductImageDao
+import ua.com.programmer.pick.core.util.Result
 import ua.com.programmer.pick.domain.model.DocumentLine
+import ua.com.programmer.pick.domain.model.DocumentState
 import ua.com.programmer.pick.domain.model.DocumentType
 import ua.com.programmer.pick.domain.model.ProductImage
 import ua.com.programmer.pick.domain.repository.DocumentRepository
 import ua.com.programmer.pick.domain.repository.ProductRepository
+import ua.com.programmer.pick.domain.repository.UserRepository
 import javax.inject.Inject
 
 @HiltViewModel
 class DocumentDetailViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
     private val documentRepository: DocumentRepository,
+    private val userRepository: UserRepository,
     private val productImageDao: ProductImageDao,
     private val barcodeService: BarcodeService,
     private val productRepository: ProductRepository,
@@ -52,13 +56,35 @@ class DocumentDetailViewModel @Inject constructor(
     init {
         // Subscribe to barcode scans once when ViewModel is created
         subscribeToScans()
+        // Load current user
+        loadCurrentUser()
+    }
+
+    private fun loadCurrentUser() {
+        viewModelScope.launch {
+            try {
+                val user = userRepository.getCurrentUser().first()
+                _uiState.update { it.copy(currentUserId = user?.id) }
+            } catch (_: Exception) {
+                // Ignore errors loading user
+            }
+        }
     }
 
     fun load(documentId: String) {
+        // Reset state completely when loading a different document
+        if (currentDocumentId != documentId) {
+            _uiState.value = DocumentDetailUiState(
+                currentUserId = _uiState.value.currentUserId,
+                isLoading = true
+            )
+        } else {
+            _uiState.update { it.copy(isLoading = true) }
+        }
+
         currentDocumentId = documentId
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
             try {
                 val doc = documentRepository.getDocumentById(documentId)
                 val lines = documentRepository.getLinesByDocumentId(documentId).first()
@@ -80,7 +106,11 @@ class DocumentDetailViewModel @Inject constructor(
                         document = doc,
                         lines = lines,
                         productImages = imagesMap,
-                        isLoading = false
+                        isLoading = false,
+                        isProcessingAction = false,
+                        isSaving = false,
+                        errorMessage = null,
+                        selectedLineId = null
                     )
                 }
 
@@ -102,6 +132,16 @@ class DocumentDetailViewModel @Inject constructor(
     private suspend fun handleScannedBarcode(scanned: ScannedBarcode) {
         val doc = _uiState.value.document ?: return
         val docId = doc.id
+
+        // Check if current user can edit the document
+        if (!_uiState.value.canEdit) {
+            if (_uiState.value.isTakenByOtherUser) {
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_TAKEN_BY_OTHER))
+            } else {
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.CANNOT_EDIT_DOCUMENT))
+            }
+            return
+        }
 
         // Determine identifier to search for
         val identifier = scanned.productId ?: scanned.productCode ?: scanned.gs1Data?.getProductBarcode() ?: scanned.rawValue
@@ -248,6 +288,18 @@ class DocumentDetailViewModel @Inject constructor(
     }
 
     fun updateLineQuantity(lineId: String, newQuantity: Double) {
+        // Check if current user can edit the document
+        if (!_uiState.value.canEdit) {
+            viewModelScope.launch {
+                if (_uiState.value.isTakenByOtherUser) {
+                    _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_TAKEN_BY_OTHER))
+                } else {
+                    _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.CANNOT_EDIT_DOCUMENT))
+                }
+            }
+            return
+        }
+
         viewModelScope.launch {
             _uiState.update { current ->
                 val updated = current.lines.map { if (it.id == lineId) it.copy(actualQuantity = newQuantity) else it }
@@ -262,6 +314,90 @@ class DocumentDetailViewModel @Inject constructor(
                 _uiState.update { it.copy(isSaving = false) }
             } catch (ex: Exception) {
                 _uiState.update { it.copy(isSaving = false, errorMessage = (ex.message ?: ToastMessage.ERROR_SAVING) as String?) }
+            }
+        }
+    }
+
+    fun takeIntoWork() {
+        val documentId = currentDocumentId ?: return
+        val currentState = _uiState.value.document?.state ?: return
+
+        // Only allow taking LOADED documents
+        if (currentState != DocumentState.LOADED) {
+            viewModelScope.launch {
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_ALREADY_TAKEN))
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isProcessingAction = true) }
+
+            try {
+                val user = userRepository.getCurrentUser().first()
+                val userId = user?.id ?: return@launch
+
+                when (val result = documentRepository.takeIntoWork(documentId, userId)) {
+                    is Result.Success -> {
+                        _uiState.update {
+                            it.copy(
+                                document = result.data,
+                                isProcessingAction = false
+                            )
+                        }
+                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_TAKEN_INTO_WORK))
+                    }
+                    is Result.Error -> {
+                        _uiState.update { it.copy(isProcessingAction = false) }
+                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_TAKE_INTO_WORK))
+                    }
+                    else -> {
+                        _uiState.update { it.copy(isProcessingAction = false) }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("DocumentDetailViewModel", "takeIntoWork failed", e)
+                _uiState.update { it.copy(isProcessingAction = false) }
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_TAKE_INTO_WORK))
+            }
+        }
+    }
+
+    fun completeDocument() {
+        val documentId = currentDocumentId ?: return
+        val currentState = _uiState.value.document?.state ?: return
+
+        // Only allow completing IN_PROGRESS documents
+        if (currentState != DocumentState.IN_PROGRESS) {
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isProcessingAction = true) }
+
+            try {
+                when (val result = documentRepository.completeDocument(documentId)) {
+                    is Result.Success -> {
+                        _uiState.update {
+                            it.copy(
+                                document = result.data,
+                                isProcessingAction = false
+                            )
+                        }
+                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_COMPLETED))
+                    }
+                    is Result.Error -> {
+                        _uiState.update { it.copy(isProcessingAction = false) }
+                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_COMPLETE_DOCUMENT))
+                    }
+                    else -> {
+                        _uiState.update { it.copy(isProcessingAction = false) }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("DocumentDetailViewModel", "completeDocument failed", e)
+                _uiState.update { it.copy(isProcessingAction = false) }
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_COMPLETE_DOCUMENT))
             }
         }
     }

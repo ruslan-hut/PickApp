@@ -46,10 +46,6 @@ fun DocumentsScreen(
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
     var searchQuery by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
-        viewModel.loadDocuments()
-    }
-
     val filteredDocuments = remember(uiState.documents, searchQuery) {
         if (searchQuery.isBlank()) {
             uiState.documents

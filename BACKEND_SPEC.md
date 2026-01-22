@@ -1,0 +1,616 @@
+# PickApp Backend Specification
+
+This document defines the backend API structure required to connect with the PickApp Android application.
+
+## Overview
+
+The backend serves as an intermediate server between the Android TSD devices and an external ERP system. It must support:
+
+- **REST API** for authentication and batch synchronization
+- **WebSocket** for real-time updates and document operations
+- **Offline-first sync** with delta updates and conflict resolution
+
+---
+
+## 1. Authentication API
+
+### POST `/auth/login`
+
+Authenticate user and obtain tokens.
+
+**Request:**
+```json
+{
+  "login": "string",
+  "password": "string",
+  "deviceId": "string (optional)"
+}
+```
+
+**Response:**
+```json
+{
+  "token": "string (JWT access token)",
+  "refreshToken": "string",
+  "expiresAt": 1234567890000,
+  "user": {
+    "id": "string (UUID)",
+    "login": "string",
+    "name": "string",
+    "role": "string (WAREHOUSE_WORKER | PICKER | ADMINISTRATOR)",
+    "isActive": true,
+    "lastUpdated": 1234567890000
+  }
+}
+```
+
+### POST `/auth/refresh`
+
+Refresh expired access token.
+
+**Request:**
+```json
+{
+  "refreshToken": "string"
+}
+```
+
+**Response:** Same as login response.
+
+### POST `/auth/logout`
+
+Invalidate current session.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response:** `204 No Content`
+
+---
+
+## 2. Sync API
+
+All sync endpoints require `Authorization: Bearer <token>` header.
+
+### GET `/sync/full`
+
+Get complete dataset for an entity type. Used on first sync.
+
+**Query Parameters:**
+- `entity` - Entity type: `users`, `products`, `clients`, `warehouses`, `documents`
+
+**Response:**
+```json
+{
+  "syncId": "string (UUID)",
+  "entityType": "string",
+  "timestamp": 1234567890000,
+  "isFullSync": true,
+  "data": [...],
+  "deletedIds": []
+}
+```
+
+### GET `/sync/delta`
+
+Get incremental changes since last sync.
+
+**Query Parameters:**
+- `entity` - Entity type
+- `since` - Last sync timestamp (milliseconds)
+
+**Response:** Same structure as `/sync/full` with `isFullSync: false`.
+
+### POST `/sync/ack`
+
+Acknowledge successful sync. Server can clean up pending changes.
+
+**Request:**
+```json
+{
+  "entityType": "string",
+  "syncId": "string",
+  "timestamp": 1234567890000
+}
+```
+
+**Response:** `204 No Content`
+
+---
+
+## 3. Entity Data Structures
+
+### User
+
+```json
+{
+  "id": "string (UUID)",
+  "login": "string (unique)",
+  "name": "string",
+  "role": "WAREHOUSE_WORKER | PICKER | ADMINISTRATOR",
+  "isActive": true,
+  "lastUpdated": 1234567890000
+}
+```
+
+### Product
+
+```json
+{
+  "id": "string (UUID)",
+  "code": "string (unique)",
+  "name": "string",
+  "description": "string (optional)",
+  "unit": "string (e.g., kg, pcs)",
+  "supportsBatches": false,
+  "isActive": true,
+  "barcodes": [
+    {
+      "id": "string (UUID)",
+      "barcode": "string",
+      "type": "EAN13 | CODE128 | QR | OTHER",
+      "isPrimary": false
+    }
+  ],
+  "imageUrl": "string (optional)"
+}
+```
+
+### Client
+
+```json
+{
+  "id": "string (UUID)",
+  "code": "string (unique)",
+  "name": "string",
+  "address": "string (optional)",
+  "phone": "string (optional)",
+  "isActive": true
+}
+```
+
+### Warehouse
+
+```json
+{
+  "id": "string (UUID)",
+  "code": "string (unique)",
+  "name": "string",
+  "isAddressed": false,
+  "isActive": true,
+  "locations": [
+    {
+      "id": "string (UUID)",
+      "row": "string",
+      "shelf": "string",
+      "barcode": "string (optional)",
+      "isActive": true
+    }
+  ]
+}
+```
+
+### Document
+
+```json
+{
+  "id": "string (UUID)",
+  "externalId": "string (optional, ERP reference)",
+  "type": "INCOMING_RECEIPT | OUTGOING_SHIPMENT | INVENTORY",
+  "number": "string",
+  "date": 1234567890000,
+  "state": "LOADED | IN_PROGRESS | COMPLETED | SENT | ERROR",
+  "clientId": "string (optional)",
+  "clientName": "string (optional)",
+  "warehouseId": "string (optional)",
+  "warehouseName": "string (optional)",
+  "notes": "string (optional)",
+  "totalPlanned": 100.0,
+  "totalActual": 0.0,
+  "assignedUserId": "string (optional)",
+  "takenAt": 1234567890000,
+  "completedAt": null,
+  "lastModified": 1234567890000,
+  "version": 1,
+  "lines": [
+    {
+      "id": "string (UUID)",
+      "documentId": "string",
+      "lineNumber": 1,
+      "productId": "string",
+      "productCode": "string",
+      "productName": "string",
+      "unit": "string",
+      "plannedQuantity": 10.0,
+      "actualQuantity": 0.0,
+      "batchNumber": "string (optional)",
+      "expirationDate": 1234567890000,
+      "locationId": "string (optional)",
+      "locationPath": "A/1/2 (optional)",
+      "notes": "string (optional)",
+      "isCompleted": false
+    }
+  ]
+}
+```
+
+---
+
+## 4. WebSocket Protocol
+
+**Endpoint:** `wss://<host>/ws/sync`
+
+**Connection:** Include `Authorization: Bearer <token>` in upgrade headers.
+
+### Server → Client Messages
+
+#### CONNECTED
+```json
+{
+  "type": "CONNECTED",
+  "message_id": "uuid",
+  "server_time": 1234567890000,
+  "session_id": "uuid"
+}
+```
+
+#### DELTA_UPDATE
+Real-time entity changes pushed to client.
+```json
+{
+  "type": "DELTA_UPDATE",
+  "message_id": "uuid",
+  "entity_type": "documents",
+  "timestamp": 1234567890000,
+  "is_full_sync": false,
+  "data": [...],
+  "deleted_ids": ["id1", "id2"]
+}
+```
+
+#### DOCUMENT_LOCK
+Notify when another user takes a document.
+```json
+{
+  "type": "DOCUMENT_LOCK",
+  "message_id": "uuid",
+  "document_id": "uuid",
+  "locked_by": "user-id",
+  "locked_by_name": "User Name",
+  "locked_at": 1234567890000
+}
+```
+
+#### ACK
+Acknowledge client operation.
+```json
+{
+  "type": "ACK",
+  "message_id": "uuid",
+  "original_message_id": "client-msg-id",
+  "success": true,
+  "new_version": 2,
+  "error": null
+}
+```
+
+#### ERROR
+```json
+{
+  "type": "ERROR",
+  "message_id": "uuid",
+  "code": "CONFLICT | NOT_FOUND | UNAUTHORIZED | INTERNAL",
+  "message": "Human readable error",
+  "related_message_id": "uuid (optional)"
+}
+```
+
+### Client → Server Messages
+
+#### SUBSCRIBE
+```json
+{
+  "type": "SUBSCRIBE",
+  "message_id": "uuid",
+  "entity_types": ["documents", "products"]
+}
+```
+
+#### TAKE_INTO_WORK
+Claim document for processing.
+```json
+{
+  "type": "TAKE_INTO_WORK",
+  "message_id": "uuid",
+  "document_id": "uuid",
+  "user_id": "uuid",
+  "timestamp": 1234567890000
+}
+```
+
+#### DOCUMENT_UPDATE
+Update document header.
+```json
+{
+  "type": "DOCUMENT_UPDATE",
+  "message_id": "uuid",
+  "document_id": "uuid",
+  "state": "IN_PROGRESS",
+  "notes": "string (optional)",
+  "total_actual": 50.0,
+  "version": 1,
+  "timestamp": 1234567890000
+}
+```
+
+#### LINE_UPDATE
+Update single document line.
+```json
+{
+  "type": "LINE_UPDATE",
+  "message_id": "uuid",
+  "document_id": "uuid",
+  "line_id": "uuid",
+  "actual_quantity": 5.0,
+  "batch_number": "BATCH123 (optional)",
+  "location_id": "uuid (optional)",
+  "notes": "string (optional)",
+  "is_completed": false,
+  "timestamp": 1234567890000
+}
+```
+
+#### COMPLETE_DOCUMENT
+Mark document as completed.
+```json
+{
+  "type": "COMPLETE_DOCUMENT",
+  "message_id": "uuid",
+  "document_id": "uuid",
+  "user_id": "uuid",
+  "completed_at": 1234567890000,
+  "version": 1
+}
+```
+
+---
+
+## 5. Document State Machine
+
+```
+┌─────────┐
+│ LOADED  │  Initial state from ERP
+└────┬────┘
+     │ User takes into work
+     ▼
+┌────────────┐
+│ IN_PROGRESS│  User is working on document
+└─────┬──────┘
+      │ User completes
+      ▼
+┌───────────┐
+│ COMPLETED │  Ready for ERP sync
+└─────┬─────┘
+      │ Synced to ERP
+      ▼
+┌──────┐
+│ SENT │  Confirmed by ERP
+└──────┘
+
+      │ Error during sync
+      ▼
+┌───────┐
+│ ERROR │  Requires attention
+└───────┘
+```
+
+---
+
+## 6. Sync Mechanism
+
+### Delta Sync Flow
+
+1. Client requests `GET /sync/delta?entity=products&since=<lastSyncTime>`
+2. Server returns all records with `lastModified > since`
+3. Server includes `deletedIds` for soft-deleted records
+4. Client applies changes locally
+5. Client sends `POST /sync/ack` to confirm
+6. Client updates local `lastSyncTime` to response `timestamp`
+
+### Conflict Resolution
+
+Documents use optimistic locking via `version` field:
+
+1. Client includes current `version` in update requests
+2. Server compares with stored version
+3. If mismatch: reject with `409 Conflict` (REST) or `ERROR` with code `CONFLICT` (WebSocket)
+4. Client must refresh document and retry
+
+### Sync Intervals
+
+- **Periodic:** Every 15 minutes via background worker
+- **On-demand:** When network becomes available
+- **Real-time:** WebSocket push for immediate updates
+
+---
+
+## 7. Error Handling
+
+### HTTP Status Codes
+
+| Code | Meaning |
+|------|---------|
+| 200  | Success |
+| 204  | No Content (success, no body) |
+| 400  | Bad Request (validation error) |
+| 401  | Unauthorized (invalid/expired token) |
+| 403  | Forbidden (insufficient permissions) |
+| 404  | Not Found |
+| 409  | Conflict (version mismatch) |
+| 500  | Internal Server Error |
+
+### Error Response Format
+
+```json
+{
+  "error": "ERROR_CODE",
+  "message": "Human readable message",
+  "details": {}
+}
+```
+
+---
+
+## 8. Security Requirements
+
+### Authentication
+
+- JWT tokens with configurable expiration
+- Refresh tokens for seamless re-authentication
+- Password storage: SHA-256 hash (for offline fallback on client)
+
+### Transport
+
+- HTTPS required for all REST endpoints
+- WSS required for WebSocket connections
+- Certificate pinning recommended for production
+
+### Authorization
+
+- Role-based access control
+- Document assignment tracking (who is working on what)
+- Audit logging for all document operations
+
+---
+
+## 9. Database Schema (Reference)
+
+### Core Tables
+
+| Table | Purpose |
+|-------|---------|
+| `users` | User accounts and roles |
+| `products` | Product master data |
+| `product_barcodes` | Multiple barcodes per product |
+| `product_images` | Product image URLs |
+| `clients` | Customers and suppliers |
+| `warehouses` | Warehouse definitions |
+| `warehouse_locations` | Addressed storage locations |
+| `documents` | Document headers |
+| `document_lines` | Document line items |
+
+### Sync Support Tables
+
+| Table | Purpose |
+|-------|---------|
+| `sync_state` | Per-client sync timestamps |
+| `deleted_records` | Soft-delete tracking for delta sync |
+| `outgoing_queue` | Pending ERP sync operations |
+
+---
+
+## 10. ERP Integration Points
+
+The backend acts as middleware between mobile clients and ERP:
+
+### Inbound (ERP → Backend)
+
+- New documents (receipts, shipments, inventory tasks)
+- Master data updates (products, clients, warehouses)
+- Document state confirmations
+
+### Outbound (Backend → ERP)
+
+- Completed documents with actual quantities
+- Document state changes
+- Error notifications
+
+### Recommended Integration Pattern
+
+```
+ERP ←──REST/SOAP──→ Backend ←──REST/WS──→ Mobile App
+         │                        │
+    Batch sync              Real-time sync
+    (scheduled)             (on-demand)
+```
+
+---
+
+## 11. Recommended Tech Stack
+
+### Backend Options
+
+| Component | Options |
+|-----------|---------|
+| Runtime | Node.js, Kotlin/Spring, Go, .NET |
+| REST Framework | Express, Spring Boot, Gin, ASP.NET |
+| WebSocket | ws (Node), Spring WebSocket, Gorilla |
+| Database | PostgreSQL (recommended), MySQL |
+| Cache | Redis (for sessions, rate limiting) |
+| Queue | RabbitMQ, Redis Streams (for ERP sync) |
+
+### Deployment
+
+- Docker containers
+- Kubernetes for scaling
+- Load balancer for WebSocket sticky sessions
+
+---
+
+## 12. Development Checklist
+
+### Phase 1: Core API
+- [ ] User authentication (login/refresh/logout)
+- [ ] Sync endpoints (full/delta/ack)
+- [ ] Basic CRUD for all entities
+
+### Phase 2: Real-time
+- [ ] WebSocket connection handling
+- [ ] Message routing (subscribe, updates)
+- [ ] Document locking mechanism
+
+### Phase 3: Document Operations
+- [ ] Take into work flow
+- [ ] Line updates with validation
+- [ ] Document completion
+- [ ] Version conflict handling
+
+### Phase 4: ERP Integration
+- [ ] Inbound sync from ERP
+- [ ] Outbound document sync
+- [ ] Error handling and retry
+
+### Phase 5: Production
+- [ ] Security hardening
+- [ ] Performance optimization
+- [ ] Monitoring and logging
+- [ ] Documentation
+
+---
+
+## Appendix: Sample API Calls
+
+### Login
+```bash
+curl -X POST https://api.example.com/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"login":"user1","password":"secret"}'
+```
+
+### Get Products (Delta)
+```bash
+curl -X GET "https://api.example.com/sync/delta?entity=products&since=1234567890000" \
+  -H "Authorization: Bearer <token>"
+```
+
+### WebSocket Connection
+```javascript
+const ws = new WebSocket('wss://api.example.com/ws/sync', {
+  headers: { 'Authorization': 'Bearer <token>' }
+});
+
+ws.send(JSON.stringify({
+  type: 'SUBSCRIBE',
+  message_id: crypto.randomUUID(),
+  entity_types: ['documents']
+}));
+```

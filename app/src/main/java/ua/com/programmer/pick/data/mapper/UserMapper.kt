@@ -67,3 +67,21 @@ fun UserDto.toDomain(): User {
         lastLoginAt = null
     )
 }
+
+/**
+ * Convert UserDto to entity for sync operations.
+ * Preserves existing passwordHash if user already exists,
+ * otherwise sets empty passwordHash (user must login online first).
+ */
+fun UserDto.toEntityForSync(existingPasswordHash: String?): UserEntity {
+    return UserEntity(
+        id = id,
+        login = login,
+        name = name,
+        passwordHash = existingPasswordHash ?: "",
+        role = role,
+        isActive = isActive,
+        lastLoginAt = null,
+        lastUpdated = lastUpdated
+    )
+}

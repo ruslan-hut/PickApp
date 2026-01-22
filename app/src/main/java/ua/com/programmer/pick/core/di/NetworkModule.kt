@@ -15,6 +15,7 @@ import ua.com.programmer.pick.core.Constants
 import ua.com.programmer.pick.data.remote.api.AuthApi
 import ua.com.programmer.pick.data.remote.api.SyncApi
 import ua.com.programmer.pick.data.remote.interceptor.AuthInterceptor
+import ua.com.programmer.pick.data.remote.interceptor.TokenAuthenticator
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
@@ -44,7 +45,8 @@ object NetworkModule {
     @Singleton
     fun provideOkHttpClient(
         loggingInterceptor: HttpLoggingInterceptor,
-        authInterceptor: AuthInterceptor
+        authInterceptor: AuthInterceptor,
+        tokenAuthenticator: TokenAuthenticator
     ): OkHttpClient {
         return OkHttpClient.Builder()
             .connectTimeout(Constants.Network.CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -52,6 +54,7 @@ object NetworkModule {
             .writeTimeout(Constants.Network.WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .addInterceptor(authInterceptor)
             .addInterceptor(loggingInterceptor)
+            .authenticator(tokenAuthenticator)
             .build()
     }
 

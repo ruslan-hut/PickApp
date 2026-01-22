@@ -20,12 +20,14 @@ import ua.com.programmer.pick.data.local.database.dao.DocumentDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentLineDao
 import ua.com.programmer.pick.data.local.database.dao.ProductDao
 import ua.com.programmer.pick.data.local.database.dao.SyncStateDao
+import ua.com.programmer.pick.data.local.database.dao.UserDao
 import ua.com.programmer.pick.data.local.database.dao.WarehouseDao
 import ua.com.programmer.pick.data.local.database.entity.SyncStateEntity
 import ua.com.programmer.pick.data.mapper.ClientMapper
 import ua.com.programmer.pick.data.mapper.DocumentMapper
 import ua.com.programmer.pick.data.mapper.ProductMapper
 import ua.com.programmer.pick.data.mapper.WarehouseMapper
+import ua.com.programmer.pick.data.mapper.toEntityForSync
 import ua.com.programmer.pick.data.remote.api.SyncApi
 import ua.com.programmer.pick.data.remote.dto.ClientDto
 import ua.com.programmer.pick.data.remote.dto.CompleteDocumentRequestDto
@@ -34,6 +36,7 @@ import ua.com.programmer.pick.data.remote.dto.DocumentLineUpdateDto
 import ua.com.programmer.pick.data.remote.dto.ProductDto
 import ua.com.programmer.pick.data.remote.dto.SyncAckRequest
 import ua.com.programmer.pick.data.remote.dto.TakeDocumentRequestDto
+import ua.com.programmer.pick.data.remote.dto.UserDto
 import ua.com.programmer.pick.data.remote.dto.WarehouseDto
 import ua.com.programmer.pick.data.remote.websocket.ConnectionState
 import ua.com.programmer.pick.data.remote.websocket.SyncMessage
@@ -86,6 +89,7 @@ class SyncOrchestrator @Inject constructor(
     private val productDao: ProductDao,
     private val clientDao: ClientDao,
     private val warehouseDao: WarehouseDao,
+    private val userDao: UserDao,
     private val outgoingOperationRepository: OutgoingOperationRepository,
     private val networkMonitor: NetworkMonitor,
     private val documentMapper: DocumentMapper,
@@ -179,6 +183,7 @@ class SyncOrchestrator @Inject constructor(
         _syncState.value = _syncState.value.copy(isSyncing = true)
 
         val entities = listOf(
+            Constants.SyncEntity.USERS,
             Constants.SyncEntity.PRODUCTS,
             Constants.SyncEntity.CLIENTS,
             Constants.SyncEntity.WAREHOUSES,
@@ -410,10 +415,32 @@ class SyncOrchestrator @Inject constructor(
         Log.d(TAG, "Applying sync for $entityType")
 
         when (entityType) {
+            Constants.SyncEntity.USERS -> applyUserSync(data, deletedIds)
             Constants.SyncEntity.DOCUMENTS -> applyDocumentSync(data, deletedIds)
             Constants.SyncEntity.PRODUCTS -> applyProductSync(data, deletedIds)
             Constants.SyncEntity.CLIENTS -> applyClientSync(data, deletedIds)
             Constants.SyncEntity.WAREHOUSES -> applyWarehouseSync(data, deletedIds)
+        }
+    }
+
+    private suspend fun applyUserSync(
+        data: com.google.gson.JsonElement,
+        deletedIds: List<String>?
+    ) {
+        if (data.isJsonArray) {
+            val type = object : TypeToken<List<UserDto>>() {}.type
+            val users: List<UserDto> = gson.fromJson(data, type)
+
+            users.forEach { dto ->
+                // Preserve existing passwordHash if user already exists locally
+                val existingUser = userDao.getUserById(dto.id)
+                val entity = dto.toEntityForSync(existingUser?.passwordHash)
+                userDao.insertUser(entity)
+            }
+        }
+
+        deletedIds?.forEach { id ->
+            userDao.deleteUser(id)
         }
     }
 
