@@ -2,15 +2,27 @@ package ua.com.programmer.pick.data.remote.websocket
 
 import android.util.Log
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import java.util.UUID
+import com.google.gson.reflect.TypeToken
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
  * Parser for WebSocket messages.
  * Handles conversion between JSON and SyncMessage objects.
+ *
+ * All messages follow the envelope format:
+ * {
+ *   "id": "unique-id",
+ *   "type": "MESSAGE_TYPE",
+ *   "timestamp": "2024-01-01T12:00:00Z",
+ *   "payload": { ... }
+ * }
  */
 @Singleton
 class MessageParser @Inject constructor(
@@ -19,26 +31,43 @@ class MessageParser @Inject constructor(
     companion object {
         private const val TAG = "MessageParser"
 
+        // Envelope fields
+        private const val FIELD_ID = "id"
         private const val FIELD_TYPE = "type"
-        private const val FIELD_MESSAGE_ID = "message_id"
-        private const val FIELD_ENTITY_TYPE = "entity_type"
         private const val FIELD_TIMESTAMP = "timestamp"
-        private const val FIELD_IS_FULL_SYNC = "is_full_sync"
+        private const val FIELD_PAYLOAD = "payload"
+
+        // Payload fields
+        private const val FIELD_ENTITY_TYPES = "entity_types"
+        private const val FIELD_ENTITY_TYPE = "entity_type"
+        private const val FIELD_CURSORS = "cursors"
         private const val FIELD_DATA = "data"
         private const val FIELD_DELETED_IDS = "deleted_ids"
+        private const val FIELD_SYNC_ID = "sync_id"
         private const val FIELD_DOCUMENT_ID = "document_id"
-        private const val FIELD_LOCKED_BY = "locked_by"
-        private const val FIELD_LOCKED_BY_NAME = "locked_by_name"
-        private const val FIELD_LOCKED_AT = "locked_at"
-        private const val FIELD_ORIGINAL_MESSAGE_ID = "original_message_id"
+        private const val FIELD_STATE = "state"
+        private const val FIELD_LINES = "lines"
+        private const val FIELD_LINE_NUMBER = "line_number"
+        private const val FIELD_ACTUAL_QUANTITY = "actual_quantity"
+        private const val FIELD_BATCH_NUMBER = "batch_number"
+        private const val FIELD_IS_COMPLETED = "is_completed"
         private const val FIELD_SUCCESS = "success"
-        private const val FIELD_NEW_VERSION = "new_version"
+        private const val FIELD_LOCKED_BY = "locked_by"
+        private const val FIELD_COMPLETED_AT = "completed_at"
+        private const val FIELD_VERSION = "version"
         private const val FIELD_ERROR = "error"
-        private const val FIELD_CODE = "code"
+        private const val FIELD_BARCODE = "barcode"
+        private const val FIELD_PRODUCT = "product"
+        private const val FIELD_ERROR_TYPE = "error_type"
         private const val FIELD_MESSAGE = "message"
-        private const val FIELD_RELATED_MESSAGE_ID = "related_message_id"
-        private const val FIELD_SERVER_TIME = "server_time"
-        private const val FIELD_SESSION_ID = "session_id"
+        private const val FIELD_STACK_TRACE = "stack_trace"
+        private const val FIELD_METADATA = "metadata"
+        private const val FIELD_CODE = "code"
+        private const val FIELD_DETAILS = "details"
+        private const val FIELD_EVENT = "event"
+        private const val FIELD_ENTITY_ID = "entity_id"
+
+        private val ISO_8601_FORMATTER = DateTimeFormatter.ISO_INSTANT
     }
 
     /**
@@ -47,15 +76,21 @@ class MessageParser @Inject constructor(
     fun parseMessage(json: String): SyncMessage? {
         return try {
             val jsonObject = JsonParser.parseString(json).asJsonObject
+
+            val id = jsonObject.get(FIELD_ID)?.asString ?: generateMessageId()
             val typeStr = jsonObject.get(FIELD_TYPE)?.asString ?: return null
-            val messageId = jsonObject.get(FIELD_MESSAGE_ID)?.asString ?: generateMessageId()
+            val timestamp = jsonObject.get(FIELD_TIMESTAMP)?.asString ?: getCurrentTimestamp()
+            val payload = jsonObject.get(FIELD_PAYLOAD)?.asJsonObject
 
             when (typeStr.uppercase()) {
-                MessageType.DELTA_UPDATE.name -> parseDeltaUpdate(jsonObject, messageId)
-                MessageType.DOCUMENT_LOCK.name -> parseDocumentLock(jsonObject, messageId)
-                MessageType.ACK.name -> parseAcknowledgment(jsonObject, messageId)
-                MessageType.ERROR.name -> parseServerError(jsonObject, messageId)
-                MessageType.CONNECTED.name -> parseConnected(jsonObject, messageId)
+                MessageType.PONG.name -> parsePong(id, timestamp)
+                MessageType.SYNC_DATA.name -> parseSyncData(id, timestamp, payload)
+                MessageType.SYNC_COMPLETE.name -> parseSyncComplete(id, timestamp, payload)
+                MessageType.DOCUMENT_LOCK_RESULT.name -> parseDocumentLockResult(id, timestamp, payload)
+                MessageType.DOCUMENT_COMPLETE_RESULT.name -> parseDocumentCompleteResult(id, timestamp, payload)
+                MessageType.PRODUCT_LOOKUP_RESULT.name -> parseProductLookupResult(id, timestamp, payload)
+                MessageType.SERVER_ERROR.name -> parseServerError(id, timestamp, payload)
+                MessageType.PUSH.name -> parsePush(id, timestamp, payload)
                 else -> {
                     Log.w(TAG, "Unknown message type: $typeStr")
                     null
@@ -71,109 +106,197 @@ class MessageParser @Inject constructor(
      * Serialize SyncMessage to JSON string
      */
     fun serializeMessage(message: SyncMessage): String {
-        val jsonObject = JsonObject()
-        jsonObject.addProperty(FIELD_TYPE, message.type.name)
-        jsonObject.addProperty(FIELD_MESSAGE_ID, message.messageId)
+        val jsonObject = JsonObject().apply {
+            addProperty(FIELD_ID, message.id)
+            addProperty(FIELD_TYPE, message.type.name)
+            addProperty(FIELD_TIMESTAMP, message.timestamp)
+        }
 
-        when (message) {
-            is SyncMessage.TakeIntoWork -> {
-                jsonObject.addProperty(FIELD_DOCUMENT_ID, message.documentId)
-                jsonObject.addProperty("user_id", message.userId)
-                jsonObject.addProperty(FIELD_TIMESTAMP, message.timestamp)
-            }
-            is SyncMessage.DocumentUpdate -> {
-                jsonObject.addProperty(FIELD_DOCUMENT_ID, message.documentId)
-                jsonObject.addProperty("state", message.state)
-                message.notes?.let { jsonObject.addProperty("notes", it) }
-                jsonObject.addProperty("total_actual", message.totalActual)
-                jsonObject.addProperty("version", message.version)
-                jsonObject.addProperty(FIELD_TIMESTAMP, message.timestamp)
-            }
-            is SyncMessage.LineUpdate -> {
-                jsonObject.addProperty(FIELD_DOCUMENT_ID, message.documentId)
-                jsonObject.addProperty("line_id", message.lineId)
-                jsonObject.addProperty("actual_quantity", message.actualQuantity)
-                message.batchNumber?.let { jsonObject.addProperty("batch_number", it) }
-                message.locationId?.let { jsonObject.addProperty("location_id", it) }
-                message.notes?.let { jsonObject.addProperty("notes", it) }
-                jsonObject.addProperty("is_completed", message.isCompleted)
-                jsonObject.addProperty(FIELD_TIMESTAMP, message.timestamp)
-            }
-            is SyncMessage.CompleteDocument -> {
-                jsonObject.addProperty(FIELD_DOCUMENT_ID, message.documentId)
-                jsonObject.addProperty("user_id", message.userId)
-                jsonObject.addProperty("completed_at", message.completedAt)
-                jsonObject.addProperty("version", message.version)
-            }
-            is SyncMessage.Subscribe -> {
-                jsonObject.add("entity_types", gson.toJsonTree(message.entityTypes))
-            }
-            is SyncMessage.Unsubscribe -> {
-                jsonObject.add("entity_types", gson.toJsonTree(message.entityTypes))
-            }
-            // Server messages are not serialized
-            is SyncMessage.DeltaUpdate,
-            is SyncMessage.DocumentLock,
-            is SyncMessage.Acknowledgment,
-            is SyncMessage.ServerError,
-            is SyncMessage.Connected -> {
-                // These are server-to-client messages, not typically serialized by client
-            }
+        val payload = buildPayload(message)
+        if (payload != null) {
+            jsonObject.add(FIELD_PAYLOAD, payload)
+        } else {
+            jsonObject.add(FIELD_PAYLOAD, null as JsonObject?)
         }
 
         return gson.toJson(jsonObject)
     }
 
-    private fun parseDeltaUpdate(json: JsonObject, messageId: String): SyncMessage.DeltaUpdate {
-        return SyncMessage.DeltaUpdate(
-            messageId = messageId,
-            entityType = json.get(FIELD_ENTITY_TYPE)?.asString ?: "",
-            timestamp = json.get(FIELD_TIMESTAMP)?.asLong ?: 0L,
-            isFullSync = json.get(FIELD_IS_FULL_SYNC)?.asBoolean ?: false,
-            data = json.get(FIELD_DATA) ?: JsonObject(),
-            deletedIds = json.get(FIELD_DELETED_IDS)?.asJsonArray?.map { it.asString }
+    private fun buildPayload(message: SyncMessage): JsonObject? {
+        return when (message) {
+            is SyncMessage.Ping -> null  // PING has null payload
+
+            is SyncMessage.SyncRequest -> JsonObject().apply {
+                add(FIELD_ENTITY_TYPES, gson.toJsonTree(message.entityTypes))
+                message.cursors?.let { cursors ->
+                    add(FIELD_CURSORS, gson.toJsonTree(cursors))
+                }
+            }
+
+            is SyncMessage.FullSyncRequest -> JsonObject().apply {
+                add(FIELD_ENTITY_TYPES, gson.toJsonTree(message.entityTypes))
+            }
+
+            is SyncMessage.Ack -> JsonObject().apply {
+                addProperty(FIELD_SYNC_ID, message.syncId)
+                add(FIELD_CURSORS, gson.toJsonTree(message.cursors))
+            }
+
+            is SyncMessage.DocumentLock -> JsonObject().apply {
+                addProperty(FIELD_DOCUMENT_ID, message.documentId)
+            }
+
+            is SyncMessage.DocumentUnlock -> JsonObject().apply {
+                addProperty(FIELD_DOCUMENT_ID, message.documentId)
+            }
+
+            is SyncMessage.DocumentUpdate -> JsonObject().apply {
+                addProperty(FIELD_DOCUMENT_ID, message.documentId)
+                addProperty(FIELD_STATE, message.state)
+                val linesArray = JsonArray()
+                message.lines.forEach { line ->
+                    val lineObj = JsonObject().apply {
+                        addProperty(FIELD_LINE_NUMBER, line.lineNumber)
+                        addProperty(FIELD_ACTUAL_QUANTITY, line.actualQuantity)
+                        line.batchNumber?.let { addProperty(FIELD_BATCH_NUMBER, it) }
+                        addProperty(FIELD_IS_COMPLETED, line.isCompleted)
+                    }
+                    linesArray.add(lineObj)
+                }
+                add(FIELD_LINES, linesArray)
+            }
+
+            is SyncMessage.DocumentComplete -> JsonObject().apply {
+                addProperty(FIELD_DOCUMENT_ID, message.documentId)
+            }
+
+            is SyncMessage.ProductLookup -> JsonObject().apply {
+                addProperty(FIELD_BARCODE, message.barcode)
+            }
+
+            is SyncMessage.ErrorReport -> JsonObject().apply {
+                addProperty(FIELD_ERROR_TYPE, message.errorType)
+                addProperty(FIELD_MESSAGE, message.message)
+                message.stackTrace?.let { addProperty(FIELD_STACK_TRACE, it) }
+                message.metadata?.let { add(FIELD_METADATA, gson.toJsonTree(it)) }
+            }
+
+            // Server-to-client messages (not serialized by client)
+            is SyncMessage.Pong,
+            is SyncMessage.SyncData,
+            is SyncMessage.SyncComplete,
+            is SyncMessage.DocumentLockResult,
+            is SyncMessage.DocumentCompleteResult,
+            is SyncMessage.ProductLookupResult,
+            is SyncMessage.ServerError,
+            is SyncMessage.Push -> null
+        }
+    }
+
+    // ============================================
+    // Parse Methods
+    // ============================================
+
+    private fun parsePong(id: String, timestamp: String): SyncMessage.Pong {
+        return SyncMessage.Pong(id = id, timestamp = timestamp)
+    }
+
+    private fun parseSyncData(id: String, timestamp: String, payload: JsonObject?): SyncMessage.SyncData? {
+        if (payload == null) return null
+        return SyncMessage.SyncData(
+            id = id,
+            timestamp = timestamp,
+            entityType = payload.get(FIELD_ENTITY_TYPE)?.asString ?: return null,
+            data = payload.get(FIELD_DATA) ?: JsonArray(),
+            deletedIds = payload.get(FIELD_DELETED_IDS)?.asJsonArray?.map { it.asString }
         )
     }
 
-    private fun parseDocumentLock(json: JsonObject, messageId: String): SyncMessage.DocumentLock {
-        return SyncMessage.DocumentLock(
-            messageId = messageId,
-            documentId = json.get(FIELD_DOCUMENT_ID)?.asString ?: "",
-            lockedBy = json.get(FIELD_LOCKED_BY)?.asString ?: "",
-            lockedByName = json.get(FIELD_LOCKED_BY_NAME)?.asString ?: "",
-            lockedAt = json.get(FIELD_LOCKED_AT)?.asLong ?: 0L
+    private fun parseSyncComplete(id: String, timestamp: String, payload: JsonObject?): SyncMessage.SyncComplete? {
+        if (payload == null) return null
+        val cursorsJson = payload.get(FIELD_CURSORS)?.asJsonObject ?: return null
+        val cursors = mutableMapOf<String, String>()
+        cursorsJson.entrySet().forEach { (key, value) ->
+            cursors[key] = value.asString
+        }
+        return SyncMessage.SyncComplete(
+            id = id,
+            timestamp = timestamp,
+            syncId = payload.get(FIELD_SYNC_ID)?.asString ?: "",
+            cursors = cursors
         )
     }
 
-    private fun parseAcknowledgment(json: JsonObject, messageId: String): SyncMessage.Acknowledgment {
-        return SyncMessage.Acknowledgment(
-            messageId = messageId,
-            originalMessageId = json.get(FIELD_ORIGINAL_MESSAGE_ID)?.asString ?: "",
-            success = json.get(FIELD_SUCCESS)?.asBoolean ?: false,
-            newVersion = json.get(FIELD_NEW_VERSION)?.asInt,
-            error = json.get(FIELD_ERROR)?.asString
+    private fun parseDocumentLockResult(id: String, timestamp: String, payload: JsonObject?): SyncMessage.DocumentLockResult? {
+        if (payload == null) return null
+        return SyncMessage.DocumentLockResult(
+            id = id,
+            timestamp = timestamp,
+            documentId = payload.get(FIELD_DOCUMENT_ID)?.asString ?: return null,
+            success = payload.get(FIELD_SUCCESS)?.asBoolean ?: false,
+            lockedBy = payload.get(FIELD_LOCKED_BY)?.asString,
+            error = payload.get(FIELD_ERROR)?.asString
         )
     }
 
-    private fun parseServerError(json: JsonObject, messageId: String): SyncMessage.ServerError {
+    private fun parseDocumentCompleteResult(id: String, timestamp: String, payload: JsonObject?): SyncMessage.DocumentCompleteResult? {
+        if (payload == null) return null
+        return SyncMessage.DocumentCompleteResult(
+            id = id,
+            timestamp = timestamp,
+            documentId = payload.get(FIELD_DOCUMENT_ID)?.asString ?: return null,
+            success = payload.get(FIELD_SUCCESS)?.asBoolean ?: false,
+            state = payload.get(FIELD_STATE)?.asString,
+            completedAt = payload.get(FIELD_COMPLETED_AT)?.asString,
+            version = payload.get(FIELD_VERSION)?.asInt,
+            error = payload.get(FIELD_ERROR)?.asString
+        )
+    }
+
+    private fun parseProductLookupResult(id: String, timestamp: String, payload: JsonObject?): SyncMessage.ProductLookupResult? {
+        if (payload == null) return null
+        return SyncMessage.ProductLookupResult(
+            id = id,
+            timestamp = timestamp,
+            success = payload.get(FIELD_SUCCESS)?.asBoolean ?: false,
+            product = payload.get(FIELD_PRODUCT),
+            error = payload.get(FIELD_ERROR)?.asString
+        )
+    }
+
+    private fun parseServerError(id: String, timestamp: String, payload: JsonObject?): SyncMessage.ServerError {
         return SyncMessage.ServerError(
-            messageId = messageId,
-            code = json.get(FIELD_CODE)?.asString ?: "UNKNOWN",
-            message = json.get(FIELD_MESSAGE)?.asString ?: "Unknown error",
-            relatedMessageId = json.get(FIELD_RELATED_MESSAGE_ID)?.asString
+            id = id,
+            timestamp = timestamp,
+            code = payload?.get(FIELD_CODE)?.asString ?: "UNKNOWN",
+            message = payload?.get(FIELD_MESSAGE)?.asString ?: "Unknown error",
+            details = payload?.get(FIELD_DETAILS)?.asString
         )
     }
 
-    private fun parseConnected(json: JsonObject, messageId: String): SyncMessage.Connected {
-        return SyncMessage.Connected(
-            messageId = messageId,
-            serverTime = json.get(FIELD_SERVER_TIME)?.asLong ?: System.currentTimeMillis(),
-            sessionId = json.get(FIELD_SESSION_ID)?.asString ?: ""
+    private fun parsePush(id: String, timestamp: String, payload: JsonObject?): SyncMessage.Push? {
+        if (payload == null) return null
+        return SyncMessage.Push(
+            id = id,
+            timestamp = timestamp,
+            event = payload.get(FIELD_EVENT)?.asString ?: return null,
+            entityType = payload.get(FIELD_ENTITY_TYPE)?.asString,
+            entityId = payload.get(FIELD_ENTITY_ID)?.asString,
+            data = payload.get(FIELD_DATA)
         )
     }
+
+    // ============================================
+    // Utility Methods
+    // ============================================
 
     /**
-     * Generate unique message ID for client messages
+     * Generate unique message ID (nanosecond timestamp)
      */
-    fun generateMessageId(): String = UUID.randomUUID().toString()
+    fun generateMessageId(): String = System.nanoTime().toString()
+
+    /**
+     * Get current timestamp in ISO 8601 format
+     */
+    fun getCurrentTimestamp(): String = Instant.now().atOffset(ZoneOffset.UTC).format(ISO_8601_FORMATTER)
 }

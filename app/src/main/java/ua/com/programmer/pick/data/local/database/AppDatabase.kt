@@ -37,7 +37,7 @@ import ua.com.programmer.pick.data.local.database.entity.WarehouseLocationEntity
         DocumentLineEntity::class,
         OutgoingOperationEntity::class
     ],
-    version = 5,
+    version = 6,  // Version 6: Added cursor column to sync_state table
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {

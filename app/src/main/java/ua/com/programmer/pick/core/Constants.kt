@@ -9,6 +9,8 @@ object Constants {
         const val CLIENTS = "clients"
         const val WAREHOUSES = "warehouses"
         const val DOCUMENTS = "documents"
+
+        val ALL = listOf(USERS, PRODUCTS, CLIENTS, WAREHOUSES, DOCUMENTS)
     }
 
     // Database
@@ -23,7 +25,11 @@ object Constants {
         const val CONNECT_TIMEOUT_SECONDS = 30L
         const val READ_TIMEOUT_SECONDS = 30L
         const val WRITE_TIMEOUT_SECONDS = 30L
+
+        // WebSocket
         const val WEBSOCKET_PING_INTERVAL_SECONDS = 30L
+        const val WEBSOCKET_PONG_TIMEOUT_SECONDS = 60L
+        const val WEBSOCKET_MAX_MESSAGE_SIZE = 512 * 1024  // 512KB
     }
 
     // WorkManager

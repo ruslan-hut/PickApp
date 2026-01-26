@@ -50,10 +50,21 @@ data class OutgoingOperation(
 )
 
 enum class OperationType {
-    TAKE_INTO_WORK,
-    UPDATE_DOCUMENT,
-    COMPLETE_DOCUMENT,
-    UPDATE_LINE
+    DOCUMENT_LOCK,
+    DOCUMENT_UNLOCK,
+    DOCUMENT_UPDATE,
+    DOCUMENT_COMPLETE,
+    SYNC_REQUEST,
+    PRODUCT_LOOKUP;
+
+    companion object {
+        // Backward compatibility mapping
+        @Deprecated("Use DOCUMENT_LOCK instead", ReplaceWith("DOCUMENT_LOCK"))
+        val TAKE_INTO_WORK = DOCUMENT_LOCK
+
+        @Deprecated("Use DOCUMENT_UPDATE instead", ReplaceWith("DOCUMENT_UPDATE"))
+        val UPDATE_LINE = DOCUMENT_UPDATE
+    }
 }
 
 enum class EntityType {

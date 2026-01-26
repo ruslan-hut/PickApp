@@ -2,7 +2,6 @@ package ua.com.programmer.pick.data.repository
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -11,19 +10,11 @@ import ua.com.programmer.pick.core.util.NetworkMonitor
 import ua.com.programmer.pick.core.util.PasswordHasher
 import ua.com.programmer.pick.core.util.Result
 import ua.com.programmer.pick.data.local.database.dao.UserDao
-import ua.com.programmer.pick.data.local.database.dao.SyncStateDao
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.mapper.toDomain
 import ua.com.programmer.pick.data.mapper.toEntity
-import ua.com.programmer.pick.data.mapper.toEntityForSync
 import ua.com.programmer.pick.data.remote.api.AuthApi
-import ua.com.programmer.pick.data.remote.api.SyncApi
 import ua.com.programmer.pick.data.remote.dto.AuthDto
-import ua.com.programmer.pick.data.remote.dto.SyncAckRequest
-import ua.com.programmer.pick.data.remote.dto.UserDto
-import ua.com.programmer.pick.core.Constants
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import ua.com.programmer.pick.domain.model.User
 import ua.com.programmer.pick.domain.repository.UserRepository
 import kotlinx.coroutines.CoroutineDispatcher
@@ -34,13 +25,10 @@ import javax.inject.Singleton
 @Singleton
 class UserRepositoryImpl @Inject constructor(
     private val authApi: AuthApi,
-    private val syncApi: SyncApi,
     private val userDao: UserDao,
-    private val syncStateDao: SyncStateDao,
     private val appPreferences: AppPreferences,
     private val passwordHasher: PasswordHasher,
     private val networkMonitor: NetworkMonitor,
-    private val gson: Gson,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : UserRepository {
 
@@ -166,66 +154,15 @@ class UserRepositoryImpl @Inject constructor(
         }
     }
 
+    /**
+     * @deprecated User sync is now handled by SyncOrchestrator via WebSocket
+     */
+    @Deprecated(
+        "User sync is now handled by SyncOrchestrator via WebSocket",
+        ReplaceWith("SyncOrchestrator.requestDeltaSync()")
+    )
     override suspend fun syncUsers(): Result<Unit> = withContext(ioDispatcher) {
-        if (!networkMonitor.isCurrentlyConnected()) {
-            return@withContext Result.Error(Exception("No network connection"))
-        }
-
-        try {
-            val lastSyncTime = syncStateDao.getSyncState(Constants.SyncEntity.USERS)?.lastSyncTime ?: 0L
-            val isFullSync = lastSyncTime == 0L
-
-            val response = if (isFullSync) {
-                syncApi.getFullSync(Constants.SyncEntity.USERS)
-            } else {
-                syncApi.getDeltaSync(Constants.SyncEntity.USERS, lastSyncTime)
-            }
-
-            if (response.isSuccessful) {
-                val syncResponse = response.body()
-                if (syncResponse != null) {
-                    // Parse and apply user data
-                    if (syncResponse.data.isJsonArray) {
-                        val type = object : TypeToken<List<UserDto>>() {}.type
-                        val users: List<UserDto> = gson.fromJson(syncResponse.data, type)
-
-                        users.forEach { dto ->
-                            // Preserve existing passwordHash if user already exists
-                            val existingUser = userDao.getUserById(dto.id)
-                            val entity = dto.toEntityForSync(existingUser?.passwordHash)
-                            userDao.insertUser(entity)
-                        }
-                    }
-
-                    // Delete removed users
-                    syncResponse.deletedIds?.forEach { id ->
-                        userDao.deleteUser(id)
-                    }
-
-                    // Acknowledge sync
-                    syncApi.acknowledgSync(
-                        SyncAckRequest(
-                            entityType = syncResponse.entityType,
-                            syncId = syncResponse.syncId,
-                            timestamp = syncResponse.timestamp
-                        )
-                    )
-
-                    // Update sync state
-                    syncStateDao.updateSyncSuccess(Constants.SyncEntity.USERS, syncResponse.timestamp)
-
-                    Result.Success(Unit)
-                } else {
-                    Result.Error(Exception("Empty response"))
-                }
-            } else {
-                val error = "HTTP ${response.code()}: ${response.message()}"
-                syncStateDao.updateSyncError(Constants.SyncEntity.USERS, "ERROR", error)
-                Result.Error(Exception(error))
-            }
-        } catch (e: Exception) {
-            syncStateDao.updateSyncError(Constants.SyncEntity.USERS, "ERROR", e.message)
-            Result.Error(e, e.message ?: "User sync failed")
-        }
+        // Sync is now handled by SyncOrchestrator via WebSocket
+        Result.Success(Unit)
     }
 }

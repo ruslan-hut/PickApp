@@ -133,7 +133,13 @@ class OutgoingOperationRepositoryImpl @Inject constructor(
             operationType = try {
                 OperationType.valueOf(operationType)
             } catch (e: IllegalArgumentException) {
-                OperationType.UPDATE_DOCUMENT
+                // Fallback for legacy operation types
+                when (operationType) {
+                    "TAKE_INTO_WORK" -> OperationType.DOCUMENT_LOCK
+                    "UPDATE_LINE", "UPDATE_DOCUMENT" -> OperationType.DOCUMENT_UPDATE
+                    "COMPLETE_DOCUMENT" -> OperationType.DOCUMENT_COMPLETE
+                    else -> OperationType.DOCUMENT_UPDATE
+                }
             },
             entityType = try {
                 EntityType.valueOf(entityType)

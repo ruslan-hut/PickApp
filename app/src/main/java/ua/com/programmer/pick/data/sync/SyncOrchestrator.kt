@@ -2,7 +2,6 @@ package ua.com.programmer.pick.data.sync
 
 import android.util.Log
 import com.google.gson.Gson
-import com.google.gson.JsonArray
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,29 +22,22 @@ import ua.com.programmer.pick.data.local.database.dao.ProductImageDao
 import ua.com.programmer.pick.data.local.database.dao.SyncStateDao
 import ua.com.programmer.pick.data.local.database.dao.UserDao
 import ua.com.programmer.pick.data.local.database.dao.WarehouseDao
-import ua.com.programmer.pick.data.local.database.entity.SyncStateEntity
 import ua.com.programmer.pick.data.mapper.ClientMapper
 import ua.com.programmer.pick.data.mapper.DocumentMapper
 import ua.com.programmer.pick.data.mapper.ProductMapper
 import ua.com.programmer.pick.data.mapper.WarehouseMapper
 import ua.com.programmer.pick.data.mapper.toEntityForSync
-import ua.com.programmer.pick.data.remote.api.SyncApi
+import ua.com.programmer.pick.data.remote.dto.BarcodeDto
 import ua.com.programmer.pick.data.remote.dto.ClientDto
-import ua.com.programmer.pick.data.remote.dto.CompleteDocumentRequestDto
 import ua.com.programmer.pick.data.remote.dto.DocumentDto
-import ua.com.programmer.pick.data.remote.dto.DocumentLineUpdateDto
 import ua.com.programmer.pick.data.remote.dto.ProductDto
-import ua.com.programmer.pick.data.remote.dto.SyncAckRequest
-import ua.com.programmer.pick.data.remote.dto.TakeDocumentRequestDto
 import ua.com.programmer.pick.data.remote.dto.UserDto
 import ua.com.programmer.pick.data.remote.dto.WarehouseDto
 import ua.com.programmer.pick.data.remote.websocket.ConnectionState
+import ua.com.programmer.pick.data.remote.websocket.DocumentLineUpdate
+import ua.com.programmer.pick.data.remote.websocket.MessageParser
 import ua.com.programmer.pick.data.remote.websocket.SyncMessage
 import ua.com.programmer.pick.data.remote.websocket.WebSocketManager
-import ua.com.programmer.pick.domain.repository.EntityType
-import ua.com.programmer.pick.domain.repository.OperationStatus
-import ua.com.programmer.pick.domain.repository.OperationType
-import ua.com.programmer.pick.domain.repository.OutgoingOperation
 import ua.com.programmer.pick.domain.repository.OutgoingOperationRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import javax.inject.Inject
@@ -75,15 +67,36 @@ data class SyncState(
 )
 
 /**
- * Coordinates all synchronization operations:
- * - Incoming data from REST API (delta/full sync)
- * - Incoming data from WebSocket (real-time updates)
- * - Outgoing operations queue processing
+ * Result of document lock operation
+ */
+data class DocumentLockResult(
+    val success: Boolean,
+    val documentId: String,
+    val lockedBy: String? = null,
+    val error: String? = null
+)
+
+/**
+ * Result of document complete operation
+ */
+data class DocumentCompleteResult(
+    val success: Boolean,
+    val documentId: String,
+    val state: String? = null,
+    val version: Int? = null,
+    val error: String? = null
+)
+
+/**
+ * Coordinates all synchronization operations via WebSocket:
+ * - Incoming data from WebSocket (sync data, push notifications)
+ * - Outgoing operations (document lock, update, complete)
+ * - Product lookup
  */
 @Singleton
 class SyncOrchestrator @Inject constructor(
-    private val syncApi: SyncApi,
     private val webSocketManager: WebSocketManager,
+    private val messageParser: MessageParser,
     private val syncStateDao: SyncStateDao,
     private val documentDao: DocumentDao,
     private val documentLineDao: DocumentLineDao,
@@ -103,14 +116,16 @@ class SyncOrchestrator @Inject constructor(
 ) {
     companion object {
         private const val TAG = "SyncOrchestrator"
-        private const val MAX_RETRIES = 5
-        private const val EXPONENTIAL_BACKOFF_BASE_MS = 1000L
     }
 
     private val scope = CoroutineScope(ioDispatcher)
 
     private val _syncState = MutableStateFlow(SyncState())
     val syncState: StateFlow<SyncState> = _syncState.asStateFlow()
+
+    // Track current sync session
+    private var currentSyncId: String? = null
+    private var pendingSyncCursors: Map<String, String>? = null
 
     private var isInitialized = false
 
@@ -138,6 +153,11 @@ class SyncOrchestrator @Inject constructor(
             .onEach { connectionState ->
                 val isConnected = connectionState is ConnectionState.Connected
                 _syncState.value = _syncState.value.copy(isWebSocketConnected = isConnected)
+
+                if (isConnected) {
+                    // Request sync when connected
+                    requestDeltaSync()
+                }
             }
             .launchIn(scope)
 
@@ -172,254 +192,437 @@ class SyncOrchestrator @Inject constructor(
         webSocketManager.disconnect()
     }
 
-    /**
-     * Perform delta sync for all entities
-     */
-    suspend fun syncAll(): Result<Unit> {
-        Log.d(TAG, "Starting full sync for all entities")
+    // ============================================
+    // Sync Operations
+    // ============================================
 
-        if (!networkMonitor.isCurrentlyConnected()) {
-            return Result.Error(Exception("No network connection"))
+    /**
+     * Request delta sync for all entities via WebSocket
+     */
+    suspend fun requestDeltaSync(): Result<Unit> {
+        Log.d(TAG, "Requesting delta sync")
+
+        if (!webSocketManager.isConnected()) {
+            return Result.Error(Exception("WebSocket not connected"))
         }
 
         _syncState.value = _syncState.value.copy(isSyncing = true)
 
-        val entities = listOf(
-            Constants.SyncEntity.USERS,
-            Constants.SyncEntity.PRODUCTS,
-            Constants.SyncEntity.CLIENTS,
-            Constants.SyncEntity.WAREHOUSES,
-            Constants.SyncEntity.DOCUMENTS
+        // Get cursors from database
+        val cursors = syncStateDao.getCursorsMap()
+
+        val message = SyncMessage.SyncRequest(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp(),
+            entityTypes = Constants.SyncEntity.ALL,
+            cursors = cursors.ifEmpty { null }
         )
 
-        var hasError = false
-        var lastError: String? = null
+        val sent = webSocketManager.sendMessage(message)
+        if (!sent) {
+            _syncState.value = _syncState.value.copy(isSyncing = false, lastError = "Failed to send sync request")
+            return Result.Error(Exception("Failed to send sync request"))
+        }
 
-        for (entity in entities) {
-            val result = syncEntity(entity)
-            if (result is Result.Error) {
-                hasError = true
-                lastError = result.exception.message
-                Log.e(TAG, "Failed to sync $entity: ${result.exception.message}")
+        // Update entity statuses
+        Constants.SyncEntity.ALL.forEach { entityType ->
+            updateEntitySyncStatus(entityType, SyncStatus.SYNCING)
+        }
+
+        return Result.Success(Unit)
+    }
+
+    /**
+     * Request full sync for all entities via WebSocket
+     */
+    suspend fun requestFullSync(): Result<Unit> {
+        Log.d(TAG, "Requesting full sync")
+
+        if (!webSocketManager.isConnected()) {
+            return Result.Error(Exception("WebSocket not connected"))
+        }
+
+        _syncState.value = _syncState.value.copy(isSyncing = true)
+
+        val message = SyncMessage.FullSyncRequest(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp(),
+            entityTypes = Constants.SyncEntity.ALL
+        )
+
+        val sent = webSocketManager.sendMessage(message)
+        if (!sent) {
+            _syncState.value = _syncState.value.copy(isSyncing = false, lastError = "Failed to send full sync request")
+            return Result.Error(Exception("Failed to send full sync request"))
+        }
+
+        // Update entity statuses
+        Constants.SyncEntity.ALL.forEach { entityType ->
+            updateEntitySyncStatus(entityType, SyncStatus.SYNCING)
+        }
+
+        return Result.Success(Unit)
+    }
+
+    // ============================================
+    // Document Operations
+    // ============================================
+
+    /**
+     * Lock a document for editing ("Take into work")
+     */
+    suspend fun lockDocument(documentId: String): Result<DocumentLockResult> {
+        Log.d(TAG, "Locking document: $documentId")
+
+        if (!webSocketManager.isConnected()) {
+            return Result.Error(Exception("WebSocket not connected"))
+        }
+
+        val message = SyncMessage.DocumentLock(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp(),
+            documentId = documentId
+        )
+
+        val response = webSocketManager.sendAndAwait(
+            message,
+            SyncMessage.DocumentLockResult::class.java
+        )
+
+        return if (response != null) {
+            val result = DocumentLockResult(
+                success = response.success,
+                documentId = response.documentId,
+                lockedBy = response.lockedBy,
+                error = response.error
+            )
+
+            if (response.success) {
+                // Update local document state
+                documentDao.updateDocumentState(documentId, "IN_PROGRESS", System.currentTimeMillis())
+                response.lockedBy?.let { userId ->
+                    documentDao.updateAssignedUser(documentId, userId, System.currentTimeMillis())
+                }
+            }
+
+            Result.Success(result)
+        } else {
+            Result.Error(Exception("Lock request timeout"))
+        }
+    }
+
+    /**
+     * Unlock a document
+     */
+    suspend fun unlockDocument(documentId: String): Result<Unit> {
+        Log.d(TAG, "Unlocking document: $documentId")
+
+        if (!webSocketManager.isConnected()) {
+            return Result.Error(Exception("WebSocket not connected"))
+        }
+
+        val message = SyncMessage.DocumentUnlock(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp(),
+            documentId = documentId
+        )
+
+        val sent = webSocketManager.sendMessage(message)
+        return if (sent) {
+            // Update local document state
+            documentDao.updateDocumentState(documentId, "LOADED", System.currentTimeMillis())
+            documentDao.clearAssignedUser(documentId)
+            Result.Success(Unit)
+        } else {
+            Result.Error(Exception("Failed to send unlock request"))
+        }
+    }
+
+    /**
+     * Update document lines
+     */
+    suspend fun updateDocument(
+        documentId: String,
+        state: String,
+        lines: List<DocumentLineUpdate>
+    ): Result<Unit> {
+        Log.d(TAG, "Updating document: $documentId with ${lines.size} lines")
+
+        if (!webSocketManager.isConnected()) {
+            return Result.Error(Exception("WebSocket not connected"))
+        }
+
+        val message = SyncMessage.DocumentUpdate(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp(),
+            documentId = documentId,
+            state = state,
+            lines = lines
+        )
+
+        val sent = webSocketManager.sendMessage(message)
+        return if (sent) {
+            Result.Success(Unit)
+        } else {
+            Result.Error(Exception("Failed to send document update"))
+        }
+    }
+
+    /**
+     * Complete document processing
+     */
+    suspend fun completeDocument(documentId: String): Result<DocumentCompleteResult> {
+        Log.d(TAG, "Completing document: $documentId")
+
+        if (!webSocketManager.isConnected()) {
+            return Result.Error(Exception("WebSocket not connected"))
+        }
+
+        val message = SyncMessage.DocumentComplete(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp(),
+            documentId = documentId
+        )
+
+        val response = webSocketManager.sendAndAwait(
+            message,
+            SyncMessage.DocumentCompleteResult::class.java
+        )
+
+        return if (response != null) {
+            val result = DocumentCompleteResult(
+                success = response.success,
+                documentId = response.documentId,
+                state = response.state,
+                version = response.version,
+                error = response.error
+            )
+
+            if (response.success) {
+                // Update local document state
+                documentDao.updateDocumentState(documentId, response.state ?: "COMPLETED", System.currentTimeMillis())
+                response.version?.let { version ->
+                    documentDao.updateDocumentVersion(documentId, version)
+                }
+            }
+
+            Result.Success(result)
+        } else {
+            Result.Error(Exception("Complete request timeout"))
+        }
+    }
+
+    // ============================================
+    // Product Lookup
+    // ============================================
+
+    /**
+     * Lookup product by barcode via WebSocket
+     * First checks local database, then queries server
+     */
+    suspend fun lookupProductByBarcode(barcode: String): Result<ProductDto?> {
+        Log.d(TAG, "Looking up product by barcode: $barcode")
+
+        // First check local database
+        val localBarcodes = productDao.getProductIdByBarcode(barcode)
+        if (localBarcodes.isNotEmpty()) {
+            val productId = localBarcodes.first().productId
+            val entity = productDao.getProductById(productId)
+            if (entity != null) {
+                val barcodes = productDao.getBarcodesByProductId(productId)
+                Log.d(TAG, "Product found locally: ${entity.name}")
+                // Convert to DTO for consistency
+                return Result.Success(ProductDto(
+                    id = entity.id,
+                    code = entity.code,
+                    name = entity.name,
+                    description = entity.description,
+                    unit = entity.unit,
+                    supportsBatches = entity.supportsBatches,
+                    isActive = entity.isActive,
+                    barcodes = barcodes.map {
+                        BarcodeDto(
+                            id = it.id,
+                            barcode = it.barcode,
+                            type = it.type,
+                            isPrimary = it.isPrimary
+                        )
+                    }
+                ))
             }
         }
 
+        // Not found locally, query server
+        if (!webSocketManager.isConnected()) {
+            return Result.Error(Exception("Product not found locally and WebSocket not connected"))
+        }
+
+        val message = SyncMessage.ProductLookup(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp(),
+            barcode = barcode
+        )
+
+        val response = webSocketManager.sendAndAwait(
+            message,
+            SyncMessage.ProductLookupResult::class.java
+        )
+
+        return if (response != null && response.success && response.product != null) {
+            val productDto = gson.fromJson(response.product, ProductDto::class.java)
+
+            // Cache locally
+            val entity = productMapper.toEntity(productDto)
+            productDao.upsertProduct(entity)
+
+            val barcodeEntities = productMapper.toBarcodeEntityList(productDto)
+            productDao.deleteBarcodesForProduct(productDto.id)
+            barcodeEntities.forEach { productDao.insertBarcode(it) }
+
+            productMapper.toImageEntity(productDto)?.let { imageEntity ->
+                productImageDao.deleteByProductId(productDto.id)
+                productImageDao.insert(imageEntity)
+            }
+
+            Log.d(TAG, "Product found on server and cached: ${productDto.name}")
+            Result.Success(productDto)
+        } else {
+            val error = response?.error ?: "Product not found"
+            Log.d(TAG, "Product lookup failed: $error")
+            Result.Success(null)
+        }
+    }
+
+    // ============================================
+    // Message Handling
+    // ============================================
+
+    private fun handleWebSocketMessage(message: SyncMessage) {
+        scope.launch {
+            when (message) {
+                is SyncMessage.SyncData -> {
+                    handleSyncData(message)
+                }
+                is SyncMessage.SyncComplete -> {
+                    handleSyncComplete(message)
+                }
+                is SyncMessage.DocumentLockResult -> {
+                    handleDocumentLockResult(message)
+                }
+                is SyncMessage.DocumentCompleteResult -> {
+                    handleDocumentCompleteResult(message)
+                }
+                is SyncMessage.Push -> {
+                    handlePush(message)
+                }
+                is SyncMessage.ServerError -> {
+                    handleServerError(message)
+                }
+                else -> {
+                    Log.d(TAG, "Unhandled message type: ${message.type}")
+                }
+            }
+        }
+    }
+
+    private suspend fun handleSyncData(message: SyncMessage.SyncData) {
+        Log.d(TAG, "Received sync data for ${message.entityType}")
+
+        try {
+            applySync(message.entityType, message.data, message.deletedIds)
+            updateEntitySyncStatus(message.entityType, SyncStatus.SUCCESS)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to apply sync data for ${message.entityType}: ${e.message}", e)
+            updateEntitySyncStatus(message.entityType, SyncStatus.ERROR)
+        }
+    }
+
+    private suspend fun handleSyncComplete(message: SyncMessage.SyncComplete) {
+        Log.d(TAG, "Sync complete: ${message.syncId}")
+
+        currentSyncId = message.syncId
+        pendingSyncCursors = message.cursors
+
+        // Update all cursors in database
+        syncStateDao.updateCursors(message.cursors)
+
+        // Send ACK
+        val ackMessage = SyncMessage.Ack(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp(),
+            syncId = message.syncId,
+            cursors = message.cursors
+        )
+        webSocketManager.sendMessage(ackMessage)
+
+        // Update sync state
         _syncState.value = _syncState.value.copy(
             isSyncing = false,
-            lastSyncTime = if (!hasError) System.currentTimeMillis() else _syncState.value.lastSyncTime,
-            lastError = lastError
+            lastSyncTime = System.currentTimeMillis(),
+            lastError = null
         )
 
-        return if (hasError) {
-            Result.Error(Exception(lastError ?: "Sync failed"))
-        } else {
-            Result.Success(Unit)
+        // Update all entity statuses to SUCCESS
+        Constants.SyncEntity.ALL.forEach { entityType ->
+            updateEntitySyncStatus(entityType, SyncStatus.SUCCESS)
         }
     }
 
-    /**
-     * Sync a specific entity type
-     */
-    suspend fun syncEntity(entityType: String): Result<Unit> {
-        Log.d(TAG, "Syncing entity: $entityType")
+    private suspend fun handleDocumentLockResult(message: SyncMessage.DocumentLockResult) {
+        Log.d(TAG, "Document lock result: ${message.documentId}, success: ${message.success}")
 
-        updateEntitySyncStatus(entityType, SyncStatus.SYNCING)
-
-        return try {
-            val lastSyncTime = syncStateDao.getSyncState(entityType)?.lastSyncTime ?: 0L
-            val isFullSync = lastSyncTime == 0L
-
-            val response = if (isFullSync) {
-                syncApi.getFullSync(entityType)
-            } else {
-                syncApi.getDeltaSync(entityType, lastSyncTime)
+        if (message.success) {
+            documentDao.updateDocumentState(message.documentId, "IN_PROGRESS", System.currentTimeMillis())
+            message.lockedBy?.let { userId ->
+                documentDao.updateAssignedUser(message.documentId, userId, System.currentTimeMillis())
             }
-
-            if (response.isSuccessful) {
-                val syncResponse = response.body()
-                if (syncResponse != null) {
-                    applySync(syncResponse.entityType, syncResponse.data, syncResponse.deletedIds)
-
-                    // Acknowledge sync
-                    syncApi.acknowledgSync(
-                        SyncAckRequest(
-                            entityType = syncResponse.entityType,
-                            syncId = syncResponse.syncId,
-                            timestamp = syncResponse.timestamp
-                        )
-                    )
-
-                    // Update sync state
-                    syncStateDao.updateSyncSuccess(entityType, syncResponse.timestamp)
-                    updateEntitySyncStatus(entityType, SyncStatus.SUCCESS)
-
-                    Log.d(TAG, "Successfully synced $entityType")
-                    Result.Success(Unit)
-                } else {
-                    updateEntitySyncStatus(entityType, SyncStatus.ERROR)
-                    Result.Error(Exception("Empty response"))
-                }
-            } else {
-                val error = "HTTP ${response.code()}: ${response.message()}"
-                syncStateDao.updateSyncError(entityType, "ERROR", error)
-                updateEntitySyncStatus(entityType, SyncStatus.ERROR)
-                Result.Error(Exception(error))
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error syncing $entityType: ${e.message}", e)
-            syncStateDao.updateSyncError(entityType, "ERROR", e.message)
-            updateEntitySyncStatus(entityType, SyncStatus.ERROR)
-            Result.Error(e)
         }
     }
 
-    /**
-     * Upload pending outgoing operations
-     */
-    suspend fun uploadPendingOperations(): Result<Int> {
-        if (!networkMonitor.isCurrentlyConnected()) {
-            return Result.Error(Exception("No network connection"))
-        }
+    private suspend fun handleDocumentCompleteResult(message: SyncMessage.DocumentCompleteResult) {
+        Log.d(TAG, "Document complete result: ${message.documentId}, success: ${message.success}")
 
-        var uploadedCount = 0
-        var continueProcessing = true
-
-        while (continueProcessing) {
-            val operation = outgoingOperationRepository.getNextPendingOperation()
-            if (operation == null) {
-                continueProcessing = false
-                continue
+        if (message.success) {
+            documentDao.updateDocumentState(message.documentId, message.state ?: "COMPLETED", System.currentTimeMillis())
+            message.version?.let { version ->
+                documentDao.updateDocumentVersion(message.documentId, version)
             }
+        }
+    }
 
-            val result = processOperation(operation)
-            when (result) {
-                is Result.Success -> {
-                    outgoingOperationRepository.markOperationCompleted(operation.id)
-                    uploadedCount++
-                }
-                is Result.Error -> {
-                    if (operation.retryCount >= MAX_RETRIES) {
-                        outgoingOperationRepository.markOperationFailed(
-                            operation.id,
-                            result.exception.message ?: "Max retries exceeded"
-                        )
-                    } else {
-                        outgoingOperationRepository.retryOperation(operation.id)
+    private suspend fun handlePush(message: SyncMessage.Push) {
+        Log.d(TAG, "Push notification: ${message.event} for ${message.entityType}/${message.entityId}")
+
+        when (message.event) {
+            "document_updated", "document_locked", "document_unlocked" -> {
+                // Apply the update if data is provided
+                message.entityType?.let { entityType ->
+                    message.data?.let { data ->
+                        applySync(entityType, data, null)
                     }
-                    // Continue to next operation
                 }
-                is Result.Loading -> { /* Shouldn't happen */ }
+            }
+            "reference_updated" -> {
+                // Request delta sync for the updated entity type
+                message.entityType?.let { entityType ->
+                    requestEntitySync(entityType)
+                }
             }
         }
-
-        Log.d(TAG, "Uploaded $uploadedCount operations")
-        return Result.Success(uploadedCount)
     }
 
-    private suspend fun processOperation(operation: OutgoingOperation): Result<Unit> {
-        Log.d(TAG, "Processing operation: ${operation.operationType} for ${operation.entityId}")
+    private fun handleServerError(message: SyncMessage.ServerError) {
+        Log.e(TAG, "Server error: ${message.code} - ${message.message}")
 
-        return try {
-            when (operation.operationType) {
-                OperationType.TAKE_INTO_WORK -> processTakeIntoWork(operation)
-                OperationType.UPDATE_DOCUMENT -> processUpdateDocument(operation)
-                OperationType.UPDATE_LINE -> processUpdateLine(operation)
-                OperationType.COMPLETE_DOCUMENT -> processCompleteDocument(operation)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Operation failed: ${e.message}", e)
-            Result.Error(e)
-        }
+        _syncState.value = _syncState.value.copy(
+            lastError = "${message.code}: ${message.message}",
+            isSyncing = false
+        )
     }
 
-    private suspend fun processTakeIntoWork(operation: OutgoingOperation): Result<Unit> {
-        val request = gson.fromJson(operation.payload, TakeDocumentRequestDto::class.java)
-
-        // Try WebSocket first, fall back to REST
-        if (webSocketManager.isConnected()) {
-            // Mark as processing so it won't be re-queued while waiting for ACK
-            outgoingOperationRepository.markOperationProcessing(operation.id)
-
-            val message = SyncMessage.TakeIntoWork(
-                messageId = operation.id,
-                documentId = request.documentId,
-                userId = request.userId,
-                timestamp = request.timestamp
-            )
-            webSocketManager.sendMessage(message)
-            // Note: ACK handling is asynchronous
-            return Result.Success(Unit)
-        }
-
-        // REST fallback would go here
-        return Result.Success(Unit)
-    }
-
-    private suspend fun processUpdateDocument(operation: OutgoingOperation): Result<Unit> {
-        // Document update via WebSocket
-        if (webSocketManager.isConnected()) {
-            val document = documentDao.getDocumentById(operation.entityId)
-            if (document != null) {
-                // Mark processing
-                outgoingOperationRepository.markOperationProcessing(operation.id)
-
-                val message = SyncMessage.DocumentUpdate(
-                    messageId = operation.id,
-                    documentId = document.id,
-                    state = document.state,
-                    notes = document.notes,
-                    totalActual = document.totalActual,
-                    version = document.version,
-                    timestamp = System.currentTimeMillis()
-                )
-                webSocketManager.sendMessage(message)
-            }
-        }
-        return Result.Success(Unit)
-    }
-
-    private suspend fun processUpdateLine(operation: OutgoingOperation): Result<Unit> {
-        if (webSocketManager.isConnected()) {
-            val line = documentLineDao.getLineById(operation.entityId)
-            if (line != null) {
-                // Mark processing
-                outgoingOperationRepository.markOperationProcessing(operation.id)
-
-                val message = SyncMessage.LineUpdate(
-                    messageId = operation.id,
-                    documentId = line.documentId,
-                    lineId = line.id,
-                    actualQuantity = line.actualQuantity,
-                    batchNumber = line.batchNumber,
-                    locationId = line.locationId,
-                    notes = line.notes,
-                    isCompleted = line.isCompleted,
-                    timestamp = System.currentTimeMillis()
-                )
-                webSocketManager.sendMessage(message)
-            }
-        }
-        return Result.Success(Unit)
-    }
-
-    private suspend fun processCompleteDocument(operation: OutgoingOperation): Result<Unit> {
-        val request = gson.fromJson(operation.payload, CompleteDocumentRequestDto::class.java)
-
-        if (webSocketManager.isConnected()) {
-            // Mark processing
-            outgoingOperationRepository.markOperationProcessing(operation.id)
-
-            val message = SyncMessage.CompleteDocument(
-                messageId = operation.id,
-                documentId = request.documentId,
-                userId = request.userId,
-                completedAt = request.completedAt,
-                version = request.version
-            )
-            webSocketManager.sendMessage(message)
-        }
-        return Result.Success(Unit)
-    }
+    // ============================================
+    // Sync Application
+    // ============================================
 
     private suspend fun applySync(
         entityType: String,
@@ -561,68 +764,31 @@ class SyncOrchestrator @Inject constructor(
         }
     }
 
-    private fun handleWebSocketMessage(message: SyncMessage) {
-        scope.launch {
-            when (message) {
-                is SyncMessage.DeltaUpdate -> {
-                    Log.d(TAG, "Received delta update for ${message.entityType}")
-                    applySync(message.entityType, message.data, message.deletedIds)
-                    syncStateDao.updateSyncSuccess(message.entityType, message.timestamp)
-                }
-                is SyncMessage.DocumentLock -> {
-                    Log.d(TAG, "Document ${message.documentId} locked by ${message.lockedByName}")
-                    // Update local document state if needed
-                    documentDao.updateAssignedUser(message.documentId, message.lockedBy, message.lockedAt)
-                }
-                is SyncMessage.Acknowledgment -> {
-                    Log.d(TAG, "Received ACK for ${message.originalMessageId}: ${message.success}")
-                    // Resolve original operation to determine entity/document id
-                    val originalOperation = outgoingOperationRepository.getOperationById(message.originalMessageId)
+    // ============================================
+    // Helpers
+    // ============================================
 
-                    if (message.success) {
-                        outgoingOperationRepository.markOperationCompleted(message.originalMessageId)
+    private suspend fun requestEntitySync(entityType: String) {
+        if (!webSocketManager.isConnected()) return
 
-                        // Update version if provided
-                        message.newVersion?.let { newVersion ->
-                            try {
-                                val documentId = originalOperation?.entityId ?: message.originalMessageId
-                                documentDao.updateDocumentVersion(documentId, newVersion)
-                            } catch (e: Exception) {
-                                Log.w(TAG, "Failed to update document version: ${e.message}")
-                            }
-                        }
-                    } else {
-                        outgoingOperationRepository.markOperationFailed(
-                            message.originalMessageId,
-                            message.error ?: "Server rejected operation"
-                        )
-                    }
-                }
-                is SyncMessage.ServerError -> {
-                    Log.e(TAG, "Server error: ${message.code} - ${message.message}")
-                    _syncState.value = _syncState.value.copy(
-                        lastError = "${message.code}: ${message.message}"
-                    )
-                }
-                else -> {
-                    Log.d(TAG, "Unhandled message type: ${message.type}")
-                }
-            }
-        }
+        val cursor = syncStateDao.getCursor(entityType)
+        val cursors = if (cursor != null) mapOf(entityType to cursor) else null
+
+        val message = SyncMessage.SyncRequest(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp(),
+            entityTypes = listOf(entityType),
+            cursors = cursors
+        )
+
+        webSocketManager.sendMessage(message)
+        updateEntitySyncStatus(entityType, SyncStatus.SYNCING)
     }
 
     private fun onNetworkAvailable() {
-        Log.d(TAG, "Network available, triggering sync")
-
+        Log.d(TAG, "Network available, connecting WebSocket")
         scope.launch {
-            // Connect WebSocket
             connectWebSocket()
-
-            // Upload pending operations
-            uploadPendingOperations()
-
-            // Perform delta sync
-            syncAll()
         }
     }
 
@@ -631,4 +797,29 @@ class SyncOrchestrator @Inject constructor(
         currentStates[entityType] = status
         _syncState.value = _syncState.value.copy(entityStates = currentStates)
     }
+
+    // ============================================
+    // Legacy Methods (for backward compatibility)
+    // ============================================
+
+    /**
+     * @deprecated Use requestDeltaSync() instead
+     */
+    @Deprecated("Use requestDeltaSync() instead", ReplaceWith("requestDeltaSync()"))
+    suspend fun syncAll(): Result<Unit> = requestDeltaSync()
+
+    /**
+     * @deprecated Use requestDeltaSync() instead - sync is now handled via WebSocket
+     */
+    @Deprecated("Sync is now handled via WebSocket", ReplaceWith("requestDeltaSync()"))
+    suspend fun syncEntity(entityType: String): Result<Unit> {
+        requestEntitySync(entityType)
+        return Result.Success(Unit)
+    }
+
+    /**
+     * @deprecated Operations are now sent directly via WebSocket
+     */
+    @Deprecated("Operations are now sent directly via WebSocket")
+    suspend fun uploadPendingOperations(): Result<Int> = Result.Success(0)
 }

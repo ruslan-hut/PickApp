@@ -13,6 +13,9 @@ data class SyncStateEntity(
     @ColumnInfo(name = "last_sync_time")
     val lastSyncTime: Long = 0L,
 
+    @ColumnInfo(name = "cursor")
+    val cursor: String? = null,  // ISO 8601 timestamp cursor for delta sync
+
     @ColumnInfo(name = "status")
     val status: String = "IDLE",
 
