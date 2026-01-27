@@ -38,6 +38,8 @@ import ua.com.programmer.pick.data.remote.websocket.DocumentLineUpdate
 import ua.com.programmer.pick.data.remote.websocket.MessageParser
 import ua.com.programmer.pick.data.remote.websocket.SyncMessage
 import ua.com.programmer.pick.data.remote.websocket.WebSocketManager
+import ua.com.programmer.pick.domain.repository.EntityType
+import ua.com.programmer.pick.domain.repository.OperationType
 import ua.com.programmer.pick.domain.repository.OutgoingOperationRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import javax.inject.Inject
@@ -157,6 +159,8 @@ class SyncOrchestrator @Inject constructor(
                 if (isConnected) {
                     // Request sync when connected
                     requestDeltaSync()
+                    // Process any queued offline operations
+                    processPendingOperations()
                 }
             }
             .launchIn(scope)
@@ -275,7 +279,14 @@ class SyncOrchestrator @Inject constructor(
         Log.d(TAG, "Locking document: $documentId")
 
         if (!webSocketManager.isConnected()) {
-            return Result.Error(Exception("WebSocket not connected"))
+            Log.d(TAG, "WebSocket not connected, queueing lock operation for document: $documentId")
+            outgoingOperationRepository.queueOperation(
+                operationType = OperationType.DOCUMENT_LOCK,
+                entityType = EntityType.DOCUMENT,
+                entityId = documentId,
+                payload = gson.toJson(mapOf("document_id" to documentId))
+            )
+            return Result.Error(Exception("WebSocket not connected, operation queued"))
         }
 
         val message = SyncMessage.DocumentLock(
@@ -349,7 +360,18 @@ class SyncOrchestrator @Inject constructor(
         Log.d(TAG, "Updating document: $documentId with ${lines.size} lines")
 
         if (!webSocketManager.isConnected()) {
-            return Result.Error(Exception("WebSocket not connected"))
+            Log.d(TAG, "WebSocket not connected, queueing update operation for document: $documentId")
+            outgoingOperationRepository.queueOperation(
+                operationType = OperationType.DOCUMENT_UPDATE,
+                entityType = EntityType.DOCUMENT,
+                entityId = documentId,
+                payload = gson.toJson(mapOf(
+                    "document_id" to documentId,
+                    "state" to state,
+                    "lines" to lines
+                ))
+            )
+            return Result.Error(Exception("WebSocket not connected, operation queued"))
         }
 
         val message = SyncMessage.DocumentUpdate(
@@ -375,7 +397,14 @@ class SyncOrchestrator @Inject constructor(
         Log.d(TAG, "Completing document: $documentId")
 
         if (!webSocketManager.isConnected()) {
-            return Result.Error(Exception("WebSocket not connected"))
+            Log.d(TAG, "WebSocket not connected, queueing complete operation for document: $documentId")
+            outgoingOperationRepository.queueOperation(
+                operationType = OperationType.DOCUMENT_COMPLETE,
+                entityType = EntityType.DOCUMENT,
+                entityId = documentId,
+                payload = gson.toJson(mapOf("document_id" to documentId))
+            )
+            return Result.Error(Exception("WebSocket not connected, operation queued"))
         }
 
         val message = SyncMessage.DocumentComplete(
@@ -618,6 +647,16 @@ class SyncOrchestrator @Inject constructor(
             lastError = "${message.code}: ${message.message}",
             isSyncing = false
         )
+
+        // If FORBIDDEN, trigger reconnect (which will refresh the token)
+        if (message.code == "FORBIDDEN") {
+            Log.d(TAG, "FORBIDDEN error received, triggering WebSocket reconnect with token refresh")
+            webSocketManager.disconnect()
+            scope.launch {
+                kotlinx.coroutines.delay(500)
+                webSocketManager.connect()
+            }
+        }
     }
 
     // ============================================
@@ -799,6 +838,107 @@ class SyncOrchestrator @Inject constructor(
     }
 
     // ============================================
+    // Offline Queue Processing
+    // ============================================
+
+    /**
+     * Process all pending outgoing operations via WebSocket.
+     * Called when WebSocket connects and from SyncWorker.
+     */
+    suspend fun processPendingOperations() {
+        if (!webSocketManager.isConnected()) {
+            Log.d(TAG, "Cannot process pending operations - WebSocket not connected")
+            return
+        }
+
+        val pendingOps = outgoingOperationRepository.getAllPendingOperations()
+        if (pendingOps.isEmpty()) {
+            Log.d(TAG, "No pending operations to process")
+            return
+        }
+
+        Log.d(TAG, "Processing ${pendingOps.size} pending operations")
+
+        for (operation in pendingOps) {
+            if (!webSocketManager.isConnected()) {
+                Log.w(TAG, "WebSocket disconnected during pending operations processing, stopping")
+                break
+            }
+
+            outgoingOperationRepository.markOperationProcessing(operation.id)
+
+            val message = buildMessageFromOperation(operation)
+            if (message != null) {
+                val sent = webSocketManager.sendMessage(message)
+                if (sent) {
+                    outgoingOperationRepository.markOperationCompleted(operation.id)
+                    Log.d(TAG, "Pending operation sent: ${operation.operationType} for ${operation.entityId}")
+                } else {
+                    outgoingOperationRepository.markOperationFailed(operation.id, "Failed to send via WebSocket")
+                    Log.w(TAG, "Failed to send pending operation: ${operation.id}")
+                }
+            } else {
+                outgoingOperationRepository.markOperationFailed(operation.id, "Failed to build message from operation")
+                Log.w(TAG, "Failed to build message for operation: ${operation.id}")
+            }
+        }
+    }
+
+    private fun buildMessageFromOperation(operation: ua.com.programmer.pick.domain.repository.OutgoingOperation): SyncMessage? {
+        return try {
+            val payloadJson = com.google.gson.JsonParser.parseString(operation.payload).asJsonObject
+            val id = messageParser.generateMessageId()
+            val timestamp = messageParser.getCurrentTimestamp()
+
+            when (operation.operationType) {
+                OperationType.DOCUMENT_LOCK -> SyncMessage.DocumentLock(
+                    id = id,
+                    timestamp = timestamp,
+                    documentId = payloadJson.get("document_id").asString
+                )
+                OperationType.DOCUMENT_UNLOCK -> SyncMessage.DocumentUnlock(
+                    id = id,
+                    timestamp = timestamp,
+                    documentId = payloadJson.get("document_id").asString
+                )
+                OperationType.DOCUMENT_UPDATE -> {
+                    val documentId = payloadJson.get("document_id").asString
+                    val state = payloadJson.get("state").asString
+                    val linesJson = payloadJson.get("lines").asJsonArray
+                    val lines = linesJson.map { lineElement ->
+                        val lineObj = lineElement.asJsonObject
+                        DocumentLineUpdate(
+                            lineNumber = lineObj.get("lineNumber").asInt,
+                            actualQuantity = lineObj.get("actualQuantity").asDouble,
+                            batchNumber = lineObj.get("batchNumber")?.asString,
+                            isCompleted = lineObj.get("isCompleted")?.asBoolean ?: false
+                        )
+                    }
+                    SyncMessage.DocumentUpdate(
+                        id = id,
+                        timestamp = timestamp,
+                        documentId = documentId,
+                        state = state,
+                        lines = lines
+                    )
+                }
+                OperationType.DOCUMENT_COMPLETE -> SyncMessage.DocumentComplete(
+                    id = id,
+                    timestamp = timestamp,
+                    documentId = payloadJson.get("document_id").asString
+                )
+                else -> {
+                    Log.w(TAG, "Unsupported operation type for offline queue: ${operation.operationType}")
+                    null
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error building message from operation: ${e.message}", e)
+            null
+        }
+    }
+
+    // ============================================
     // Legacy Methods (for backward compatibility)
     // ============================================
 
@@ -816,10 +956,4 @@ class SyncOrchestrator @Inject constructor(
         requestEntitySync(entityType)
         return Result.Success(Unit)
     }
-
-    /**
-     * @deprecated Operations are now sent directly via WebSocket
-     */
-    @Deprecated("Operations are now sent directly via WebSocket")
-    suspend fun uploadPendingOperations(): Result<Int> = Result.Success(0)
 }

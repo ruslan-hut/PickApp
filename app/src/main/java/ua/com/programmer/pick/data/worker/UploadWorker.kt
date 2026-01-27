@@ -7,7 +7,6 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
-import ua.com.programmer.pick.core.util.Result
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 
 /**
@@ -29,24 +28,9 @@ class UploadWorker @AssistedInject constructor(
         Log.d(TAG, "Starting upload work, attempt: $runAttemptCount")
 
         return try {
-            when (val result = syncOrchestrator.uploadPendingOperations()) {
-                is ua.com.programmer.pick.core.util.Result.Success -> {
-                    val uploadedCount = result.data
-                    Log.d(TAG, "Upload completed successfully, uploaded $uploadedCount operations")
-                    Result.success()
-                }
-                is ua.com.programmer.pick.core.util.Result.Error -> {
-                    Log.e(TAG, "Upload failed: ${result.exception.message}")
-                    if (runAttemptCount < 3) {
-                        Result.retry()
-                    } else {
-                        Result.failure()
-                    }
-                }
-                is ua.com.programmer.pick.core.util.Result.Loading -> {
-                    Result.retry()
-                }
-            }
+            syncOrchestrator.processPendingOperations()
+            Log.d(TAG, "Upload completed successfully")
+            Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Upload work failed with exception: ${e.message}", e)
             if (runAttemptCount < 3) {

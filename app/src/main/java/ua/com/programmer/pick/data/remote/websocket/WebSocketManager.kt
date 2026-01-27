@@ -14,15 +14,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import com.google.gson.Gson
 import ua.com.programmer.pick.core.Constants
 import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.util.NetworkMonitor
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
+import ua.com.programmer.pick.data.remote.dto.AuthDto
 import kotlinx.coroutines.CoroutineDispatcher
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -52,6 +56,7 @@ class WebSocketManager @Inject constructor(
     private val messageParser: MessageParser,
     private val appPreferences: AppPreferences,
     private val networkMonitor: NetworkMonitor,
+    private val gson: Gson,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) {
     companion object {
@@ -61,6 +66,9 @@ class WebSocketManager @Inject constructor(
         private const val MAX_RECONNECT_DELAY_MS = 60000L
         private const val BACKOFF_MULTIPLIER = 2.0
         private const val REQUEST_TIMEOUT_MS = 30000L  // 30 seconds timeout for request/response
+        private const val TOKEN_EXPIRY_MARGIN_MS = 5 * 60 * 1000L  // 5 minutes before expiry
+        private const val AUTH_ERROR_CLOSE_CODE = 4001
+        private const val FORBIDDEN_ERROR_CODE = "FORBIDDEN"
     }
 
     private val scope = CoroutineScope(ioDispatcher)
@@ -130,6 +138,13 @@ class WebSocketManager @Inject constructor(
 
         return try {
             val json = messageParser.serializeMessage(message)
+
+            // Enforce max message size
+            if (json.length > Constants.Network.WEBSOCKET_MAX_MESSAGE_SIZE) {
+                Log.w(TAG, "Message exceeds max size (${json.length} > ${Constants.Network.WEBSOCKET_MAX_MESSAGE_SIZE}), type: ${message.type}")
+                return false
+            }
+
             val sent = ws.send(json)
             if (sent) {
                 Log.d(TAG, "Message sent: ${message.type}")
@@ -189,7 +204,8 @@ class WebSocketManager @Inject constructor(
 
         _connectionState.value = ConnectionState.Connecting
 
-        val token = appPreferences.getAuthTokenSync()
+        // Refresh token if near expiry before connecting
+        val token = refreshTokenIfNeeded() ?: appPreferences.getAuthTokenSync()
         if (token.isNullOrEmpty()) {
             Log.w(TAG, "No auth token available")
             _connectionState.value = ConnectionState.Error("No auth token", null)
@@ -201,6 +217,7 @@ class WebSocketManager @Inject constructor(
 
         val request = Request.Builder()
             .url(wsUrl)
+            .header("Authorization", "Bearer $token")
             .build()
 
         // Create WebSocket client without OkHttp ping (we use our own)
@@ -209,6 +226,60 @@ class WebSocketManager @Inject constructor(
             .build()
 
         webSocket = wsClient.newWebSocket(request, createWebSocketListener())
+    }
+
+    /**
+     * Refresh token if it is near expiry (within 5 minutes).
+     * Returns the new token if refresh succeeded, or null to use existing token.
+     */
+    private fun refreshTokenIfNeeded(): String? {
+        val expiresAt = appPreferences.getExpiresAtSync() ?: return null
+        val now = System.currentTimeMillis()
+
+        if (expiresAt - now > TOKEN_EXPIRY_MARGIN_MS) {
+            // Token still valid, no refresh needed
+            return null
+        }
+
+        Log.d(TAG, "Token near expiry, attempting refresh before WebSocket connect")
+        return tryRefreshToken()
+    }
+
+    /**
+     * Attempt to refresh the auth token synchronously.
+     * Returns the new token if successful, null otherwise.
+     */
+    private fun tryRefreshToken(): String? {
+        val refreshToken = appPreferences.getRefreshTokenSync() ?: return null
+
+        return try {
+            val client = OkHttpClient.Builder().build()
+
+            val requestBody = gson.toJson(AuthDto.RefreshRequest(refreshToken))
+                .toRequestBody("application/json".toMediaType())
+
+            val request = Request.Builder()
+                .url("${Constants.Network.BASE_URL}auth/refresh")
+                .post(requestBody)
+                .build()
+
+            val response = client.newCall(request).execute()
+
+            if (response.isSuccessful) {
+                response.body?.string()?.let { body ->
+                    val loginResponse = gson.fromJson(body, AuthDto.LoginResponse::class.java)
+                    appPreferences.setTokensSync(loginResponse.token, loginResponse.refreshToken)
+                    Log.d(TAG, "Token refreshed successfully for WebSocket")
+                    loginResponse.token
+                }
+            } else {
+                Log.w(TAG, "Token refresh failed with code: ${response.code}")
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error refreshing token for WebSocket: ${e.message}", e)
+            null
+        }
     }
 
     /**
@@ -314,6 +385,7 @@ class WebSocketManager @Inject constructor(
         stopPingTimer()
 
         pingJob = scope.launch {
+            var pingCount = 0
             while (true) {
                 delay(Constants.Network.WEBSOCKET_PING_INTERVAL_SECONDS * 1000)
 
@@ -323,6 +395,12 @@ class WebSocketManager @Inject constructor(
 
                 sendPing()
                 startPongTimeoutTimer()
+
+                // Cleanup stale pending responses every ~5 minutes (every 10th ping at 30s interval)
+                pingCount++
+                if (pingCount % 10 == 0) {
+                    cleanupStalePendingResponses()
+                }
             }
         }
     }
@@ -371,6 +449,9 @@ class WebSocketManager @Inject constructor(
         webSocket = null
         stopPingTimer()
 
+        // Clean up stale pending responses before clearing all
+        cleanupStalePendingResponses()
+
         // Cancel all pending responses
         pendingResponses.forEach { (_, response) ->
             val continuation = response.continuation as? CancellableContinuation<SyncMessage>
@@ -379,6 +460,17 @@ class WebSocketManager @Inject constructor(
         pendingResponses.clear()
 
         if (!isManuallyDisconnected) {
+            // If auth error, try refreshing token before reconnect
+            if (code == AUTH_ERROR_CLOSE_CODE) {
+                Log.d(TAG, "Auth error on WebSocket (code $code), attempting token refresh")
+                val newToken = tryRefreshToken()
+                if (newToken == null) {
+                    Log.w(TAG, "Token refresh failed after auth error, not reconnecting")
+                    _connectionState.value = ConnectionState.Error("Authentication failed", code)
+                    return
+                }
+            }
+
             _connectionState.value = ConnectionState.Reconnecting
             scheduleReconnect()
         } else {

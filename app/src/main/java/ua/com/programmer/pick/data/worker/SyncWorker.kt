@@ -29,26 +29,23 @@ class SyncWorker @AssistedInject constructor(
         Log.d(TAG, "Starting sync work, attempt: $runAttemptCount")
 
         return try {
-            // First upload any pending operations
-            when (val uploadResult = syncOrchestrator.uploadPendingOperations()) {
-                is ua.com.programmer.pick.core.util.Result.Success -> {
-                    Log.d(TAG, "Uploaded ${uploadResult.data} pending operations")
-                }
-                is ua.com.programmer.pick.core.util.Result.Error -> {
-                    Log.w(TAG, "Failed to upload pending operations: ${uploadResult.exception.message}")
-                    // Continue with sync even if upload fails
-                }
-                is ua.com.programmer.pick.core.util.Result.Loading -> { /* Shouldn't happen */ }
+            // First process any pending offline operations via WebSocket
+            try {
+                syncOrchestrator.processPendingOperations()
+                Log.d(TAG, "Processed pending operations")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to process pending operations: ${e.message}")
+                // Continue with sync even if processing fails
             }
 
-            // Then download updates
-            when (val syncResult = syncOrchestrator.syncAll()) {
+            // Then request delta sync via WebSocket
+            when (val syncResult = syncOrchestrator.requestDeltaSync()) {
                 is ua.com.programmer.pick.core.util.Result.Success -> {
-                    Log.d(TAG, "Sync completed successfully")
+                    Log.d(TAG, "Delta sync requested successfully")
                     Result.success()
                 }
                 is ua.com.programmer.pick.core.util.Result.Error -> {
-                    Log.e(TAG, "Sync failed: ${syncResult.exception.message}")
+                    Log.e(TAG, "Delta sync request failed: ${syncResult.exception.message}")
                     if (runAttemptCount < 3) {
                         Result.retry()
                     } else {

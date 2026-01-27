@@ -74,7 +74,13 @@ class UserRepositoryImpl @Inject constructor(
                         // Save tokens
                         appPreferences.setAuthToken(loginResponse.token)
                         appPreferences.setRefreshToken(loginResponse.refreshToken)
+                        appPreferences.setExpiresAt(loginResponse.expiresAt)
                         appPreferences.setCurrentUserId(userDto.id)
+
+                        // Save offline hash from server (if provided)
+                        loginResponse.offlineHash?.let { hash ->
+                            appPreferences.setOfflineHash(hash)
+                        }
 
                         val user = userDto.toDomain().copy(lastLoginAt = currentTime)
                         Result.Success(user)
@@ -100,9 +106,15 @@ class UserRepositoryImpl @Inject constructor(
                     "User not found. Please connect to network for first login."
                 )
 
-                // Verify password hash
+                // Verify password: prefer server-provided offline_hash, fallback to local SHA-256
+                val storedOfflineHash = appPreferences.getOfflineHashSync()
                 val passwordHash = passwordHasher.hash(password, login)
-                if (userEntity.passwordHash != passwordHash) {
+                val isValid = if (!storedOfflineHash.isNullOrEmpty()) {
+                    storedOfflineHash == passwordHash
+                } else {
+                    userEntity.passwordHash == passwordHash
+                }
+                if (!isValid) {
                     return@withContext Result.Error(
                         Exception("Invalid credentials"),
                         "Invalid login or password"

@@ -21,7 +21,9 @@ object AuthDto {
         @SerializedName("expires_at")
         val expiresAt: Long,
         @SerializedName("user")
-        val user: UserDto
+        val user: UserDto,
+        @SerializedName("offline_hash")
+        val offlineHash: String? = null
     )
 
     data class RefreshRequest(

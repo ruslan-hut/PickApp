@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -26,6 +27,8 @@ class AppPreferences @Inject constructor(
         private val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
         private val CURRENT_USER_ID = stringPreferencesKey("current_user_id")
         private val SERVER_URL = stringPreferencesKey("server_url")
+        private val OFFLINE_HASH = stringPreferencesKey("offline_hash")
+        private val EXPIRES_AT = longPreferencesKey("expires_at")
     }
 
     val authToken: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -44,6 +47,14 @@ class AppPreferences @Inject constructor(
         preferences[SERVER_URL]
     }
 
+    val offlineHash: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[OFFLINE_HASH]
+    }
+
+    val expiresAt: Flow<Long?> = context.dataStore.data.map { preferences ->
+        preferences[EXPIRES_AT]
+    }
+
     // Synchronous getter for interceptor (use with caution)
     fun getAuthTokenSync(): String? = runBlocking {
         context.dataStore.data.first()[AUTH_TOKEN]
@@ -52,6 +63,16 @@ class AppPreferences @Inject constructor(
     // Synchronous getter for authenticator (use with caution)
     fun getRefreshTokenSync(): String? = runBlocking {
         context.dataStore.data.first()[REFRESH_TOKEN]
+    }
+
+    // Synchronous getter for offline hash (use with caution)
+    fun getOfflineHashSync(): String? = runBlocking {
+        context.dataStore.data.first()[OFFLINE_HASH]
+    }
+
+    // Synchronous getter for token expiry (use with caution)
+    fun getExpiresAtSync(): Long? = runBlocking {
+        context.dataStore.data.first()[EXPIRES_AT]
     }
 
     // Synchronous setter for authenticator (use with caution)
@@ -97,6 +118,26 @@ class AppPreferences @Inject constructor(
                 preferences[CURRENT_USER_ID] = userId
             } else {
                 preferences.remove(CURRENT_USER_ID)
+            }
+        }
+    }
+
+    suspend fun setOfflineHash(hash: String?) {
+        context.dataStore.edit { preferences ->
+            if (hash != null) {
+                preferences[OFFLINE_HASH] = hash
+            } else {
+                preferences.remove(OFFLINE_HASH)
+            }
+        }
+    }
+
+    suspend fun setExpiresAt(expiresAt: Long?) {
+        context.dataStore.edit { preferences ->
+            if (expiresAt != null) {
+                preferences[EXPIRES_AT] = expiresAt
+            } else {
+                preferences.remove(EXPIRES_AT)
             }
         }
     }
