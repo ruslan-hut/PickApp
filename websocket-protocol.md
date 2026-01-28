@@ -9,51 +9,82 @@ This document describes the WebSocket protocol used for communication between An
 ### Endpoint
 
 ```
-ws://{host}:{port}/ws/connect?token={jwt_token}
+ws://{host}:{port}/ws/connect?app_token={app_token}&device_id={device_id}
 ```
 
-Or with Authorization header:
+Or with header:
 ```
-ws://{host}:{port}/ws/connect
-Authorization: Bearer {jwt_token}
+ws://{host}:{port}/ws/connect?device_id={device_id}
+X-App-Token: {app_token}
 ```
 
-### Authentication
+### Authentication Flow
 
-Before connecting via WebSocket, the device must obtain a JWT token through the REST API:
+Authentication happens in two stages:
 
-```
-POST /api/tsd/v1/auth/login
-Content-Type: application/json
+1. **Device Connection** - App token validates the Android app, device_id identifies the device
+2. **User Login** - After WebSocket is established, user authenticates via `USER_LOGIN` message
 
+#### Stage 1: Device Connection
+
+The device connects with:
+- `app_token` - Hardcoded in the Android app, validates against server config
+- `device_id` - Unique hardware identifier
+
+**Connection responses:**
+- `401 Unauthorized` - Invalid or missing app token
+- `403 Forbidden` - Device is PENDING approval or REJECTED
+- `403 Forbidden` - Device has no tenant assigned
+- `101 Switching Protocols` - Success, WebSocket established
+
+**New devices** are auto-registered with PENDING status and must be approved via admin panel.
+
+#### Stage 2: User Login
+
+After connection, send `USER_LOGIN` to authenticate the user:
+
+```json
 {
-  "login": "user",
-  "password": "password",
-  "device_id": "device-unique-id"
+  "id": "123",
+  "type": "USER_LOGIN",
+  "timestamp": "2024-01-01T12:00:00Z",
+  "payload": {
+    "login": "worker1",
+    "password": "password123"
+  }
 }
 ```
 
 Response:
 ```json
 {
-  "token": "eyJhbG...",
-  "refresh_token": "eyJhbG...",
-  "expires_at": 1704067200000,
-  "offline_hash": "abc123...",
-  "user": {
-    "id": "65a1b2c3d4e5f6a7b8c9d0e5",
-    "login": "worker1",
-    "name": "Worker One",
+  "id": "124",
+  "type": "USER_LOGIN_RESULT",
+  "timestamp": "2024-01-01T12:00:00Z",
+  "payload": {
+    "success": true,
+    "user_id": "65a1b2c3d4e5f6a7b8c9d0e5",
+    "user_name": "Worker One",
     "role": "WAREHOUSE_WORKER",
-    "is_active": true,
-    "last_updated": 1704067200000
+    "offline_hash": "abc123..."
   }
 }
 ```
 
-Note: `expires_at` and `user.last_updated` are in milliseconds.
-
 The `offline_hash` can be stored locally for offline authentication.
+
+**Operations requiring user authentication:**
+- `SYNC_REQUEST`
+- `DOCUMENT_LOCK`
+- `DOCUMENT_UNLOCK`
+- `DOCUMENT_UPDATE`
+- `DOCUMENT_COMPLETE`
+- `PRODUCT_LOOKUP`
+
+**Operations allowed without user login:**
+- `PING`
+- `USER_LOGIN`
+- `ERROR_REPORT`
 
 ---
 
@@ -83,24 +114,26 @@ All messages follow a common envelope structure:
 
 ### Client → Server
 
-| Type | Description |
-|------|-------------|
-| `PING` | Keep-alive ping |
-| `SYNC_REQUEST` | Request delta synchronization |
-| `FULL_SYNC_REQUEST` | Request full data resync |
-| `ACK` | Acknowledge received sync data |
-| `DOCUMENT_LOCK` | Lock document for editing |
-| `DOCUMENT_UNLOCK` | Release document lock |
-| `DOCUMENT_UPDATE` | Update document lines |
-| `DOCUMENT_COMPLETE` | Complete document processing |
-| `PRODUCT_LOOKUP` | Search product by barcode |
-| `ERROR_REPORT` | Report client-side error |
+| Type | Description | Requires User Auth |
+|------|-------------|-------------------|
+| `PING` | Keep-alive ping | No |
+| `USER_LOGIN` | Authenticate user after connection | No |
+| `ERROR_REPORT` | Report client-side error | No |
+| `SYNC_REQUEST` | Request delta synchronization | **Yes** |
+| `FULL_SYNC_REQUEST` | Request full data resync | **Yes** |
+| `ACK` | Acknowledge received sync data | **Yes** |
+| `DOCUMENT_LOCK` | Lock document for editing | **Yes** |
+| `DOCUMENT_UNLOCK` | Release document lock | **Yes** |
+| `DOCUMENT_UPDATE` | Update document lines | **Yes** |
+| `DOCUMENT_COMPLETE` | Complete document processing | **Yes** |
+| `PRODUCT_LOOKUP` | Search product by barcode | **Yes** |
 
 ### Server → Client
 
 | Type | Description |
 |------|-------------|
 | `PONG` | Keep-alive pong response |
+| `USER_LOGIN_RESULT` | User login result |
 | `SYNC_DATA` | Synchronization data batch |
 | `SYNC_COMPLETE` | Synchronization complete with cursors |
 | `DOCUMENT_LOCK_RESULT` | Lock operation result |
@@ -112,6 +145,59 @@ All messages follow a common envelope structure:
 ---
 
 ## Protocol Messages
+
+### USER_LOGIN
+
+Authenticate user after WebSocket connection is established.
+
+**Client sends:**
+```json
+{
+  "id": "123",
+  "type": "USER_LOGIN",
+  "timestamp": "2024-01-01T12:00:00Z",
+  "payload": {
+    "login": "worker1",
+    "password": "password123"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| login | string | User login (per-tenant) |
+| password | string | User password |
+
+**Server responds (success):**
+```json
+{
+  "id": "124",
+  "type": "USER_LOGIN_RESULT",
+  "timestamp": "2024-01-01T12:00:00Z",
+  "payload": {
+    "success": true,
+    "user_id": "65a1b2c3d4e5f6a7b8c9d0e5",
+    "user_name": "Worker One",
+    "role": "WAREHOUSE_WORKER",
+    "offline_hash": "abc123def456..."
+  }
+}
+```
+
+**Server responds (failure):**
+```json
+{
+  "id": "124",
+  "type": "USER_LOGIN_RESULT",
+  "timestamp": "2024-01-01T12:00:00Z",
+  "payload": {
+    "success": false,
+    "error_message": "invalid credentials"
+  }
+}
+```
+
+---
 
 ### PING / PONG
 
@@ -459,6 +545,7 @@ Common error codes:
 - `INVALID_MESSAGE` - Malformed message
 - `UNKNOWN_MESSAGE_TYPE` - Unsupported message type
 - `INVALID_PAYLOAD` - Invalid payload format
+- `NOT_AUTHENTICATED` - User login required for this operation
 - `SYNC_ERROR` - Synchronization failed
 - `DOCUMENT_LOCKED` - Document is locked
 - `FORBIDDEN` - Permission denied
@@ -500,6 +587,12 @@ Push events:
 ```
 Client                          Server
    |                               |
+   |--[WS connect: app_token]----->|  (device must be APPROVED)
+   |<-----[101 Switching]----------|
+   |                               |
+   |------- USER_LOGIN ----------->|  (login + password)
+   |<----- USER_LOGIN_RESULT ------|  (success + user info)
+   |                               |
    |------- SYNC_REQUEST --------->|  (empty cursors)
    |                               |
    |<------ SYNC_COMPLETE ---------|  (full data + cursors)
@@ -508,10 +601,16 @@ Client                          Server
    |                               |
 ```
 
-### Delta Sync (Subsequent)
+### Delta Sync (Reconnect)
 
 ```
 Client                          Server
+   |                               |
+   |--[WS connect: app_token]----->|
+   |<-----[101 Switching]----------|
+   |                               |
+   |------- USER_LOGIN ----------->|  (re-authenticate)
+   |<----- USER_LOGIN_RESULT ------|
    |                               |
    |------- SYNC_REQUEST --------->|  (with last cursors)
    |                               |
@@ -555,11 +654,35 @@ Client                          Server
 
 ## Connection Lifecycle
 
-1. **Connect** - Establish WebSocket with JWT token
-2. **Initial Sync** - Request full or delta sync
-3. **Work** - Lock documents, update, unlock
-4. **Keep-Alive** - PING/PONG every 30 seconds
-5. **Reconnect** - On disconnect, reconnect with same device_id
+1. **Connect** - Establish WebSocket with app_token + device_id
+2. **User Login** - Authenticate user via USER_LOGIN message
+3. **Initial Sync** - Request full or delta sync
+4. **Work** - Lock documents, update, unlock
+5. **Keep-Alive** - PING/PONG every 30 seconds
+6. **Reconnect** - On disconnect, reconnect with same device_id (user must re-login)
+
+### Full Connection Flow
+
+```
+Android App                          Server
+    |                                   |
+    |--[WS connect: app_token + device_id]-->|
+    |                                   |
+    |                        [Validate app_token]
+    |                        [Check device status]
+    |                                   |
+    |<--------[403 Forbidden]-----------|  (if PENDING/REJECTED)
+    |<--------[WebSocket established]---|  (if APPROVED)
+    |                                   |
+    |--[USER_LOGIN: login, password]--->|
+    |                                   |
+    |                        [Validate credentials]
+    |                        [per-tenant user lookup]
+    |                                   |
+    |<--[USER_LOGIN_RESULT: user info]--|
+    |                                   |
+    |--[SYNC_REQUEST, etc.]------------>|  (now allowed)
+```
 
 ### Timeouts
 
@@ -574,8 +697,14 @@ Client                          Server
 
 ## Offline Handling
 
-1. Store `offline_hash` from login response
+1. Store from device:
+   - `app_token` - Hardcoded in app build
+   - `device_id` - Unique hardware ID
+   - `user_id`, `role`, `offline_hash` - After successful USER_LOGIN
 2. Queue operations locally when disconnected
-3. On reconnect, re-authenticate and sync
+3. On reconnect:
+   - Connect with app_token + device_id
+   - Send USER_LOGIN to re-authenticate user
+   - Request sync
 4. Apply queued operations after sync
 5. Handle conflicts (server wins for documents not locked by this device)
