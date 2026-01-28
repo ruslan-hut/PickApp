@@ -1,5 +1,7 @@
 package ua.com.programmer.pick.core
 
+import ua.com.programmer.pick.BuildConfig
+
 object Constants {
 
     // Sync entity types
@@ -21,7 +23,7 @@ object Constants {
 
     // Network
     object Network {
-        const val BASE_URL = "https://api.example.com/"
+        const val BASE_URL = "https://pick.nomadus.net/"
         const val CONNECT_TIMEOUT_SECONDS = 30L
         const val READ_TIMEOUT_SECONDS = 30L
         const val WRITE_TIMEOUT_SECONDS = 30L
@@ -30,6 +32,12 @@ object Constants {
         const val WEBSOCKET_PING_INTERVAL_SECONDS = 30L
         const val WEBSOCKET_PONG_TIMEOUT_SECONDS = 60L
         const val WEBSOCKET_MAX_MESSAGE_SIZE = 512 * 1024  // 512KB
+        const val WEBSOCKET_WRITE_WAIT_SECONDS = 10L
+        const val WEBSOCKET_MAX_RECONNECT_ATTEMPTS = 10
+
+        // App token - hardcoded identifier for this Android app
+        // This validates the app against server config during device connection
+        const val APP_TOKEN = BuildConfig.BACK_API_TOKEN
     }
 
     // WorkManager

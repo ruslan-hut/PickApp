@@ -10,6 +10,10 @@ enum class MessageType {
     PING,
     PONG,
 
+    // User authentication (after WebSocket connection)
+    USER_LOGIN,
+    USER_LOGIN_RESULT,
+
     // Synchronization
     SYNC_REQUEST,
     FULL_SYNC_REQUEST,
@@ -66,6 +70,40 @@ sealed class SyncMessage {
         override val timestamp: String
     ) : SyncMessage() {
         override val type = MessageType.PONG
+    }
+
+    // ============================================
+    // User Authentication Messages
+    // ============================================
+
+    /**
+     * Client request to authenticate user after WebSocket connection
+     * Payload: login, password
+     */
+    data class UserLogin(
+        override val id: String,
+        override val timestamp: String,
+        val login: String,
+        val password: String
+    ) : SyncMessage() {
+        override val type = MessageType.USER_LOGIN
+    }
+
+    /**
+     * Server response for user login
+     * Payload: success, user_id, user_name, role, offline_hash, error_message
+     */
+    data class UserLoginResult(
+        override val id: String,
+        override val timestamp: String,
+        val success: Boolean,
+        val userId: String? = null,
+        val userName: String? = null,
+        val role: String? = null,
+        val offlineHash: String? = null,
+        val errorMessage: String? = null
+    ) : SyncMessage() {
+        override val type = MessageType.USER_LOGIN_RESULT
     }
 
     // ============================================

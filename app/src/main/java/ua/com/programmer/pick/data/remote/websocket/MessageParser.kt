@@ -67,6 +67,15 @@ class MessageParser @Inject constructor(
         private const val FIELD_EVENT = "event"
         private const val FIELD_ENTITY_ID = "entity_id"
 
+        // User login fields
+        private const val FIELD_LOGIN = "login"
+        private const val FIELD_PASSWORD = "password"
+        private const val FIELD_USER_ID = "user_id"
+        private const val FIELD_USER_NAME = "user_name"
+        private const val FIELD_ROLE = "role"
+        private const val FIELD_OFFLINE_HASH = "offline_hash"
+        private const val FIELD_ERROR_MESSAGE = "error_message"
+
         private val ISO_8601_FORMATTER = DateTimeFormatter.ISO_INSTANT
     }
 
@@ -84,6 +93,7 @@ class MessageParser @Inject constructor(
 
             when (typeStr.uppercase()) {
                 MessageType.PONG.name -> parsePong(id, timestamp)
+                MessageType.USER_LOGIN_RESULT.name -> parseUserLoginResult(id, timestamp, payload)
                 MessageType.SYNC_DATA.name -> parseSyncData(id, timestamp, payload)
                 MessageType.SYNC_COMPLETE.name -> parseSyncComplete(id, timestamp, payload)
                 MessageType.DOCUMENT_LOCK_RESULT.name -> parseDocumentLockResult(id, timestamp, payload)
@@ -125,6 +135,11 @@ class MessageParser @Inject constructor(
     private fun buildPayload(message: SyncMessage): JsonObject? {
         return when (message) {
             is SyncMessage.Ping -> null  // PING has null payload
+
+            is SyncMessage.UserLogin -> JsonObject().apply {
+                addProperty(FIELD_LOGIN, message.login)
+                addProperty(FIELD_PASSWORD, message.password)
+            }
 
             is SyncMessage.SyncRequest -> JsonObject().apply {
                 add(FIELD_ENTITY_TYPES, gson.toJsonTree(message.entityTypes))
@@ -183,6 +198,7 @@ class MessageParser @Inject constructor(
 
             // Server-to-client messages (not serialized by client)
             is SyncMessage.Pong,
+            is SyncMessage.UserLoginResult,
             is SyncMessage.SyncData,
             is SyncMessage.SyncComplete,
             is SyncMessage.DocumentLockResult,
@@ -199,6 +215,19 @@ class MessageParser @Inject constructor(
 
     private fun parsePong(id: String, timestamp: String): SyncMessage.Pong {
         return SyncMessage.Pong(id = id, timestamp = timestamp)
+    }
+
+    private fun parseUserLoginResult(id: String, timestamp: String, payload: JsonObject?): SyncMessage.UserLoginResult {
+        return SyncMessage.UserLoginResult(
+            id = id,
+            timestamp = timestamp,
+            success = payload?.get(FIELD_SUCCESS)?.asBoolean ?: false,
+            userId = payload?.get(FIELD_USER_ID)?.asString,
+            userName = payload?.get(FIELD_USER_NAME)?.asString,
+            role = payload?.get(FIELD_ROLE)?.asString,
+            offlineHash = payload?.get(FIELD_OFFLINE_HASH)?.asString,
+            errorMessage = payload?.get(FIELD_ERROR_MESSAGE)?.asString
+        )
     }
 
     private fun parseSyncData(id: String, timestamp: String, payload: JsonObject?): SyncMessage.SyncData? {

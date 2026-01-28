@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -29,6 +30,9 @@ class AppPreferences @Inject constructor(
         private val SERVER_URL = stringPreferencesKey("server_url")
         private val OFFLINE_HASH = stringPreferencesKey("offline_hash")
         private val EXPIRES_AT = longPreferencesKey("expires_at")
+        private val DEVICE_ID = stringPreferencesKey("device_id")
+        private val USER_LOGIN = stringPreferencesKey("user_login")
+        private val USER_PASSWORD = stringPreferencesKey("user_password")
     }
 
     val authToken: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -53,6 +57,18 @@ class AppPreferences @Inject constructor(
 
     val expiresAt: Flow<Long?> = context.dataStore.data.map { preferences ->
         preferences[EXPIRES_AT]
+    }
+
+    val deviceId: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[DEVICE_ID] ?: generateAndStoreDeviceId()
+    }
+
+    val userLogin: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[USER_LOGIN]
+    }
+
+    val userPassword: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[USER_PASSWORD]
     }
 
     // Synchronous getter for interceptor (use with caution)
@@ -153,6 +169,63 @@ class AppPreferences @Inject constructor(
             preferences.remove(AUTH_TOKEN)
             preferences.remove(REFRESH_TOKEN)
             preferences.remove(CURRENT_USER_ID)
+            preferences.remove(USER_LOGIN)
+            preferences.remove(USER_PASSWORD)
+        }
+    }
+
+    /**
+     * Get device ID synchronously, generating one if not exists.
+     * Device ID is a unique identifier for this device installation.
+     */
+    fun getDeviceIdSync(): String = runBlocking {
+        val prefs = context.dataStore.data.first()
+        prefs[DEVICE_ID] ?: generateAndStoreDeviceId()
+    }
+
+    private suspend fun generateAndStoreDeviceId(): String {
+        val newId = UUID.randomUUID().toString()
+        context.dataStore.edit { preferences ->
+            if (preferences[DEVICE_ID] == null) {
+                preferences[DEVICE_ID] = newId
+            }
+        }
+        return context.dataStore.data.first()[DEVICE_ID] ?: newId
+    }
+
+    /**
+     * Store user credentials for WebSocket login.
+     * These are used to re-authenticate after WebSocket reconnects.
+     */
+    suspend fun setUserCredentials(login: String, password: String) {
+        context.dataStore.edit { preferences ->
+            preferences[USER_LOGIN] = login
+            preferences[USER_PASSWORD] = password
+        }
+    }
+
+    /**
+     * Get stored user credentials synchronously.
+     * Returns Pair(login, password) or null if not stored.
+     */
+    fun getUserCredentialsSync(): Pair<String, String>? = runBlocking {
+        val prefs = context.dataStore.data.first()
+        val login = prefs[USER_LOGIN]
+        val password = prefs[USER_PASSWORD]
+        if (login != null && password != null) {
+            Pair(login, password)
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Clear stored user credentials
+     */
+    suspend fun clearUserCredentials() {
+        context.dataStore.edit { preferences ->
+            preferences.remove(USER_LOGIN)
+            preferences.remove(USER_PASSWORD)
         }
     }
 }

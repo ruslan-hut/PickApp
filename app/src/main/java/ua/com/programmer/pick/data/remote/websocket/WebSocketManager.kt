@@ -14,19 +14,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
-import com.google.gson.Gson
 import ua.com.programmer.pick.core.Constants
 import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.util.NetworkMonitor
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
-import ua.com.programmer.pick.data.remote.dto.AuthDto
 import kotlinx.coroutines.CoroutineDispatcher
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -46,7 +42,39 @@ sealed class ConnectionState {
 }
 
 /**
+ * User authentication state (after WebSocket connection)
+ */
+sealed class UserAuthState {
+    data object NotAuthenticated : UserAuthState()
+    data object Authenticating : UserAuthState()
+    data class Authenticated(
+        val userId: String,
+        val userName: String,
+        val role: String,
+        val offlineHash: String?
+    ) : UserAuthState()
+    data class AuthFailed(val error: String) : UserAuthState()
+}
+
+/**
+ * Result of user login operation
+ */
+data class UserLoginResult(
+    val success: Boolean,
+    val userId: String? = null,
+    val userName: String? = null,
+    val role: String? = null,
+    val offlineHash: String? = null,
+    val errorMessage: String? = null
+)
+
+/**
  * Manages WebSocket connection for real-time synchronization.
+ *
+ * Authentication Flow (per protocol):
+ * 1. Stage 1: Device Connection - Connect with app_token + device_id
+ * 2. Stage 2: User Login - After WebSocket established, send USER_LOGIN message
+ *
  * Handles automatic reconnection with exponential backoff.
  * Implements PING/PONG keep-alive mechanism.
  */
@@ -56,19 +84,17 @@ class WebSocketManager @Inject constructor(
     private val messageParser: MessageParser,
     private val appPreferences: AppPreferences,
     private val networkMonitor: NetworkMonitor,
-    private val gson: Gson,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) {
     companion object {
         private const val TAG = "WebSocketManager"
-        private const val MAX_RECONNECT_ATTEMPTS = 10
         private const val INITIAL_RECONNECT_DELAY_MS = 1000L
         private const val MAX_RECONNECT_DELAY_MS = 60000L
         private const val BACKOFF_MULTIPLIER = 2.0
         private const val REQUEST_TIMEOUT_MS = 30000L  // 30 seconds timeout for request/response
-        private const val TOKEN_EXPIRY_MARGIN_MS = 5 * 60 * 1000L  // 5 minutes before expiry
-        private const val AUTH_ERROR_CLOSE_CODE = 4001
-        private const val FORBIDDEN_ERROR_CODE = "FORBIDDEN"
+        private const val DEVICE_PENDING_CLOSE_CODE = 4003
+        private const val DEVICE_REJECTED_CLOSE_CODE = 4004
+        private const val NOT_AUTHENTICATED_ERROR_CODE = "NOT_AUTHENTICATED"
     }
 
     private val scope = CoroutineScope(ioDispatcher)
@@ -83,6 +109,9 @@ class WebSocketManager @Inject constructor(
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
+    private val _userAuthState = MutableStateFlow<UserAuthState>(UserAuthState.NotAuthenticated)
+    val userAuthState: StateFlow<UserAuthState> = _userAuthState.asStateFlow()
+
     private val _incomingMessages = MutableSharedFlow<SyncMessage>(extraBufferCapacity = 64)
     val incomingMessages: SharedFlow<SyncMessage> = _incomingMessages.asSharedFlow()
 
@@ -92,7 +121,8 @@ class WebSocketManager @Inject constructor(
     private var isManuallyDisconnected = false
 
     /**
-     * Connect to WebSocket server
+     * Connect to WebSocket server (Stage 1: Device Connection)
+     * Uses app_token + device_id for initial connection.
      */
     fun connect() {
         if (_connectionState.value is ConnectionState.Connected ||
@@ -120,19 +150,77 @@ class WebSocketManager @Inject constructor(
         webSocket = null
 
         _connectionState.value = ConnectionState.Disconnected
+        _userAuthState.value = UserAuthState.NotAuthenticated
         pendingResponses.clear()
 
         Log.d(TAG, "WebSocket disconnected manually")
     }
 
     /**
-     * Send a message through WebSocket
+     * Login user after WebSocket connection (Stage 2: User Login)
+     * @param login User login
+     * @param password User password
+     * @return UserLoginResult with success/failure and user info
+     */
+    suspend fun loginUser(login: String, password: String): UserLoginResult {
+        if (_connectionState.value !is ConnectionState.Connected) {
+            return UserLoginResult(success = false, errorMessage = "WebSocket not connected")
+        }
+
+        _userAuthState.value = UserAuthState.Authenticating
+
+        val message = SyncMessage.UserLogin(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp(),
+            login = login,
+            password = password
+        )
+
+        val response = sendAndAwait(message, SyncMessage.UserLoginResult::class.java)
+
+        return if (response != null && response.success) {
+            _userAuthState.value = UserAuthState.Authenticated(
+                userId = response.userId ?: "",
+                userName = response.userName ?: "",
+                role = response.role ?: "",
+                offlineHash = response.offlineHash
+            )
+            Log.d(TAG, "User authenticated: ${response.userName} (${response.role})")
+            UserLoginResult(
+                success = true,
+                userId = response.userId,
+                userName = response.userName,
+                role = response.role,
+                offlineHash = response.offlineHash
+            )
+        } else {
+            val error = response?.errorMessage ?: "Login failed"
+            _userAuthState.value = UserAuthState.AuthFailed(error)
+            Log.w(TAG, "User authentication failed: $error")
+            UserLoginResult(success = false, errorMessage = error)
+        }
+    }
+
+    /**
+     * Check if user is authenticated (Stage 2 complete)
+     */
+    fun isUserAuthenticated(): Boolean = _userAuthState.value is UserAuthState.Authenticated
+
+    /**
+     * Send a message through WebSocket.
+     * Note: Some operations require user authentication (see protocol).
      * @return true if message was sent successfully
      */
     fun sendMessage(message: SyncMessage): Boolean {
         val ws = webSocket
         if (ws == null || _connectionState.value !is ConnectionState.Connected) {
             Log.w(TAG, "Cannot send message - not connected")
+            return false
+        }
+
+        // Check if message requires user authentication
+        if (requiresUserAuth(message) && !isUserAuthenticated()) {
+            Log.w(TAG, "Cannot send ${message.type} - user not authenticated")
             return false
         }
 
@@ -155,6 +243,20 @@ class WebSocketManager @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Error sending message: ${e.message}", e)
             false
+        }
+    }
+
+    /**
+     * Check if a message type requires user authentication
+     */
+    private fun requiresUserAuth(message: SyncMessage): Boolean {
+        return when (message) {
+            // Operations allowed without user login
+            is SyncMessage.Ping -> false
+            is SyncMessage.UserLogin -> false
+            is SyncMessage.ErrorReport -> false
+            // All other operations require user authentication
+            else -> true
         }
     }
 
@@ -203,21 +305,15 @@ class WebSocketManager @Inject constructor(
         }
 
         _connectionState.value = ConnectionState.Connecting
+        _userAuthState.value = UserAuthState.NotAuthenticated
 
-        // Refresh token if near expiry before connecting
-        val token = refreshTokenIfNeeded() ?: appPreferences.getAuthTokenSync()
-        if (token.isNullOrEmpty()) {
-            Log.w(TAG, "No auth token available")
-            _connectionState.value = ConnectionState.Error("No auth token", null)
-            return
-        }
-
-        val wsUrl = buildWebSocketUrl(token)
+        val deviceId = appPreferences.getDeviceIdSync()
+        val wsUrl = buildWebSocketUrl(deviceId)
         Log.d(TAG, "Connecting to WebSocket: $wsUrl")
 
         val request = Request.Builder()
             .url(wsUrl)
-            .header("Authorization", "Bearer $token")
+            .header("X-App-Token", Constants.Network.APP_TOKEN)
             .build()
 
         // Create WebSocket client without OkHttp ping (we use our own)
@@ -229,70 +325,18 @@ class WebSocketManager @Inject constructor(
     }
 
     /**
-     * Refresh token if it is near expiry (within 5 minutes).
-     * Returns the new token if refresh succeeded, or null to use existing token.
+     * Build WebSocket URL with device_id in query parameter.
+     * Format: ws://{host}:{port}/ws/connect?app_token={app_token}&device_id={device_id}
+     *
+     * Note: app_token is also sent via X-App-Token header as fallback
      */
-    private fun refreshTokenIfNeeded(): String? {
-        val expiresAt = appPreferences.getExpiresAtSync() ?: return null
-        val now = System.currentTimeMillis()
-
-        if (expiresAt - now > TOKEN_EXPIRY_MARGIN_MS) {
-            // Token still valid, no refresh needed
-            return null
-        }
-
-        Log.d(TAG, "Token near expiry, attempting refresh before WebSocket connect")
-        return tryRefreshToken()
-    }
-
-    /**
-     * Attempt to refresh the auth token synchronously.
-     * Returns the new token if successful, null otherwise.
-     */
-    private fun tryRefreshToken(): String? {
-        val refreshToken = appPreferences.getRefreshTokenSync() ?: return null
-
-        return try {
-            val client = OkHttpClient.Builder().build()
-
-            val requestBody = gson.toJson(AuthDto.RefreshRequest(refreshToken))
-                .toRequestBody("application/json".toMediaType())
-
-            val request = Request.Builder()
-                .url("${Constants.Network.BASE_URL}auth/refresh")
-                .post(requestBody)
-                .build()
-
-            val response = client.newCall(request).execute()
-
-            if (response.isSuccessful) {
-                response.body?.string()?.let { body ->
-                    val loginResponse = gson.fromJson(body, AuthDto.LoginResponse::class.java)
-                    appPreferences.setTokensSync(loginResponse.token, loginResponse.refreshToken)
-                    Log.d(TAG, "Token refreshed successfully for WebSocket")
-                    loginResponse.token
-                }
-            } else {
-                Log.w(TAG, "Token refresh failed with code: ${response.code}")
-                null
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error refreshing token for WebSocket: ${e.message}", e)
-            null
-        }
-    }
-
-    /**
-     * Build WebSocket URL with token in query parameter
-     * New format: ws://{host}:{port}/ws/connect?token={jwt_token}
-     */
-    private fun buildWebSocketUrl(token: String): String {
+    private fun buildWebSocketUrl(deviceId: String): String {
         val baseUrl = Constants.Network.BASE_URL
             .replace("https://", "wss://")
             .replace("http://", "ws://")
             .trimEnd('/')
 
-        return "$baseUrl/ws/connect?token=$token"
+        return "$baseUrl/ws/connect?app_token=${Constants.Network.APP_TOKEN}&device_id=$deviceId"
     }
 
     private fun createWebSocketListener() = object : WebSocketListener() {
@@ -304,6 +348,9 @@ class WebSocketManager @Inject constructor(
 
             // Start PING timer
             startPingTimer()
+
+            // Attempt auto-login if credentials are stored
+            attemptAutoLogin()
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
@@ -337,10 +384,49 @@ class WebSocketManager @Inject constructor(
         }
     }
 
+    /**
+     * Attempt to login with stored credentials after connection.
+     * Skips if user is already authenticated or authenticating.
+     */
+    private fun attemptAutoLogin() {
+        scope.launch {
+            // Skip if already authenticated or in the process of authenticating
+            val currentAuthState = _userAuthState.value
+            if (currentAuthState is UserAuthState.Authenticated ||
+                currentAuthState is UserAuthState.Authenticating) {
+                Log.d(TAG, "User already authenticated or authenticating, skipping auto-login")
+                return@launch
+            }
+
+            val credentials = appPreferences.getUserCredentialsSync()
+            if (credentials != null) {
+                Log.d(TAG, "Attempting auto-login with stored credentials")
+                loginUser(credentials.first, credentials.second)
+            } else {
+                Log.d(TAG, "No stored credentials for auto-login")
+            }
+        }
+    }
+
     private fun handleIncomingMessage(message: SyncMessage) {
         when (message) {
             is SyncMessage.Pong -> {
                 handlePong()
+            }
+            is SyncMessage.UserLoginResult -> {
+                // Handle login result - try to resolve pending response
+                tryResolvePendingResponse(message)
+            }
+            is SyncMessage.ServerError -> {
+                // Check if NOT_AUTHENTICATED error
+                if (message.code == NOT_AUTHENTICATED_ERROR_CODE) {
+                    Log.w(TAG, "Server requires user authentication for this operation")
+                    _userAuthState.value = UserAuthState.NotAuthenticated
+                }
+                // Forward to observers
+                scope.launch {
+                    _incomingMessages.emit(message)
+                }
             }
             else -> {
                 // Check if this is a response to a pending request
@@ -362,6 +448,7 @@ class WebSocketManager @Inject constructor(
             is SyncMessage.DocumentCompleteResult -> message.documentId
             is SyncMessage.ProductLookupResult -> message.id
             is SyncMessage.SyncComplete -> message.syncId
+            is SyncMessage.UserLoginResult -> message.id
             else -> message.id
         }
 
@@ -448,6 +535,7 @@ class WebSocketManager @Inject constructor(
     private fun handleDisconnection(code: Int, reason: String) {
         webSocket = null
         stopPingTimer()
+        _userAuthState.value = UserAuthState.NotAuthenticated
 
         // Clean up stale pending responses before clearing all
         cleanupStalePendingResponses()
@@ -460,13 +548,26 @@ class WebSocketManager @Inject constructor(
         pendingResponses.clear()
 
         if (!isManuallyDisconnected) {
-            // If auth error, try refreshing token before reconnect
-            if (code == AUTH_ERROR_CLOSE_CODE) {
-                Log.d(TAG, "Auth error on WebSocket (code $code), attempting token refresh")
-                val newToken = tryRefreshToken()
-                if (newToken == null) {
-                    Log.w(TAG, "Token refresh failed after auth error, not reconnecting")
-                    _connectionState.value = ConnectionState.Error("Authentication failed", code)
+            // Check for device-related errors (should not auto-reconnect)
+            when (code) {
+                DEVICE_PENDING_CLOSE_CODE -> {
+                    Log.w(TAG, "Device is PENDING approval - not reconnecting")
+                    _connectionState.value = ConnectionState.Error("Device pending approval", code)
+                    return
+                }
+                DEVICE_REJECTED_CLOSE_CODE -> {
+                    Log.w(TAG, "Device is REJECTED - not reconnecting")
+                    _connectionState.value = ConnectionState.Error("Device rejected", code)
+                    return
+                }
+                401 -> {
+                    Log.w(TAG, "Invalid app token - not reconnecting")
+                    _connectionState.value = ConnectionState.Error("Invalid app token", code)
+                    return
+                }
+                403 -> {
+                    Log.w(TAG, "Device forbidden (${reason}) - not reconnecting")
+                    _connectionState.value = ConnectionState.Error("Device forbidden: $reason", code)
                     return
                 }
             }
@@ -483,7 +584,7 @@ class WebSocketManager @Inject constructor(
             return
         }
 
-        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        if (reconnectAttempts >= Constants.Network.WEBSOCKET_MAX_RECONNECT_ATTEMPTS) {
             Log.w(TAG, "Max reconnect attempts reached")
             _connectionState.value = ConnectionState.Error("Max reconnect attempts reached", null)
             return

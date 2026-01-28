@@ -37,7 +37,9 @@ import ua.com.programmer.pick.data.remote.websocket.ConnectionState
 import ua.com.programmer.pick.data.remote.websocket.DocumentLineUpdate
 import ua.com.programmer.pick.data.remote.websocket.MessageParser
 import ua.com.programmer.pick.data.remote.websocket.SyncMessage
+import ua.com.programmer.pick.data.remote.websocket.UserAuthState
 import ua.com.programmer.pick.data.remote.websocket.WebSocketManager
+import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.domain.repository.EntityType
 import ua.com.programmer.pick.domain.repository.OperationType
 import ua.com.programmer.pick.domain.repository.OutgoingOperationRepository
@@ -61,6 +63,10 @@ enum class SyncStatus {
 data class SyncState(
     val isOnline: Boolean = false,
     val isWebSocketConnected: Boolean = false,
+    val isUserAuthenticated: Boolean = false,
+    val authenticatedUserId: String? = null,
+    val authenticatedUserName: String? = null,
+    val authenticatedUserRole: String? = null,
     val isSyncing: Boolean = false,
     val pendingOperationsCount: Int = 0,
     val lastSyncTime: Long? = null,
@@ -99,6 +105,7 @@ data class DocumentCompleteResult(
 class SyncOrchestrator @Inject constructor(
     private val webSocketManager: WebSocketManager,
     private val messageParser: MessageParser,
+    private val appPreferences: AppPreferences,
     private val syncStateDao: SyncStateDao,
     private val documentDao: DocumentDao,
     private val documentLineDao: DocumentLineDao,
@@ -156,11 +163,44 @@ class SyncOrchestrator @Inject constructor(
                 val isConnected = connectionState is ConnectionState.Connected
                 _syncState.value = _syncState.value.copy(isWebSocketConnected = isConnected)
 
-                if (isConnected) {
-                    // Request sync when connected
-                    requestDeltaSync()
-                    // Process any queued offline operations
-                    processPendingOperations()
+                // Note: Sync and pending operations are now triggered after user login
+                // (see userAuthState observer below)
+            }
+            .launchIn(scope)
+
+        // Observe user authentication state (Stage 2 of protocol)
+        webSocketManager.userAuthState
+            .onEach { authState ->
+                when (authState) {
+                    is UserAuthState.Authenticated -> {
+                        _syncState.value = _syncState.value.copy(
+                            isUserAuthenticated = true,
+                            authenticatedUserId = authState.userId,
+                            authenticatedUserName = authState.userName,
+                            authenticatedUserRole = authState.role
+                        )
+
+                        // Now that user is authenticated, request sync and process pending operations
+                        requestDeltaSync()
+                        processPendingOperations()
+                    }
+                    is UserAuthState.AuthFailed -> {
+                        _syncState.value = _syncState.value.copy(
+                            isUserAuthenticated = false,
+                            authenticatedUserId = null,
+                            authenticatedUserName = null,
+                            authenticatedUserRole = null,
+                            lastError = "User login failed: ${authState.error}"
+                        )
+                    }
+                    else -> {
+                        _syncState.value = _syncState.value.copy(
+                            isUserAuthenticated = false,
+                            authenticatedUserId = null,
+                            authenticatedUserName = null,
+                            authenticatedUserRole = null
+                        )
+                    }
                 }
             }
             .launchIn(scope)
@@ -196,18 +236,74 @@ class SyncOrchestrator @Inject constructor(
         webSocketManager.disconnect()
     }
 
+    /**
+     * Login user via WebSocket (Stage 2: User Login)
+     * This should be called after WebSocket connection is established.
+     *
+     * @param login User login
+     * @param password User password
+     * @return Result with success/failure
+     */
+    suspend fun loginUser(login: String, password: String): Result<Unit> {
+        if (!webSocketManager.isConnected()) {
+            return Result.Error(Exception("WebSocket not connected"))
+        }
+
+        val result = webSocketManager.loginUser(login, password)
+
+        return if (result.success) {
+            // Store credentials for auto-login on reconnect
+            appPreferences.setUserCredentials(login, password)
+
+            // Store user ID
+            result.userId?.let { userId ->
+                appPreferences.setCurrentUserId(userId)
+            }
+
+            // Store offline hash if provided (for offline authentication)
+            result.offlineHash?.let { hash ->
+                appPreferences.setOfflineHash(hash)
+            }
+
+            Result.Success(Unit)
+        } else {
+            Result.Error(Exception(result.errorMessage ?: "Login failed"))
+        }
+    }
+
+    /**
+     * Logout user - clears credentials and resets auth state
+     */
+    suspend fun logoutUser() {
+        appPreferences.clearUserCredentials()
+        // Disconnect and reconnect to reset the session
+        // (user will need to login again after reconnect)
+        disconnectWebSocket()
+    }
+
+    /**
+     * Check if user is authenticated via WebSocket
+     */
+    fun isUserAuthenticated(): Boolean = webSocketManager.isUserAuthenticated()
+
     // ============================================
     // Sync Operations
     // ============================================
 
     /**
-     * Request delta sync for all entities via WebSocket
+     * Request delta sync for all entities via WebSocket.
+     * Requires user authentication (per protocol).
      */
     suspend fun requestDeltaSync(): Result<Unit> {
         Log.d(TAG, "Requesting delta sync")
 
         if (!webSocketManager.isConnected()) {
             return Result.Error(Exception("WebSocket not connected"))
+        }
+
+        if (!webSocketManager.isUserAuthenticated()) {
+            Log.d(TAG, "User not authenticated, skipping sync request")
+            return Result.Error(Exception("User not authenticated"))
         }
 
         _syncState.value = _syncState.value.copy(isSyncing = true)
@@ -237,13 +333,19 @@ class SyncOrchestrator @Inject constructor(
     }
 
     /**
-     * Request full sync for all entities via WebSocket
+     * Request full sync for all entities via WebSocket.
+     * Requires user authentication (per protocol).
      */
     suspend fun requestFullSync(): Result<Unit> {
         Log.d(TAG, "Requesting full sync")
 
         if (!webSocketManager.isConnected()) {
             return Result.Error(Exception("WebSocket not connected"))
+        }
+
+        if (!webSocketManager.isUserAuthenticated()) {
+            Log.d(TAG, "User not authenticated, skipping full sync request")
+            return Result.Error(Exception("User not authenticated"))
         }
 
         _syncState.value = _syncState.value.copy(isSyncing = true)
@@ -547,6 +649,11 @@ class SyncOrchestrator @Inject constructor(
                 is SyncMessage.ServerError -> {
                     handleServerError(message)
                 }
+                is SyncMessage.UserLoginResult -> {
+                    // UserLoginResult is handled by WebSocketManager's userAuthState flow
+                    // which SyncOrchestrator observes in initialize()
+                    Log.d(TAG, "UserLoginResult received, handled via userAuthState flow")
+                }
                 else -> {
                     Log.d(TAG, "Unhandled message type: ${message.type}")
                 }
@@ -809,6 +916,7 @@ class SyncOrchestrator @Inject constructor(
 
     private suspend fun requestEntitySync(entityType: String) {
         if (!webSocketManager.isConnected()) return
+        if (!webSocketManager.isUserAuthenticated()) return
 
         val cursor = syncStateDao.getCursor(entityType)
         val cursors = if (cursor != null) mapOf(entityType to cursor) else null
@@ -843,11 +951,17 @@ class SyncOrchestrator @Inject constructor(
 
     /**
      * Process all pending outgoing operations via WebSocket.
-     * Called when WebSocket connects and from SyncWorker.
+     * Called after user authentication and from SyncWorker.
+     * Requires user authentication (per protocol).
      */
     suspend fun processPendingOperations() {
         if (!webSocketManager.isConnected()) {
             Log.d(TAG, "Cannot process pending operations - WebSocket not connected")
+            return
+        }
+
+        if (!webSocketManager.isUserAuthenticated()) {
+            Log.d(TAG, "Cannot process pending operations - user not authenticated")
             return
         }
 

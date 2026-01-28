@@ -1,21 +1,25 @@
 package ua.com.programmer.pick.data.repository
 
+import android.util.Log
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withTimeoutOrNull
 import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.util.NetworkMonitor
 import ua.com.programmer.pick.core.util.PasswordHasher
 import ua.com.programmer.pick.core.util.Result
 import ua.com.programmer.pick.data.local.database.dao.UserDao
+import ua.com.programmer.pick.data.local.database.entity.UserEntity
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.mapper.toDomain
-import ua.com.programmer.pick.data.mapper.toEntity
-import ua.com.programmer.pick.data.remote.api.AuthApi
-import ua.com.programmer.pick.data.remote.dto.AuthDto
+import ua.com.programmer.pick.data.remote.websocket.ConnectionState
+import ua.com.programmer.pick.data.remote.websocket.WebSocketManager
 import ua.com.programmer.pick.domain.model.User
+import ua.com.programmer.pick.domain.model.UserRole
 import ua.com.programmer.pick.domain.repository.UserRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -24,13 +28,19 @@ import javax.inject.Singleton
 
 @Singleton
 class UserRepositoryImpl @Inject constructor(
-    private val authApi: AuthApi,
+    private val webSocketManager: WebSocketManager,
     private val userDao: UserDao,
     private val appPreferences: AppPreferences,
     private val passwordHasher: PasswordHasher,
     private val networkMonitor: NetworkMonitor,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : UserRepository {
+
+    companion object {
+        private const val TAG = "UserRepository"
+        private const val WEBSOCKET_CONNECT_TIMEOUT_MS = 10000L
+        private const val WEBSOCKET_CONNECT_CHECK_INTERVAL_MS = 100L
+    }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun getCurrentUser(): Flow<User?> {
@@ -43,64 +53,150 @@ class UserRepositoryImpl @Inject constructor(
         }
     }
 
+    /**
+     * Login user via WebSocket.
+     *
+     * Flow:
+     * 1. If online: Connect WebSocket, send USER_LOGIN, receive USER_LOGIN_RESULT
+     * 2. If offline: Use stored offline hash for local authentication
+     */
     override suspend fun login(login: String, password: String): Result<User> =
         withContext(ioDispatcher) {
             try {
                 // Check if online
                 if (networkMonitor.isCurrentlyConnected()) {
-                    // Try online login
-                    val response = authApi.login(
-                        AuthDto.LoginRequest(
-                            login = login,
-                            password = password
-                        )
-                    )
-
-                    if (response.isSuccessful && response.body() != null) {
-                        val loginResponse = response.body()!!
-                        val userDto = loginResponse.user
-
-                        // Hash password for offline login
-                        val passwordHash = passwordHasher.hash(password, login)
-
-                        // Save user to local database
-                        val userEntity = userDto.toEntity(passwordHash)
-                        userDao.insertUser(userEntity)
-
-                        // Update last login time
-                        val currentTime = System.currentTimeMillis()
-                        userDao.updateLastLoginTime(userDto.id, currentTime)
-
-                        // Save tokens
-                        appPreferences.setAuthToken(loginResponse.token)
-                        appPreferences.setRefreshToken(loginResponse.refreshToken)
-                        appPreferences.setExpiresAt(loginResponse.expiresAt)
-                        appPreferences.setCurrentUserId(userDto.id)
-
-                        // Save offline hash from server (if provided)
-                        loginResponse.offlineHash?.let { hash ->
-                            appPreferences.setOfflineHash(hash)
-                        }
-
-                        val user = userDto.toDomain().copy(lastLoginAt = currentTime)
-                        Result.Success(user)
-                    } else {
-                        // Online login failed, try offline
-                        loginOffline(login, password)
-                    }
+                    // Try online login via WebSocket
+                    loginViaWebSocket(login, password)
                 } else {
                     // No network, try offline login
+                    Log.d(TAG, "No network, attempting offline login")
                     loginOffline(login, password)
                 }
             } catch (e: Exception) {
+                Log.e(TAG, "Login error: ${e.message}", e)
                 // Network error, try offline login
                 loginOffline(login, password)
             }
         }
 
+    /**
+     * Login via WebSocket using USER_LOGIN message (per protocol)
+     */
+    private suspend fun loginViaWebSocket(login: String, password: String): Result<User> {
+        Log.d(TAG, "Attempting WebSocket login for user: $login")
+
+        // Ensure WebSocket is connected
+        if (!webSocketManager.isConnected()) {
+            Log.d(TAG, "WebSocket not connected, connecting...")
+            webSocketManager.connect()
+
+            // Wait for connection with timeout
+            val connected = waitForWebSocketConnection()
+            if (!connected) {
+                Log.w(TAG, "WebSocket connection timeout, falling back to offline login")
+                return loginOffline(login, password)
+            }
+        }
+
+        // Send USER_LOGIN via WebSocket
+        val loginResult = webSocketManager.loginUser(login, password)
+
+        return if (loginResult.success) {
+            Log.d(TAG, "WebSocket login successful: ${loginResult.userName}")
+
+            // Hash password for offline login
+            val passwordHash = passwordHasher.hash(password, login)
+
+            // Create or update user in local database
+            val userId = loginResult.userId ?: return Result.Error(
+                Exception("Missing user ID in login response")
+            )
+
+            val currentTime = System.currentTimeMillis()
+
+            // Check if user already exists
+            val existingUser = userDao.getUserById(userId)
+            val userEntity = if (existingUser != null) {
+                existingUser.copy(
+                    login = login,
+                    name = loginResult.userName ?: existingUser.name,
+                    passwordHash = passwordHash,
+                    role = loginResult.role ?: existingUser.role,
+                    lastLoginAt = currentTime,
+                    lastUpdated = currentTime
+                )
+            } else {
+                UserEntity(
+                    id = userId,
+                    login = login,
+                    name = loginResult.userName ?: login,
+                    passwordHash = passwordHash,
+                    role = loginResult.role ?: UserRole.WAREHOUSE_WORKER.name,
+                    isActive = true,
+                    lastLoginAt = currentTime,
+                    lastUpdated = currentTime
+                )
+            }
+            userDao.insertUser(userEntity)
+
+            // Save user preferences
+            appPreferences.setCurrentUserId(userId)
+
+            // Save offline hash from server (for offline authentication)
+            loginResult.offlineHash?.let { hash ->
+                appPreferences.setOfflineHash(hash)
+            }
+
+            // Store credentials for WebSocket auto-login on reconnect
+            appPreferences.setUserCredentials(login, password)
+
+            val user = userEntity.toDomain()
+            Result.Success(user)
+        } else {
+            val error = loginResult.errorMessage ?: "Login failed"
+            Log.w(TAG, "WebSocket login failed: $error")
+
+            // If WebSocket login fails, try offline login as fallback
+            // (in case user exists locally with valid credentials)
+            val offlineResult = loginOffline(login, password)
+            if (offlineResult is Result.Success) {
+                offlineResult
+            } else {
+                Result.Error(Exception(error), error)
+            }
+        }
+    }
+
+    /**
+     * Wait for WebSocket to connect with timeout
+     */
+    private suspend fun waitForWebSocketConnection(): Boolean {
+        return withTimeoutOrNull(WEBSOCKET_CONNECT_TIMEOUT_MS) {
+            while (true) {
+                val state = webSocketManager.connectionState.value
+                when (state) {
+                    is ConnectionState.Connected -> return@withTimeoutOrNull true
+                    is ConnectionState.Error -> return@withTimeoutOrNull false
+                    is ConnectionState.Disconnected -> {
+                        // Connection was rejected or failed
+                        if (!networkMonitor.isCurrentlyConnected()) {
+                            return@withTimeoutOrNull false
+                        }
+                    }
+                    else -> { /* Connecting or Reconnecting - keep waiting */ }
+                }
+                delay(WEBSOCKET_CONNECT_CHECK_INTERVAL_MS)
+            }
+            @Suppress("UNREACHABLE_CODE")
+            false
+        } ?: false
+    }
+
     override suspend fun loginOffline(login: String, password: String): Result<User> =
         withContext(ioDispatcher) {
             try {
+                Log.d(TAG, "Attempting offline login for user: $login")
+
                 val userEntity = userDao.getUserByLogin(login) ?: return@withContext Result.Error(
                     Exception("User not found"),
                     "User not found. Please connect to network for first login."
@@ -128,27 +224,23 @@ class UserRepositoryImpl @Inject constructor(
                 // Set current user
                 appPreferences.setCurrentUserId(userEntity.id)
 
+                // Store credentials for WebSocket auto-login on reconnect
+                appPreferences.setUserCredentials(login, password)
+
+                Log.d(TAG, "Offline login successful for user: $login")
                 val user = userEntity.toDomain().copy(lastLoginAt = currentTime)
                 Result.Success(user)
             } catch (e: Exception) {
+                Log.e(TAG, "Offline login error: ${e.message}", e)
                 Result.Error(e, e.message ?: "Offline login failed")
             }
         }
 
     override suspend fun logout() = withContext(ioDispatcher) {
-        try {
-            // Try to notify server if online
-            if (networkMonitor.isCurrentlyConnected()) {
-                try {
-                    authApi.logout()
-                } catch (_: Exception) {
-                    // Ignore network errors during logout
-                }
-            }
-        } finally {
-            // Always clear local session
-            appPreferences.clearSession()
-        }
+        Log.d(TAG, "Logging out user")
+        // Clear local session and credentials
+        appPreferences.clearSession()
+        // WebSocket will be disconnected by SyncOrchestrator when user logs out
     }
 
     override suspend fun getUserById(id: String): User? = withContext(ioDispatcher) {
