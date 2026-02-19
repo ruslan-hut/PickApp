@@ -272,6 +272,9 @@ class WebSocketManager @Inject constructor(
         responseType: Class<T>,
         timeoutMs: Long = REQUEST_TIMEOUT_MS
     ): T? {
+        // Extract correlation ID from outgoing message for response matching
+        val correlationId = extractOutgoingCorrelationId(message)
+
         if (!sendMessage(message)) {
             return null
         }
@@ -281,13 +284,27 @@ class WebSocketManager @Inject constructor(
                 pendingResponses[message.id] = PendingResponse(
                     messageId = message.id,
                     expectedType = responseType,
-                    continuation = continuation
+                    continuation = continuation,
+                    correlationId = correlationId
                 )
 
                 continuation.invokeOnCancellation {
                     pendingResponses.remove(message.id)
                 }
             }
+        }
+    }
+
+    /**
+     * Extract correlation ID from outgoing messages for response matching
+     */
+    private fun extractOutgoingCorrelationId(message: SyncMessage): String? {
+        return when (message) {
+            is SyncMessage.DocumentLock -> message.documentId
+            is SyncMessage.DocumentComplete -> message.documentId
+            is SyncMessage.ProductLookup -> message.barcode
+            is SyncMessage.UserLogin -> message.login
+            else -> null
         }
     }
 
@@ -442,25 +459,34 @@ class WebSocketManager @Inject constructor(
 
     @Suppress("UNCHECKED_CAST")
     private fun tryResolvePendingResponse(message: SyncMessage) {
-        // For response messages, try to correlate by message ID or document ID
-        val responseId = when (message) {
-            is SyncMessage.DocumentLockResult -> message.documentId
-            is SyncMessage.DocumentCompleteResult -> message.documentId
-            is SyncMessage.ProductLookupResult -> message.id
-            is SyncMessage.SyncComplete -> message.syncId
-            is SyncMessage.UserLoginResult -> message.id
-            else -> message.id
-        }
+        // Extract correlation ID from incoming response
+        val incomingCorrelationId = extractIncomingCorrelationId(message)
 
-        // Try to find pending response by ID
+        // Try to find pending response by type AND correlation ID
         val pending = pendingResponses.entries.find { (_, response) ->
-            response.expectedType.isInstance(message)
+            response.expectedType.isInstance(message) &&
+                (response.correlationId == null || incomingCorrelationId == null ||
+                    response.correlationId == incomingCorrelationId)
         }
 
         if (pending != null) {
             pendingResponses.remove(pending.key)
             val continuation = pending.value.continuation as? CancellableContinuation<SyncMessage>
             continuation?.resume(message)
+        }
+    }
+
+    /**
+     * Extract correlation ID from incoming response messages
+     */
+    private fun extractIncomingCorrelationId(message: SyncMessage): String? {
+        return when (message) {
+            is SyncMessage.DocumentLockResult -> message.documentId
+            is SyncMessage.DocumentCompleteResult -> message.documentId
+            is SyncMessage.ProductLookupResult -> null  // no document-level correlation
+            is SyncMessage.UserLoginResult -> null  // single login at a time
+            is SyncMessage.SyncComplete -> null  // single sync at a time
+            else -> null
         }
     }
 
@@ -480,8 +506,15 @@ class WebSocketManager @Inject constructor(
                     break
                 }
 
-                sendPing()
-                startPongTimeoutTimer()
+                // Only send a new ping if the previous one was answered
+                val timeSinceLastPong = System.currentTimeMillis() - lastPongReceived
+                if (timeSinceLastPong > Constants.Network.WEBSOCKET_PING_INTERVAL_SECONDS * 1000) {
+                    // Previous ping still unanswered — let the existing timeout handle it
+                    Log.w(TAG, "Previous PING still unanswered, skipping new PING")
+                } else {
+                    sendPing()
+                    startPongTimeoutTimer()
+                }
 
                 // Cleanup stale pending responses every ~5 minutes (every 10th ping at 30s interval)
                 pingCount++
@@ -632,6 +665,7 @@ class WebSocketManager @Inject constructor(
         val messageId: String,
         val expectedType: Class<*>,
         val continuation: CancellableContinuation<*>,
+        val correlationId: String? = null,
         val createdAt: Long = System.currentTimeMillis()
     )
 }

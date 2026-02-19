@@ -13,6 +13,10 @@ interface OutgoingOperationRepository {
 
     suspend fun getAllPendingOperations(): List<OutgoingOperation>
 
+    suspend fun getAllRetryableOperations(): List<OutgoingOperation>
+
+    suspend fun resetStaleProcessingOperations()
+
     suspend fun getOperationById(id: String): OutgoingOperation?
 
     suspend fun queueOperation(

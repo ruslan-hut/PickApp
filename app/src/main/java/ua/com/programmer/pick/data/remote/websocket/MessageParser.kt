@@ -246,7 +246,10 @@ class MessageParser @Inject constructor(
         val cursorsJson = payload.get(FIELD_CURSORS)?.asJsonObject ?: return null
         val cursors = mutableMapOf<String, String>()
         cursorsJson.entrySet().forEach { (key, value) ->
-            cursors[key] = value.asString
+            val str = value?.asString
+            if (str != null) {
+                cursors[key] = str
+            }
         }
         return SyncMessage.SyncComplete(
             id = id,

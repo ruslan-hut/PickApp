@@ -4,6 +4,8 @@ import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -125,6 +127,8 @@ class SyncOrchestrator @Inject constructor(
 ) {
     companion object {
         private const val TAG = "SyncOrchestrator"
+        private const val SYNC_TIMEOUT_MS = 60_000L
+        private const val MAX_QUEUE_RETRIES = 5
     }
 
     private val scope = CoroutineScope(ioDispatcher)
@@ -135,6 +139,7 @@ class SyncOrchestrator @Inject constructor(
     // Track current sync session
     private var currentSyncId: String? = null
     private var pendingSyncCursors: Map<String, String>? = null
+    private var syncTimeoutJob: Job? = null
 
     private var isInitialized = false
 
@@ -146,6 +151,16 @@ class SyncOrchestrator @Inject constructor(
         isInitialized = true
 
         Log.d(TAG, "Initializing SyncOrchestrator")
+
+        // Reset operations stuck in PROCESSING from a previous crash
+        scope.launch {
+            try {
+                outgoingOperationRepository.resetStaleProcessingOperations()
+                Log.d(TAG, "Reset stale PROCESSING operations to PENDING")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to reset stale operations: ${e.message}", e)
+            }
+        }
 
         // Observe network state
         networkMonitor.isOnline
@@ -329,7 +344,27 @@ class SyncOrchestrator @Inject constructor(
             updateEntitySyncStatus(entityType, SyncStatus.SYNCING)
         }
 
+        // Start sync timeout
+        startSyncTimeout()
+
         return Result.Success(Unit)
+    }
+
+    private fun startSyncTimeout() {
+        syncTimeoutJob?.cancel()
+        syncTimeoutJob = scope.launch {
+            delay(SYNC_TIMEOUT_MS)
+            if (_syncState.value.isSyncing) {
+                Log.e(TAG, "Sync timeout after ${SYNC_TIMEOUT_MS}ms")
+                _syncState.value = _syncState.value.copy(
+                    isSyncing = false,
+                    lastError = "Sync timeout"
+                )
+                Constants.SyncEntity.ALL.forEach { entityType ->
+                    updateEntitySyncStatus(entityType, SyncStatus.ERROR)
+                }
+            }
+        }
     }
 
     /**
@@ -411,8 +446,8 @@ class SyncOrchestrator @Inject constructor(
             )
 
             if (response.success) {
-                // Update local document state
-                documentDao.updateDocumentState(documentId, "IN_PROGRESS", System.currentTimeMillis())
+                // Update local document state from server confirmation (don't mark dirty)
+                documentDao.updateDocumentStateFromServer(documentId, "IN_PROGRESS", System.currentTimeMillis())
                 response.lockedBy?.let { userId ->
                     documentDao.updateAssignedUser(documentId, userId, System.currentTimeMillis())
                 }
@@ -431,7 +466,14 @@ class SyncOrchestrator @Inject constructor(
         Log.d(TAG, "Unlocking document: $documentId")
 
         if (!webSocketManager.isConnected()) {
-            return Result.Error(Exception("WebSocket not connected"))
+            Log.d(TAG, "WebSocket not connected, queueing unlock operation for document: $documentId")
+            outgoingOperationRepository.queueOperation(
+                operationType = OperationType.DOCUMENT_UNLOCK,
+                entityType = EntityType.DOCUMENT,
+                entityId = documentId,
+                payload = gson.toJson(mapOf("document_id" to documentId))
+            )
+            return Result.Success(Unit)
         }
 
         val message = SyncMessage.DocumentUnlock(
@@ -442,8 +484,8 @@ class SyncOrchestrator @Inject constructor(
 
         val sent = webSocketManager.sendMessage(message)
         return if (sent) {
-            // Update local document state
-            documentDao.updateDocumentState(documentId, "LOADED", System.currentTimeMillis())
+            // Update local document state from server action (don't mark dirty)
+            documentDao.updateDocumentStateFromServer(documentId, "LOADED", System.currentTimeMillis())
             documentDao.clearAssignedUser(documentId)
             Result.Success(Unit)
         } else {
@@ -530,8 +572,8 @@ class SyncOrchestrator @Inject constructor(
             )
 
             if (response.success) {
-                // Update local document state
-                documentDao.updateDocumentState(documentId, response.state ?: "COMPLETED", System.currentTimeMillis())
+                // Update local document state from server confirmation (don't mark dirty)
+                documentDao.updateDocumentStateFromServer(documentId, response.state ?: "COMPLETED", System.currentTimeMillis())
                 response.version?.let { version ->
                     documentDao.updateDocumentVersion(documentId, version)
                 }
@@ -676,6 +718,8 @@ class SyncOrchestrator @Inject constructor(
     private suspend fun handleSyncComplete(message: SyncMessage.SyncComplete) {
         Log.d(TAG, "Sync complete: ${message.syncId}")
 
+        syncTimeoutJob?.cancel()
+        syncTimeoutJob = null
         currentSyncId = message.syncId
         pendingSyncCursors = message.cursors
 
@@ -708,7 +752,7 @@ class SyncOrchestrator @Inject constructor(
         Log.d(TAG, "Document lock result: ${message.documentId}, success: ${message.success}")
 
         if (message.success) {
-            documentDao.updateDocumentState(message.documentId, "IN_PROGRESS", System.currentTimeMillis())
+            documentDao.updateDocumentStateFromServer(message.documentId, "IN_PROGRESS", System.currentTimeMillis())
             message.lockedBy?.let { userId ->
                 documentDao.updateAssignedUser(message.documentId, userId, System.currentTimeMillis())
             }
@@ -719,7 +763,7 @@ class SyncOrchestrator @Inject constructor(
         Log.d(TAG, "Document complete result: ${message.documentId}, success: ${message.success}")
 
         if (message.success) {
-            documentDao.updateDocumentState(message.documentId, message.state ?: "COMPLETED", System.currentTimeMillis())
+            documentDao.updateDocumentStateFromServer(message.documentId, message.state ?: "COMPLETED", System.currentTimeMillis())
             message.version?.let { version ->
                 documentDao.updateDocumentVersion(message.documentId, version)
             }
@@ -743,6 +787,9 @@ class SyncOrchestrator @Inject constructor(
                 message.entityType?.let { entityType ->
                     requestEntitySync(entityType)
                 }
+            }
+            else -> {
+                Log.w(TAG, "Unhandled push event: ${message.event}")
             }
         }
     }
@@ -816,6 +863,13 @@ class SyncOrchestrator @Inject constructor(
             val documents: List<DocumentDto> = gson.fromJson(data, type)
 
             documents.forEach { dto ->
+                // Skip overwriting locally dirty documents — server will get our version when uploaded
+                val existing = documentDao.getDocumentById(dto.id)
+                if (existing != null && existing.isDirty) {
+                    Log.w(TAG, "Skipping server upsert for dirty document: ${dto.id}")
+                    return@forEach
+                }
+
                 val entity = documentMapper.toEntity(dto)
                 documentDao.upsertDocument(entity)
 
@@ -965,7 +1019,7 @@ class SyncOrchestrator @Inject constructor(
             return
         }
 
-        val pendingOps = outgoingOperationRepository.getAllPendingOperations()
+        val pendingOps = outgoingOperationRepository.getAllRetryableOperations()
         if (pendingOps.isEmpty()) {
             Log.d(TAG, "No pending operations to process")
             return
@@ -980,9 +1034,79 @@ class SyncOrchestrator @Inject constructor(
             }
 
             outgoingOperationRepository.markOperationProcessing(operation.id)
+            processOperation(operation)
+        }
 
-            val message = buildMessageFromOperation(operation)
-            if (message != null) {
+        // Clean up completed and old failed operations
+        outgoingOperationRepository.deleteCompletedOperations()
+        outgoingOperationRepository.deleteFailedOperations(MAX_QUEUE_RETRIES)
+    }
+
+    private suspend fun processOperation(operation: ua.com.programmer.pick.domain.repository.OutgoingOperation) {
+        val message = buildMessageFromOperation(operation)
+        if (message == null) {
+            outgoingOperationRepository.markOperationFailed(operation.id, "Failed to build message from operation")
+            Log.w(TAG, "Failed to build message for operation: ${operation.id}")
+            return
+        }
+
+        when (operation.operationType) {
+            OperationType.DOCUMENT_LOCK -> {
+                val response = webSocketManager.sendAndAwait(
+                    message,
+                    SyncMessage.DocumentLockResult::class.java
+                )
+                if (response != null) {
+                    if (response.success) {
+                        documentDao.updateDocumentStateFromServer(
+                            response.documentId, "IN_PROGRESS", System.currentTimeMillis()
+                        )
+                        response.lockedBy?.let { userId ->
+                            documentDao.updateAssignedUser(response.documentId, userId, System.currentTimeMillis())
+                        }
+                        outgoingOperationRepository.markOperationCompleted(operation.id)
+                        Log.d(TAG, "Queued DOCUMENT_LOCK succeeded for ${operation.entityId}")
+                    } else {
+                        outgoingOperationRepository.markOperationFailed(
+                            operation.id, response.error ?: "Server rejected lock"
+                        )
+                        Log.w(TAG, "Queued DOCUMENT_LOCK rejected for ${operation.entityId}: ${response.error}")
+                    }
+                } else {
+                    outgoingOperationRepository.markOperationFailed(operation.id, "Lock request timeout")
+                    Log.w(TAG, "Queued DOCUMENT_LOCK timeout for ${operation.entityId}")
+                }
+            }
+            OperationType.DOCUMENT_COMPLETE -> {
+                val response = webSocketManager.sendAndAwait(
+                    message,
+                    SyncMessage.DocumentCompleteResult::class.java
+                )
+                if (response != null) {
+                    if (response.success) {
+                        documentDao.updateDocumentStateFromServer(
+                            response.documentId,
+                            response.state ?: "COMPLETED",
+                            System.currentTimeMillis()
+                        )
+                        response.version?.let { version ->
+                            documentDao.updateDocumentVersion(response.documentId, version)
+                        }
+                        outgoingOperationRepository.markOperationCompleted(operation.id)
+                        Log.d(TAG, "Queued DOCUMENT_COMPLETE succeeded for ${operation.entityId}")
+                    } else {
+                        outgoingOperationRepository.markOperationFailed(
+                            operation.id, response.error ?: "Server rejected complete"
+                        )
+                        Log.w(TAG, "Queued DOCUMENT_COMPLETE rejected for ${operation.entityId}: ${response.error}")
+                    }
+                } else {
+                    outgoingOperationRepository.markOperationFailed(operation.id, "Complete request timeout")
+                    Log.w(TAG, "Queued DOCUMENT_COMPLETE timeout for ${operation.entityId}")
+                }
+            }
+            else -> {
+                // Fire-and-forget for DOCUMENT_UPDATE, DOCUMENT_UNLOCK, etc.
                 val sent = webSocketManager.sendMessage(message)
                 if (sent) {
                     outgoingOperationRepository.markOperationCompleted(operation.id)
@@ -991,9 +1115,6 @@ class SyncOrchestrator @Inject constructor(
                     outgoingOperationRepository.markOperationFailed(operation.id, "Failed to send via WebSocket")
                     Log.w(TAG, "Failed to send pending operation: ${operation.id}")
                 }
-            } else {
-                outgoingOperationRepository.markOperationFailed(operation.id, "Failed to build message from operation")
-                Log.w(TAG, "Failed to build message for operation: ${operation.id}")
             }
         }
     }
@@ -1005,25 +1126,35 @@ class SyncOrchestrator @Inject constructor(
             val timestamp = messageParser.getCurrentTimestamp()
 
             when (operation.operationType) {
-                OperationType.DOCUMENT_LOCK -> SyncMessage.DocumentLock(
-                    id = id,
-                    timestamp = timestamp,
-                    documentId = payloadJson.get("document_id").asString
-                )
-                OperationType.DOCUMENT_UNLOCK -> SyncMessage.DocumentUnlock(
-                    id = id,
-                    timestamp = timestamp,
-                    documentId = payloadJson.get("document_id").asString
-                )
+                OperationType.DOCUMENT_LOCK -> {
+                    val documentId = payloadJson.get("document_id")?.asString
+                    if (documentId == null) {
+                        Log.e(TAG, "Missing document_id in DOCUMENT_LOCK payload")
+                        return null
+                    }
+                    SyncMessage.DocumentLock(id = id, timestamp = timestamp, documentId = documentId)
+                }
+                OperationType.DOCUMENT_UNLOCK -> {
+                    val documentId = payloadJson.get("document_id")?.asString
+                    if (documentId == null) {
+                        Log.e(TAG, "Missing document_id in DOCUMENT_UNLOCK payload")
+                        return null
+                    }
+                    SyncMessage.DocumentUnlock(id = id, timestamp = timestamp, documentId = documentId)
+                }
                 OperationType.DOCUMENT_UPDATE -> {
-                    val documentId = payloadJson.get("document_id").asString
-                    val state = payloadJson.get("state").asString
-                    val linesJson = payloadJson.get("lines").asJsonArray
+                    val documentId = payloadJson.get("document_id")?.asString
+                    val state = payloadJson.get("state")?.asString
+                    val linesJson = payloadJson.get("lines")?.asJsonArray
+                    if (documentId == null || state == null || linesJson == null) {
+                        Log.e(TAG, "Missing required fields in DOCUMENT_UPDATE payload (documentId=$documentId, state=$state, lines=${linesJson != null})")
+                        return null
+                    }
                     val lines = linesJson.map { lineElement ->
                         val lineObj = lineElement.asJsonObject
                         DocumentLineUpdate(
-                            lineNumber = lineObj.get("lineNumber").asInt,
-                            actualQuantity = lineObj.get("actualQuantity").asDouble,
+                            lineNumber = lineObj.get("lineNumber")?.asInt ?: 0,
+                            actualQuantity = lineObj.get("actualQuantity")?.asDouble ?: 0.0,
                             batchNumber = lineObj.get("batchNumber")?.asString,
                             isCompleted = lineObj.get("isCompleted")?.asBoolean ?: false
                         )
@@ -1036,11 +1167,14 @@ class SyncOrchestrator @Inject constructor(
                         lines = lines
                     )
                 }
-                OperationType.DOCUMENT_COMPLETE -> SyncMessage.DocumentComplete(
-                    id = id,
-                    timestamp = timestamp,
-                    documentId = payloadJson.get("document_id").asString
-                )
+                OperationType.DOCUMENT_COMPLETE -> {
+                    val documentId = payloadJson.get("document_id")?.asString
+                    if (documentId == null) {
+                        Log.e(TAG, "Missing document_id in DOCUMENT_COMPLETE payload")
+                        return null
+                    }
+                    SyncMessage.DocumentComplete(id = id, timestamp = timestamp, documentId = documentId)
+                }
                 else -> {
                     Log.w(TAG, "Unsupported operation type for offline queue: ${operation.operationType}")
                     null

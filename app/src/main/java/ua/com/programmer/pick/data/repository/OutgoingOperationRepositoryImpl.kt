@@ -41,6 +41,14 @@ class OutgoingOperationRepositoryImpl @Inject constructor(
         outgoingOperationDao.getAllPendingOperations().map { it.toDomain() }
     }
 
+    override suspend fun getAllRetryableOperations(): List<OutgoingOperation> = withContext(ioDispatcher) {
+        outgoingOperationDao.getAllRetryableOperations().map { it.toDomain() }
+    }
+
+    override suspend fun resetStaleProcessingOperations() = withContext(ioDispatcher) {
+        outgoingOperationDao.resetStaleProcessingOperations()
+    }
+
     override suspend fun getOperationById(id: String): OutgoingOperation? = withContext(ioDispatcher) {
         outgoingOperationDao.getOperationById(id)?.toDomain()
     }

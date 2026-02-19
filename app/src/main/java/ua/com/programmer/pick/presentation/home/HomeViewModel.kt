@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ua.com.programmer.pick.core.util.NetworkMonitor
+import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.domain.model.OperatingMode
 import ua.com.programmer.pick.domain.repository.UserRepository
 import javax.inject.Inject
@@ -16,7 +17,8 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val userRepository: UserRepository,
-    private val networkMonitor: NetworkMonitor
+    private val networkMonitor: NetworkMonitor,
+    private val syncOrchestrator: SyncOrchestrator
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -52,8 +54,14 @@ class HomeViewModel @Inject constructor(
     fun syncData() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
-            // TODO: Trigger full sync via sync repository
-            _uiState.update { it.copy(isLoading = false) }
+            try {
+                syncOrchestrator.processPendingOperations()
+                syncOrchestrator.requestDeltaSync()
+            } catch (_: Exception) {
+                // Sync errors are tracked in SyncOrchestrator.syncState
+            } finally {
+                _uiState.update { it.copy(isLoading = false) }
+            }
         }
     }
 

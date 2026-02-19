@@ -53,6 +53,9 @@ interface DocumentDao {
     @Query("UPDATE documents SET state = :state, is_dirty = 1, last_modified = :lastModified WHERE id = :documentId")
     suspend fun updateDocumentState(documentId: String, state: String, lastModified: Long)
 
+    @Query("UPDATE documents SET state = :state, last_modified = :lastModified WHERE id = :documentId")
+    suspend fun updateDocumentStateFromServer(documentId: String, state: String, lastModified: Long)
+
     @Query("UPDATE documents SET assigned_user_id = :userId, taken_at = :takenAt, state = :state, is_dirty = 1, last_modified = :lastModified WHERE id = :documentId")
     suspend fun takeDocumentIntoWork(documentId: String, userId: String, takenAt: Long, state: String, lastModified: Long)
 

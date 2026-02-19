@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +23,8 @@ import ua.com.programmer.pick.core.scanner.BarcodeService
 import ua.com.programmer.pick.core.scanner.ScannedBarcode
 import ua.com.programmer.pick.data.local.database.dao.ProductImageDao
 import ua.com.programmer.pick.core.util.Result
+import ua.com.programmer.pick.data.remote.websocket.DocumentLineUpdate
+import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.domain.model.DocumentLine
 import ua.com.programmer.pick.domain.model.DocumentState
 import ua.com.programmer.pick.domain.model.DocumentType
@@ -38,6 +42,7 @@ class DocumentDetailViewModel @Inject constructor(
     private val productImageDao: ProductImageDao,
     private val barcodeService: BarcodeService,
     private val productRepository: ProductRepository,
+    private val syncOrchestrator: SyncOrchestrator,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -52,6 +57,7 @@ class DocumentDetailViewModel @Inject constructor(
     val uiEvents = _uiEvents.asSharedFlow()
 
     private var currentDocumentId: String? = null
+    private var syncDebounceJob: Job? = null
 
     init {
         // Subscribe to barcode scans once when ViewModel is created
@@ -180,10 +186,12 @@ class DocumentDetailViewModel @Inject constructor(
                     // Persist change
                     try {
                         documentRepository.incrementLineQuantity(line.id, 1.0)
+                        notifyDocumentLinesChanged()
                     } catch (_: Exception) {
                         // Fallback to updateLine
                         try {
                             documentRepository.updateLine(line.id, newQty, null)
+                            notifyDocumentLinesChanged()
                         } catch (_: Exception) {
                             _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
                         }
@@ -230,9 +238,11 @@ class DocumentDetailViewModel @Inject constructor(
                     // Persist change
                     try {
                         documentRepository.incrementLineQuantity(existingLine.id, 1.0)
+                        notifyDocumentLinesChanged()
                     } catch (_: Exception) {
                         try {
                             documentRepository.updateLine(existingLine.id, newQty, null)
+                            notifyDocumentLinesChanged()
                         } catch (_: Exception) {
                             _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
                         }
@@ -279,6 +289,7 @@ class DocumentDetailViewModel @Inject constructor(
 
                     try {
                         documentRepository.saveLine(newLine)
+                        notifyDocumentLinesChanged()
                     } catch (_: Exception) {
                         _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
                     }
@@ -312,6 +323,7 @@ class DocumentDetailViewModel @Inject constructor(
             try {
                 documentRepository.updateLine(lineId, newQuantity, null)
                 _uiState.update { it.copy(isSaving = false) }
+                notifyDocumentLinesChanged()
             } catch (ex: Exception) {
                 _uiState.update { it.copy(isSaving = false, errorMessage = (ex.message ?: ToastMessage.ERROR_SAVING) as String?) }
             }
@@ -346,6 +358,15 @@ class DocumentDetailViewModel @Inject constructor(
                             )
                         }
                         _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_TAKEN_INTO_WORK))
+
+                        // Notify server (fire-and-forget, offline queue handles disconnected state)
+                        viewModelScope.launch(ioDispatcher) {
+                            try {
+                                syncOrchestrator.lockDocument(documentId)
+                            } catch (e: Exception) {
+                                Log.w("DocumentDetailViewModel", "Failed to sync lock: ${e.message}")
+                            }
+                        }
                     }
                     is Result.Error -> {
                         _uiState.update { it.copy(isProcessingAction = false) }
@@ -385,6 +406,15 @@ class DocumentDetailViewModel @Inject constructor(
                             )
                         }
                         _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_COMPLETED))
+
+                        // Notify server (fire-and-forget)
+                        viewModelScope.launch(ioDispatcher) {
+                            try {
+                                syncOrchestrator.completeDocument(documentId)
+                            } catch (e: Exception) {
+                                Log.w("DocumentDetailViewModel", "Failed to sync complete: ${e.message}")
+                            }
+                        }
                     }
                     is Result.Error -> {
                         _uiState.update { it.copy(isProcessingAction = false) }
@@ -398,6 +428,32 @@ class DocumentDetailViewModel @Inject constructor(
                 Log.e("DocumentDetailViewModel", "completeDocument failed", e)
                 _uiState.update { it.copy(isProcessingAction = false) }
                 _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_COMPLETE_DOCUMENT))
+            }
+        }
+    }
+
+    /**
+     * Debounced push of document line changes to server.
+     * Batches rapid scans into a single update after 500ms of inactivity.
+     */
+    private fun notifyDocumentLinesChanged() {
+        syncDebounceJob?.cancel()
+        syncDebounceJob = viewModelScope.launch(ioDispatcher) {
+            delay(500L)
+            val state = _uiState.value
+            val doc = state.document ?: return@launch
+            val lines = state.lines.map { line ->
+                DocumentLineUpdate(
+                    lineNumber = line.lineNumber,
+                    actualQuantity = line.actualQuantity,
+                    batchNumber = line.batchNumber,
+                    isCompleted = line.isCompleted
+                )
+            }
+            try {
+                syncOrchestrator.updateDocument(doc.id, doc.state.name, lines)
+            } catch (e: Exception) {
+                Log.w("DocumentDetailViewModel", "Failed to sync lines: ${e.message}")
             }
         }
     }

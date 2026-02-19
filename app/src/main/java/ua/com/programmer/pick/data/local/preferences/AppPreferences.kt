@@ -1,12 +1,16 @@
 package ua.com.programmer.pick.data.local.preferences
 
 import android.content.Context
+import android.content.SharedPreferences
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKeys
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -24,6 +28,7 @@ class AppPreferences @Inject constructor(
 ) {
 
     companion object {
+        private const val TAG = "AppPreferences"
         private val AUTH_TOKEN = stringPreferencesKey("auth_token")
         private val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
         private val CURRENT_USER_ID = stringPreferencesKey("current_user_id")
@@ -31,8 +36,60 @@ class AppPreferences @Inject constructor(
         private val OFFLINE_HASH = stringPreferencesKey("offline_hash")
         private val EXPIRES_AT = longPreferencesKey("expires_at")
         private val DEVICE_ID = stringPreferencesKey("device_id")
+        // Plaintext keys kept for migration only
         private val USER_LOGIN = stringPreferencesKey("user_login")
         private val USER_PASSWORD = stringPreferencesKey("user_password")
+
+        // Encrypted SharedPreferences keys
+        private const val ENCRYPTED_PREFS_NAME = "encrypted_credentials"
+        private const val KEY_ENCRYPTED_LOGIN = "user_login"
+        private const val KEY_ENCRYPTED_PASSWORD = "user_password"
+    }
+
+    private val encryptedPrefs: SharedPreferences? by lazy {
+        try {
+            val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+            EncryptedSharedPreferences.create(
+                ENCRYPTED_PREFS_NAME,
+                masterKeyAlias,
+                context,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create EncryptedSharedPreferences: ${e.message}", e)
+            null
+        }
+    }
+
+    init {
+        // Migrate plaintext credentials to encrypted storage
+        migratePlaintextCredentials()
+    }
+
+    private fun migratePlaintextCredentials() {
+        try {
+            runBlocking {
+                val prefs = context.dataStore.data.first()
+                val login = prefs[USER_LOGIN]
+                val password = prefs[USER_PASSWORD]
+                if (login != null && password != null) {
+                    // Move to encrypted storage
+                    encryptedPrefs?.edit()
+                        ?.putString(KEY_ENCRYPTED_LOGIN, login)
+                        ?.putString(KEY_ENCRYPTED_PASSWORD, password)
+                        ?.apply()
+                    // Remove from plaintext DataStore
+                    context.dataStore.edit { mutable ->
+                        mutable.remove(USER_LOGIN)
+                        mutable.remove(USER_PASSWORD)
+                    }
+                    Log.d(TAG, "Migrated plaintext credentials to encrypted storage")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to migrate credentials: ${e.message}", e)
+        }
     }
 
     val authToken: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -63,12 +120,12 @@ class AppPreferences @Inject constructor(
         preferences[DEVICE_ID] ?: generateAndStoreDeviceId()
     }
 
-    val userLogin: Flow<String?> = context.dataStore.data.map { preferences ->
-        preferences[USER_LOGIN]
+    val userLogin: Flow<String?> = context.dataStore.data.map {
+        encryptedPrefs?.getString(KEY_ENCRYPTED_LOGIN, null)
     }
 
-    val userPassword: Flow<String?> = context.dataStore.data.map { preferences ->
-        preferences[USER_PASSWORD]
+    val userPassword: Flow<String?> = context.dataStore.data.map {
+        encryptedPrefs?.getString(KEY_ENCRYPTED_PASSWORD, null)
     }
 
     // Synchronous getter for interceptor (use with caution)
@@ -169,9 +226,8 @@ class AppPreferences @Inject constructor(
             preferences.remove(AUTH_TOKEN)
             preferences.remove(REFRESH_TOKEN)
             preferences.remove(CURRENT_USER_ID)
-            preferences.remove(USER_LOGIN)
-            preferences.remove(USER_PASSWORD)
         }
+        encryptedPrefs?.edit()?.clear()?.apply()
     }
 
     /**
@@ -194,25 +250,24 @@ class AppPreferences @Inject constructor(
     }
 
     /**
-     * Store user credentials for WebSocket login.
+     * Store user credentials for WebSocket login (encrypted at rest).
      * These are used to re-authenticate after WebSocket reconnects.
      */
     suspend fun setUserCredentials(login: String, password: String) {
-        context.dataStore.edit { preferences ->
-            preferences[USER_LOGIN] = login
-            preferences[USER_PASSWORD] = password
-        }
+        encryptedPrefs?.edit()
+            ?.putString(KEY_ENCRYPTED_LOGIN, login)
+            ?.putString(KEY_ENCRYPTED_PASSWORD, password)
+            ?.apply()
     }
 
     /**
      * Get stored user credentials synchronously.
      * Returns Pair(login, password) or null if not stored.
      */
-    fun getUserCredentialsSync(): Pair<String, String>? = runBlocking {
-        val prefs = context.dataStore.data.first()
-        val login = prefs[USER_LOGIN]
-        val password = prefs[USER_PASSWORD]
-        if (login != null && password != null) {
+    fun getUserCredentialsSync(): Pair<String, String>? {
+        val login = encryptedPrefs?.getString(KEY_ENCRYPTED_LOGIN, null)
+        val password = encryptedPrefs?.getString(KEY_ENCRYPTED_PASSWORD, null)
+        return if (login != null && password != null) {
             Pair(login, password)
         } else {
             null
@@ -223,9 +278,9 @@ class AppPreferences @Inject constructor(
      * Clear stored user credentials
      */
     suspend fun clearUserCredentials() {
-        context.dataStore.edit { preferences ->
-            preferences.remove(USER_LOGIN)
-            preferences.remove(USER_PASSWORD)
-        }
+        encryptedPrefs?.edit()
+            ?.remove(KEY_ENCRYPTED_LOGIN)
+            ?.remove(KEY_ENCRYPTED_PASSWORD)
+            ?.apply()
     }
 }

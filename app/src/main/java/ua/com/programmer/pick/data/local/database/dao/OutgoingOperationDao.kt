@@ -24,6 +24,12 @@ interface OutgoingOperationDao {
     suspend fun getAllPendingOperations(): List<OutgoingOperationEntity>
 
     @Query("SELECT * FROM outgoing_operations WHERE status IN ('PENDING', 'RETRYING') ORDER BY created_at ASC")
+    suspend fun getAllRetryableOperations(): List<OutgoingOperationEntity>
+
+    @Query("UPDATE outgoing_operations SET status = 'PENDING' WHERE status = 'PROCESSING'")
+    suspend fun resetStaleProcessingOperations()
+
+    @Query("SELECT * FROM outgoing_operations WHERE status IN ('PENDING', 'RETRYING') ORDER BY created_at ASC")
     fun observePendingOperations(): Flow<List<OutgoingOperationEntity>>
 
     @Query("SELECT COUNT(*) FROM outgoing_operations WHERE status IN ('PENDING', 'RETRYING')")
