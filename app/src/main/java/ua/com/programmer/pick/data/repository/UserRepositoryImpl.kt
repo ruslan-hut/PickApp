@@ -2,8 +2,8 @@ package ua.com.programmer.pick.data.repository
 
 import android.util.Log
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -39,7 +39,6 @@ class UserRepositoryImpl @Inject constructor(
     companion object {
         private const val TAG = "UserRepository"
         private const val WEBSOCKET_CONNECT_TIMEOUT_MS = 10000L
-        private const val WEBSOCKET_CONNECT_CHECK_INTERVAL_MS = 100L
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -91,10 +90,12 @@ class UserRepositoryImpl @Inject constructor(
             webSocketManager.connect()
 
             // Wait for connection with timeout
-            val connected = waitForWebSocketConnection()
-            if (!connected) {
-                Log.w(TAG, "WebSocket connection timeout, falling back to offline login")
-                return loginOffline(login, password)
+            val connectionError = waitForWebSocketConnection()
+            if (connectionError != null) {
+                Log.w(TAG, "WebSocket connection failed: $connectionError, falling back to offline login")
+                val offlineResult = loginOffline(login, password)
+                if (offlineResult is Result.Success) return offlineResult
+                return Result.Error(Exception(connectionError), connectionError)
             }
         }
 
@@ -168,28 +169,24 @@ class UserRepositoryImpl @Inject constructor(
     }
 
     /**
-     * Wait for WebSocket to connect with timeout
+     * Wait for WebSocket to connect with timeout.
+     * Returns null on success, or the error message string on failure.
+     *
+     * Uses reactive Flow collection so the brief Error state set in onFailure
+     * is captured even if handleDisconnection immediately overwrites it with Reconnecting.
      */
-    private suspend fun waitForWebSocketConnection(): Boolean {
-        return withTimeoutOrNull(WEBSOCKET_CONNECT_TIMEOUT_MS) {
-            while (true) {
-                val state = webSocketManager.connectionState.value
-                when (state) {
-                    is ConnectionState.Connected -> return@withTimeoutOrNull true
-                    is ConnectionState.Error -> return@withTimeoutOrNull false
-                    is ConnectionState.Disconnected -> {
-                        // Connection was rejected or failed
-                        if (!networkMonitor.isCurrentlyConnected()) {
-                            return@withTimeoutOrNull false
-                        }
-                    }
-                    else -> { /* Connecting or Reconnecting - keep waiting */ }
+    private suspend fun waitForWebSocketConnection(): String? {
+        val finalState = withTimeoutOrNull(WEBSOCKET_CONNECT_TIMEOUT_MS) {
+            webSocketManager.connectionState
+                .first { state ->
+                    state is ConnectionState.Connected || state is ConnectionState.Error
                 }
-                delay(WEBSOCKET_CONNECT_CHECK_INTERVAL_MS)
-            }
-            @Suppress("UNREACHABLE_CODE")
-            false
-        } ?: false
+        }
+        return when {
+            finalState is ConnectionState.Connected -> null
+            finalState is ConnectionState.Error -> finalState.message
+            else -> "Connection timeout"
+        }
     }
 
     override suspend fun loginOffline(login: String, password: String): Result<User> =

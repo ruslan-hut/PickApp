@@ -17,13 +17,19 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -267,6 +273,8 @@ private fun OperatingModeSelector(
     onModeSelected: (OperatingMode) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var expanded by remember { mutableStateOf(false) }
+
     PickElevatedCard(
         modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         elevation = 2.dp
@@ -282,24 +290,46 @@ private fun OperatingModeSelector(
                 color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(12.dp))
-            SingleChoiceSegmentedButtonRow(
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = it },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                OperatingMode.entries.forEachIndexed { index, mode ->
-                    SegmentedButton(
-                        selected = selectedMode == mode,
-                        onClick = { onModeSelected(mode) },
-                        shape = SegmentedButtonDefaults.itemShape(
-                            index = index,
-                            count = OperatingMode.entries.size
-                        )
-                    ) {
-                        Text(
-                            text = when (mode) {
-                                OperatingMode.RECEIPT -> stringResource(R.string.mode_receipt)
-                                OperatingMode.SHIPMENT -> stringResource(R.string.mode_shipment)
-                                OperatingMode.INVENTORY -> stringResource(R.string.mode_inventory)
-                            }
+                OutlinedTextField(
+                    value = when (selectedMode) {
+                        OperatingMode.RECEIPT -> stringResource(R.string.mode_receipt)
+                        OperatingMode.SHIPMENT -> stringResource(R.string.mode_shipment)
+                        OperatingMode.INVENTORY -> stringResource(R.string.mode_inventory)
+                    },
+                    onValueChange = {},
+                    readOnly = true,
+                    singleLine = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                )
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    OperatingMode.entries.forEach { mode ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = when (mode) {
+                                        OperatingMode.RECEIPT -> stringResource(R.string.mode_receipt)
+                                        OperatingMode.SHIPMENT -> stringResource(R.string.mode_shipment)
+                                        OperatingMode.INVENTORY -> stringResource(R.string.mode_inventory)
+                                    }
+                                )
+                            },
+                            onClick = {
+                                onModeSelected(mode)
+                                expanded = false
+                            },
+                            contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
                         )
                     }
                 }
