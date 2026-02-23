@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.domain.model.Document
+import ua.com.programmer.pick.domain.model.DocumentState
 import ua.com.programmer.pick.presentation.common.PickElevatedCard
 import ua.com.programmer.pick.ui.theme.CardShape
 
@@ -36,12 +37,17 @@ fun DocumentListItem(
         (document.totalActual / document.totalPlanned).toFloat().coerceIn(0f, 1f)
     } else 0f
 
-    val isComplete = document.totalActual >= document.totalPlanned && document.totalPlanned > 0
+    val isComplete = document.state == DocumentState.COMPLETED || document.state == DocumentState.SENT
 
     PickElevatedCard(
         onClick = { onClick(document.id) },
         modifier = modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-        elevation = 1.dp
+        elevation = 1.dp,
+        containerColor = if (isComplete) {
+            MaterialTheme.colorScheme.secondaryContainer
+        } else {
+            MaterialTheme.colorScheme.surface
+        }
     ) {
         Row(
             modifier = Modifier
@@ -51,7 +57,10 @@ fun DocumentListItem(
         ) {
             // Leading icon
             Icon(
-                painter = painterResource(R.drawable.outline_description_24),
+                painter = painterResource(
+                    if (isComplete) R.drawable.outline_check_circle_24
+                    else R.drawable.outline_description_24
+                ),
                 contentDescription = null,
                 modifier = Modifier
                     .size(40.dp)
@@ -74,7 +83,11 @@ fun DocumentListItem(
                         document.clientName ?: ""
                     ),
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = if (isComplete) {
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -93,7 +106,11 @@ fun DocumentListItem(
                     } else {
                         MaterialTheme.colorScheme.primary
                     },
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                    trackColor = if (isComplete) {
+                        MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -106,7 +123,11 @@ fun DocumentListItem(
                     Text(
                         text = stringResource(R.string.planned, document.totalPlanned),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (isComplete) {
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
                     )
                     Text(
                         text = stringResource(R.string.actual, document.totalActual),

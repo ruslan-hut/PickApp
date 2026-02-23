@@ -43,19 +43,19 @@ fun DocumentLineRow(
         (line.actualQuantity / line.plannedQuantity).toFloat().coerceIn(0f, 1f)
     } else 0f
 
-    val isComplete = line.actualQuantity >= line.plannedQuantity && line.plannedQuantity > 0
+    val isComplete = line.actualQuantity >= line.plannedQuantity
 
     PickOutlinedCard(
         modifier = modifier.padding(horizontal = 16.dp, vertical = 6.dp),
         borderColor = when {
             isSelected -> MaterialTheme.colorScheme.primary
-            isComplete -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)
+            isComplete -> MaterialTheme.colorScheme.secondary
             else -> MaterialTheme.colorScheme.outlineVariant
         },
-        containerColor = if (isSelected) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.surface
+        containerColor = when {
+            isSelected -> MaterialTheme.colorScheme.primaryContainer
+            isComplete -> MaterialTheme.colorScheme.secondaryContainer
+            else -> MaterialTheme.colorScheme.surface
         }
     ) {
         Column(
@@ -83,7 +83,11 @@ fun DocumentLineRow(
                 Text(
                     text = line.productName,
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = if (isComplete) {
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -104,7 +108,11 @@ fun DocumentLineRow(
                 } else {
                     MaterialTheme.colorScheme.primary
                 },
-                trackColor = MaterialTheme.colorScheme.surfaceVariant
+                trackColor = if (isComplete) {
+                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                }
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -119,7 +127,11 @@ fun DocumentLineRow(
                     Text(
                         text = stringResource(R.string.planned, line.plannedQuantity),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (isComplete) {
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
