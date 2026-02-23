@@ -19,7 +19,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,7 +40,6 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.presentation.common.BrandLogo
-import ua.com.programmer.pick.presentation.common.ErrorSnackbar
 import ua.com.programmer.pick.presentation.common.LoadingButton
 import ua.com.programmer.pick.presentation.common.OfflineBanner
 import ua.com.programmer.pick.ui.theme.ButtonShape
@@ -51,7 +49,6 @@ fun LoginScreen(
     uiState: LoginUiState,
     onLoginClick: (String, String) -> Unit,
     onLoginSuccess: () -> Unit,
-    hostState: SnackbarHostState,
     onClearError: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -72,14 +69,6 @@ fun LoginScreen(
             LoginViewModel.ERROR_EMPTY_CREDENTIALS -> stringResource(R.string.error_empty_credentials)
             LoginViewModel.ERROR_LOGIN_FAILED -> stringResource(R.string.error_login_failed)
             else -> errKey
-        }
-    }
-
-    // Show error as snackbar
-    LaunchedEffect(mappedErrorText) {
-        mappedErrorText?.let { errText ->
-            hostState.showSnackbar(errText)
-            onClearError()
         }
     }
 
@@ -113,7 +102,7 @@ fun LoginScreen(
                 // Login input
                 OutlinedTextField(
                     value = login,
-                    onValueChange = { login = it },
+                    onValueChange = { login = it; onClearError() },
                     label = { Text(stringResource(R.string.label_login)) },
                     leadingIcon = {
                         Icon(
@@ -144,7 +133,7 @@ fun LoginScreen(
                 // Password input with visibility toggle
                 OutlinedTextField(
                     value = password,
-                    onValueChange = { password = it },
+                    onValueChange = { password = it; onClearError() },
                     label = { Text(stringResource(R.string.label_password)) },
                     leadingIcon = {
                         Icon(
@@ -204,11 +193,18 @@ fun LoginScreen(
                     enabled = login.isNotBlank() && password.isNotBlank()
                 )
 
+                if (mappedErrorText != null) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = mappedErrorText,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
                 Spacer(modifier = Modifier.weight(0.5f))
             }
-
-            // Snackbar host at the bottom
-            ErrorSnackbar(hostState = hostState)
         }
     }
 }

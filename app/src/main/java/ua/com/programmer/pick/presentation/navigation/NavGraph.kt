@@ -14,7 +14,6 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -50,7 +49,6 @@ fun PickNavGraph(
     navController: NavHostController = rememberNavController(),
     startDestination: String = Screen.Splash.route
 ) {
-    val snackbarHostState = remember { SnackbarHostState() }
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
@@ -109,7 +107,6 @@ fun PickNavGraph(
                             popUpTo(Screen.Login.route) { inclusive = true }
                         }
                     },
-                    hostState = snackbarHostState,
                     onClearError = viewModel::clearError
                 )
             }
