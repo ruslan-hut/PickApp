@@ -89,15 +89,39 @@ class DocumentRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun completeDocument(documentId: String): Result<Document> = withContext(ioDispatcher) {
+    override suspend fun packageDocument(documentId: String): Result<Document> = withContext(ioDispatcher) {
         try {
             val document = documentDao.getDocumentById(documentId)
                 ?: return@withContext Result.Error(Exception("Document not found"), "Document not found")
 
             if (document.state != DocumentState.IN_PROGRESS.name) {
                 return@withContext Result.Error(
+                    Exception("Document cannot be packaged"),
+                    "Document must be in progress to package"
+                )
+            }
+
+            val currentTime = System.currentTimeMillis()
+            documentDao.updateDocumentState(documentId, DocumentState.PACKAGING.name, currentTime)
+
+            val updatedDocument = documentDao.getDocumentById(documentId)?.toDomain()
+                ?: return@withContext Result.Error(Exception("Document not found after update"), "Document not found")
+
+            Result.Success(updatedDocument)
+        } catch (e: Exception) {
+            Result.Error(e, e.message ?: "Failed to package document")
+        }
+    }
+
+    override suspend fun completeDocument(documentId: String): Result<Document> = withContext(ioDispatcher) {
+        try {
+            val document = documentDao.getDocumentById(documentId)
+                ?: return@withContext Result.Error(Exception("Document not found"), "Document not found")
+
+            if (document.state != DocumentState.PACKAGING.name) {
+                return@withContext Result.Error(
                     Exception("Document cannot be completed"),
-                    "Document must be in progress to complete"
+                    "Document must be in packaging state to complete"
                 )
             }
 

@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.painterResource
@@ -47,9 +48,11 @@ fun QuantityStepper(
     modifier: Modifier = Modifier,
     minValue: Double = 0.0,
     maxValue: Double = Double.MAX_VALUE,
-    step: Double = 1.0
+    step: Double = 1.0,
+    enabled: Boolean = true
 ) {
     var showDialog by remember { mutableStateOf(false) }
+    var overflowEnteredValue by remember { mutableStateOf<Double?>(null) }
 
     Row(
         modifier = modifier,
@@ -60,7 +63,7 @@ fun QuantityStepper(
         FilledIconButton(
             onClick = { onChange((value - step).coerceAtLeast(minValue)) },
             modifier = Modifier.size(40.dp),
-            enabled = value > minValue,
+            enabled = enabled && value > minValue,
             colors = IconButtonDefaults.filledIconButtonColors(
                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -94,7 +97,7 @@ fun QuantityStepper(
                 modifier = Modifier
                     .widthIn(min = 64.dp)
                     .padding(horizontal = 8.dp)
-                    .clickable { showDialog = true }
+                    .clickable(enabled = enabled) { showDialog = true }
             )
         }
 
@@ -102,7 +105,7 @@ fun QuantityStepper(
         FilledIconButton(
             onClick = { onChange((value + step).coerceAtMost(maxValue)) },
             modifier = Modifier.size(40.dp),
-            enabled = value < maxValue,
+            enabled = enabled && value < maxValue,
             colors = IconButtonDefaults.filledIconButtonColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -121,10 +124,21 @@ fun QuantityStepper(
             minValue = minValue,
             maxValue = maxValue,
             onDismiss = { showDialog = false },
-            onConfirm = { newValue ->
-                onChange(newValue)
+            onConfirm = { accepted, enteredOver ->
+                onChange(accepted)
                 showDialog = false
+                if (enteredOver != null) {
+                    overflowEnteredValue = enteredOver
+                }
             }
+        )
+    }
+
+    overflowEnteredValue?.let { entered ->
+        QuantityOverflowDialog(
+            entered = entered,
+            maxValue = maxValue,
+            onDismiss = { overflowEnteredValue = null }
         )
     }
 }
@@ -135,7 +149,8 @@ private fun QuantityInputDialog(
     minValue: Double,
     maxValue: Double,
     onDismiss: () -> Unit,
-    onConfirm: (Double) -> Unit
+    // enteredOver: the originally entered value if it exceeded maxValue, null otherwise
+    onConfirm: (accepted: Double, enteredOver: Double?) -> Unit
 ) {
     val initialText = formatQuantity(currentValue)
     var textFieldValue by remember {
@@ -155,7 +170,10 @@ private fun QuantityInputDialog(
     val confirmAction = {
         val parsed = textFieldValue.text.toIntOrNull()
         if (parsed != null) {
-            onConfirm(parsed.toDouble().coerceIn(minValue, maxValue))
+            val entered = parsed.toDouble()
+            val accepted = entered.coerceIn(minValue, maxValue)
+            val enteredOver = if (entered > maxValue) entered else null
+            onConfirm(accepted, enteredOver)
         }
     }
 
@@ -190,6 +208,35 @@ private fun QuantityInputDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+@Composable
+private fun QuantityOverflowDialog(
+    entered: Double,
+    maxValue: Double,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFFFFC107),
+        text = {
+            Text(
+                text = stringResource(
+                    R.string.quantity_overflow_fmt,
+                    entered,
+                    maxValue,
+                    entered - maxValue
+                ),
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color(0xFF1A1A1A)
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.ok), color = Color(0xFF1A1A1A))
             }
         }
     )

@@ -399,12 +399,107 @@ class DocumentDetailViewModel @Inject constructor(
         }
     }
 
+    fun packageDocument() {
+        val documentId = currentDocumentId ?: return
+        val currentState = _uiState.value.document?.state ?: return
+
+        if (currentState != DocumentState.IN_PROGRESS) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isProcessingAction = true) }
+
+            try {
+                when (val result = documentRepository.packageDocument(documentId)) {
+                    is Result.Success -> {
+                        _uiState.update {
+                            it.copy(document = result.data, isProcessingAction = false)
+                        }
+                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_PACKAGED))
+
+                        viewModelScope.launch(ioDispatcher) {
+                            try {
+                                val lines = _uiState.value.lines.map { line ->
+                                    DocumentLineUpdate(
+                                        lineNumber = line.lineNumber,
+                                        actualQuantity = line.actualQuantity,
+                                        batchNumber = line.batchNumber,
+                                        isCompleted = line.isCompleted
+                                    )
+                                }
+                                syncOrchestrator.updateDocument(documentId, DocumentState.PACKAGING.name, lines)
+                            } catch (e: Exception) {
+                                Log.w("DocumentDetailViewModel", "Failed to sync packaging: ${e.message}")
+                            }
+                        }
+                    }
+                    is Result.Error -> {
+                        _uiState.update { it.copy(isProcessingAction = false) }
+                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_PACKAGE_DOCUMENT))
+                    }
+                    else -> _uiState.update { it.copy(isProcessingAction = false) }
+                }
+            } catch (e: Exception) {
+                Log.e("DocumentDetailViewModel", "packageDocument failed", e)
+                _uiState.update { it.copy(isProcessingAction = false) }
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_PACKAGE_DOCUMENT))
+            }
+        }
+    }
+
+    fun releaseFromPackaging() {
+        val documentId = currentDocumentId ?: return
+        val currentState = _uiState.value.document?.state ?: return
+
+        if (currentState != DocumentState.PACKAGING) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isProcessingAction = true) }
+
+            try {
+                when (documentRepository.updateDocumentState(documentId, DocumentState.IN_PROGRESS)) {
+                    is Result.Success -> {
+                        val updatedDoc = documentRepository.getDocumentById(documentId)
+                        _uiState.update {
+                            it.copy(document = updatedDoc, isProcessingAction = false)
+                        }
+                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_RELEASED))
+
+                        viewModelScope.launch(ioDispatcher) {
+                            try {
+                                val lines = _uiState.value.lines.map { line ->
+                                    DocumentLineUpdate(
+                                        lineNumber = line.lineNumber,
+                                        actualQuantity = line.actualQuantity,
+                                        batchNumber = line.batchNumber,
+                                        isCompleted = line.isCompleted
+                                    )
+                                }
+                                syncOrchestrator.updateDocument(documentId, DocumentState.IN_PROGRESS.name, lines)
+                            } catch (e: Exception) {
+                                Log.w("DocumentDetailViewModel", "Failed to sync release from packaging: ${e.message}")
+                            }
+                        }
+                    }
+                    is Result.Error -> {
+                        _uiState.update { it.copy(isProcessingAction = false) }
+                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_RELEASE_DOCUMENT))
+                    }
+                    else -> _uiState.update { it.copy(isProcessingAction = false) }
+                }
+            } catch (e: Exception) {
+                Log.e("DocumentDetailViewModel", "releaseFromPackaging failed", e)
+                _uiState.update { it.copy(isProcessingAction = false) }
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_RELEASE_DOCUMENT))
+            }
+        }
+    }
+
     fun completeDocument() {
         val documentId = currentDocumentId ?: return
         val currentState = _uiState.value.document?.state ?: return
 
-        // Only allow completing IN_PROGRESS documents
-        if (currentState != DocumentState.IN_PROGRESS) {
+        // Only allow completing PACKAGING documents
+        if (currentState != DocumentState.PACKAGING) {
             return
         }
 
@@ -421,6 +516,7 @@ class DocumentDetailViewModel @Inject constructor(
                             )
                         }
                         _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_COMPLETED))
+                        _uiEvents.emit(DocumentDetailUiEvent.NavigateBack)
 
                         // Notify server (fire-and-forget)
                         viewModelScope.launch(ioDispatcher) {

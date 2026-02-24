@@ -67,6 +67,7 @@ fun DocumentDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     var barcodeAlert by remember { mutableStateOf<BarcodeAlertType?>(null) }
+    var showCompleteConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(documentId) {
         viewModel.load(documentId)
@@ -82,6 +83,9 @@ fun DocumentDetailScreen(
                 is DocumentDetailUiEvent.ShowBarcodeAlert -> {
                     barcodeAlert = event.alertType
                 }
+                is DocumentDetailUiEvent.NavigateBack -> {
+                    onNavigateBack?.invoke()
+                }
             }
         }
     }
@@ -90,6 +94,21 @@ fun DocumentDetailScreen(
         BarcodeAlertDialog(
             alertType = alertType,
             onDismiss = { barcodeAlert = null }
+        )
+    }
+
+    if (showCompleteConfirm) {
+        val incompleteCount = uiState.lines.count {
+            it.plannedQuantity > 0 && it.actualQuantity < it.plannedQuantity
+        }
+        CompleteConfirmDialog(
+            incompleteCount = incompleteCount,
+            totalCount = uiState.lines.count { it.plannedQuantity > 0 },
+            onConfirm = {
+                showCompleteConfirm = false
+                viewModel.packageDocument()
+            },
+            onDismiss = { showCompleteConfirm = false }
         )
     }
 
@@ -119,9 +138,22 @@ fun DocumentDetailScreen(
                 documentState = uiState.document?.state,
                 isProcessing = uiState.isProcessingAction,
                 canTake = uiState.canTakeIntoWork,
+                canPackage = uiState.canPackage,
                 canComplete = uiState.canComplete,
+                canRelease = uiState.canRelease,
                 onTakeIntoWork = { viewModel.takeIntoWork() },
-                onComplete = { viewModel.completeDocument() }
+                onPackage = {
+                    val incompleteCount = uiState.lines.count {
+                        it.plannedQuantity > 0 && it.actualQuantity < it.plannedQuantity
+                    }
+                    if (incompleteCount == 0) {
+                        viewModel.packageDocument()
+                    } else {
+                        showCompleteConfirm = true
+                    }
+                },
+                onComplete = { viewModel.completeDocument() },
+                onRelease = { viewModel.releaseFromPackaging() }
             )
         }
     ) { paddingValues ->
@@ -201,7 +233,8 @@ fun DocumentDetailScreen(
                                     onQuantityChange = { lineId, qty ->
                                         viewModel.updateLineQuantity(lineId, qty)
                                     },
-                                    isSelected = uiState.selectedLineId == line.id
+                                    isSelected = uiState.selectedLineId == line.id,
+                                    canEdit = uiState.canEdit
                                 )
                             }
                         }
@@ -323,15 +356,20 @@ private fun DocumentActionBar(
     documentState: DocumentState?,
     isProcessing: Boolean,
     canTake: Boolean,
+    canPackage: Boolean,
     canComplete: Boolean,
+    canRelease: Boolean,
     onTakeIntoWork: () -> Unit,
+    onPackage: () -> Unit,
     onComplete: () -> Unit,
+    onRelease: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     if (documentState == null) return
 
-    // Only show action bar for LOADED or IN_PROGRESS states
-    if (documentState != DocumentState.LOADED && documentState != DocumentState.IN_PROGRESS) {
+    if (documentState != DocumentState.LOADED &&
+        documentState != DocumentState.IN_PROGRESS &&
+        documentState != DocumentState.PACKAGING) {
         return
     }
 
@@ -366,10 +404,9 @@ private fun DocumentActionBar(
                     }
                 }
                 DocumentState.IN_PROGRESS -> {
-                    // Show Complete button only if the current user owns the document
-                    if (canComplete) {
+                    if (canPackage) {
                         Button(
-                            onClick = onComplete,
+                            onClick = onPackage,
                             enabled = !isProcessing,
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(
@@ -383,7 +420,47 @@ private fun DocumentActionBar(
                                     strokeWidth = 2.dp
                                 )
                             } else {
-                                Text(stringResource(R.string.complete_document))
+                                Text(stringResource(R.string.package_document))
+                            }
+                        }
+                    }
+                }
+                DocumentState.PACKAGING -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (canRelease) {
+                            Button(
+                                onClick = onRelease,
+                                enabled = !isProcessing,
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            ) {
+                                Text(stringResource(R.string.release_document))
+                            }
+                        }
+                        if (canComplete) {
+                            Button(
+                                onClick = onComplete,
+                                enabled = !isProcessing,
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                if (isProcessing) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Text(stringResource(R.string.complete_document))
+                                }
                             }
                         }
                     }
@@ -392,6 +469,34 @@ private fun DocumentActionBar(
             }
         }
     }
+}
+
+@Composable
+private fun CompleteConfirmDialog(
+    incompleteCount: Int,
+    totalCount: Int,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(stringResource(R.string.complete_document_confirm_title))
+        },
+        text = {
+            Text(stringResource(R.string.complete_document_remain_fmt, incompleteCount, totalCount))
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.yes))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.no))
+            }
+        }
+    )
 }
 
 @Composable

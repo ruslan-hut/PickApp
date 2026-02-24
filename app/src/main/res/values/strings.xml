@@ -11,6 +11,7 @@
     <string name="plus">+</string>
     <string name="minus">-</string>
     <string name="enter_quantity">Enter Quantity</string>
+    <string name="quantity_overflow_fmt">You entered %1$.0f, but planned is %2$.0f. %3$.0f was not added.</string>
 
     <!-- Home -->
     <string name="title_app">Pick</string>
@@ -60,7 +61,14 @@
     <string name="product_already_completed">This product is already fully collected</string>
     <string name="product_not_found">Product not found in database</string>
     <string name="take_into_work">Take into Work</string>
+    <string name="package_document">Package</string>
     <string name="complete_document">Complete</string>
+    <string name="document_packaged">Document packaged</string>
+    <string name="error_package_document">Failed to package document</string>
+    <string name="complete_document_confirm_title">Complete Document?</string>
+    <string name="complete_document_remain_fmt">Remaining: %1$d of %2$d lines not fully collected</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
     <string name="document_taken_into_work">Document taken into work</string>
     <string name="document_completed">Document completed</string>
     <string name="error_take_into_work">Failed to take document into work</string>
@@ -73,6 +81,7 @@
     <string name="release_document">Release</string>
     <string name="document_state_loaded">New</string>
     <string name="document_state_in_progress">In Progress</string>
+    <string name="document_state_packaging">Packaging</string>
     <string name="document_state_completed">Completed</string>
     <string name="document_state_sent">Sent</string>
     <string name="document_state_error">Error</string>

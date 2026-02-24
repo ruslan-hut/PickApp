@@ -37,7 +37,8 @@ fun DocumentLineRow(
     productImage: ProductImage?,
     onQuantityChange: (String, Double) -> Unit,
     modifier: Modifier = Modifier,
-    isSelected: Boolean = false
+    isSelected: Boolean = false,
+    canEdit: Boolean = false
 ) {
     val progress = if (line.plannedQuantity > 0) {
         (line.actualQuantity / line.plannedQuantity).toFloat().coerceIn(0f, 1f)
@@ -151,7 +152,8 @@ fun DocumentLineRow(
                 QuantityStepper(
                     value = line.actualQuantity,
                     onChange = { newVal -> onQuantityChange(line.id, newVal) },
-                    maxValue = if (line.plannedQuantity > 0) line.plannedQuantity else Double.MAX_VALUE
+                    maxValue = if (line.plannedQuantity > 0) line.plannedQuantity else Double.MAX_VALUE,
+                    enabled = canEdit
                 )
             }
         }
