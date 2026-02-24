@@ -61,14 +61,14 @@ object DatabaseModule {
                         insertProductBarcodes(db)
                     }
 
-                    // Ensure demo documents exist
+                    // Ensure demo documents exist (only when table is empty)
                     val docCursor = db.query("SELECT COUNT(*) FROM documents")
                     docCursor.moveToFirst()
                     val docCount = docCursor.getInt(0)
                     docCursor.close()
-//                    if (docCount == 0) {
+                    if (docCount == 0) {
                         insertDemoDocuments(db)
-//                    }
+                    }
                 }
 
                 private fun insertDemoDocuments(db: SupportSQLiteDatabase) {

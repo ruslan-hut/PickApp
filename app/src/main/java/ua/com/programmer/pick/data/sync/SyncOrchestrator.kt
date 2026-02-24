@@ -140,6 +140,7 @@ class SyncOrchestrator @Inject constructor(
     private var currentSyncId: String? = null
     private var pendingSyncCursors: Map<String, String>? = null
     private var syncTimeoutJob: Job? = null
+    private var isFullSyncActive = false
 
     private var isInitialized = false
 
@@ -384,6 +385,7 @@ class SyncOrchestrator @Inject constructor(
         }
 
         _syncState.value = _syncState.value.copy(isSyncing = true)
+        isFullSyncActive = true
 
         val message = SyncMessage.FullSyncRequest(
             id = messageParser.generateMessageId(),
@@ -722,6 +724,7 @@ class SyncOrchestrator @Inject constructor(
         syncTimeoutJob = null
         currentSyncId = message.syncId
         pendingSyncCursors = message.cursors
+        isFullSyncActive = false
 
         // Update all cursors in database
         syncStateDao.updateCursors(message.cursors)
@@ -858,6 +861,12 @@ class SyncOrchestrator @Inject constructor(
         data: com.google.gson.JsonElement,
         deletedIds: List<String>?
     ) {
+        if (isFullSyncActive) {
+            Log.d(TAG, "Full sync: clearing all non-dirty documents and their lines")
+            documentLineDao.deleteAllNonDirtyDocumentLines()
+            documentDao.deleteAllNonDirtyDocuments()
+        }
+
         if (data.isJsonArray) {
             val type = object : TypeToken<List<DocumentDto>>() {}.type
             val documents: List<DocumentDto> = gson.fromJson(data, type)

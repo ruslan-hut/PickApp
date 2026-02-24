@@ -85,4 +85,7 @@ interface DocumentLineDao {
 
     @Query("DELETE FROM document_lines WHERE document_id = :documentId")
     suspend fun deleteLinesByDocumentId(documentId: String)
+
+    @Query("DELETE FROM document_lines WHERE document_id IN (SELECT id FROM documents WHERE is_dirty = 0)")
+    suspend fun deleteAllNonDirtyDocumentLines()
 }

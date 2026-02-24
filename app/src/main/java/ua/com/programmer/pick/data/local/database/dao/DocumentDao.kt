@@ -82,4 +82,7 @@ interface DocumentDao {
 
     @Query("DELETE FROM documents")
     suspend fun deleteAllDocuments()
+
+    @Query("DELETE FROM documents WHERE is_dirty = 0")
+    suspend fun deleteAllNonDirtyDocuments()
 }
