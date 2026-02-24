@@ -57,6 +57,7 @@
     <string name="lines_progress_fmt">%1$d / %2$d lines</string>
     <string name="error_saving">Error saving</string>
     <string name="product_not_in_document">Product not found in this document</string>
+    <string name="product_already_completed">This product is already fully collected</string>
     <string name="product_not_found">Product not found in database</string>
     <string name="take_into_work">Take into Work</string>
     <string name="complete_document">Complete</string>

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -25,6 +26,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.remember
@@ -32,8 +34,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -61,6 +66,7 @@ fun DocumentDetailScreen(
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+    var barcodeAlert by remember { mutableStateOf<BarcodeAlertType?>(null) }
 
     LaunchedEffect(documentId) {
         viewModel.load(documentId)
@@ -73,8 +79,18 @@ fun DocumentDetailScreen(
                     val message = context.getString(event.messageType.resId)
                     snackbarHostState.showSnackbar(message)
                 }
+                is DocumentDetailUiEvent.ShowBarcodeAlert -> {
+                    barcodeAlert = event.alertType
+                }
             }
         }
+    }
+
+    barcodeAlert?.let { alertType ->
+        BarcodeAlertDialog(
+            alertType = alertType,
+            onDismiss = { barcodeAlert = null }
+        )
     }
 
     // Auto-scroll to selected line when barcode is scanned
@@ -376,4 +392,30 @@ private fun DocumentActionBar(
             }
         }
     }
+}
+
+@Composable
+private fun BarcodeAlertDialog(
+    alertType: BarcodeAlertType,
+    onDismiss: () -> Unit
+) {
+    val isError = alertType == BarcodeAlertType.PRODUCT_NOT_IN_DOCUMENT
+    val containerColor = if (isError) Color(0xFFD32F2F) else Color(0xFFFFC107)
+    val contentColor = if (isError) Color.White else Color(0xFF1A1A1A)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = containerColor,
+        text = {
+            Text(
+                text = stringResource(alertType.resId),
+                style = MaterialTheme.typography.bodyLarge,
+                color = contentColor
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.ok), color = contentColor)
+            }
+        }
+    )
 }

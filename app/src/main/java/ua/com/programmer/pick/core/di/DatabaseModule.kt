@@ -66,9 +66,9 @@ object DatabaseModule {
                     docCursor.moveToFirst()
                     val docCount = docCursor.getInt(0)
                     docCursor.close()
-                    if (docCount == 0) {
+//                    if (docCount == 0) {
                         insertDemoDocuments(db)
-                    }
+//                    }
                 }
 
                 private fun insertDemoDocuments(db: SupportSQLiteDatabase) {
@@ -242,17 +242,17 @@ object DatabaseModule {
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """.trimIndent()
 
-                    db.execSQL(insertSql, arrayOf("prod_001", "SKU-001", "Laptop Dell XPS 15", "15.6 inch, Intel i7, 16GB RAM", "pcs", 0, 1, currentTime))
-                    db.execSQL(insertSql, arrayOf("prod_002", "SKU-002", "Wireless Mouse Logitech", "Bluetooth, ergonomic design", "pcs", 0, 1, currentTime))
-                    db.execSQL(insertSql, arrayOf("prod_003", "SKU-003", "USB-C Cable 2m", "Fast charging, data transfer", "pcs", 0, 1, currentTime))
-                    db.execSQL(insertSql, arrayOf("prod_004", "SKU-004", "Monitor Samsung 27\"", "4K UHD, IPS panel", "pcs", 0, 1, currentTime))
-                    db.execSQL(insertSql, arrayOf("prod_005", "SKU-005", "Keyboard Mechanical", "RGB backlight, Cherry MX switches", "pcs", 0, 1, currentTime))
-                    db.execSQL(insertSql, arrayOf("prod_006", "SKU-006", "Webcam HD 1080p", "Built-in microphone, autofocus", "pcs", 0, 1, currentTime))
-                    db.execSQL(insertSql, arrayOf("prod_007", "SKU-007", "Headphones Wireless", "Active noise cancellation, 30h battery", "pcs", 0, 1, currentTime))
-                    db.execSQL(insertSql, arrayOf("prod_008", "SKU-008", "Power Bank 20000mAh", "USB-C PD, fast charging", "pcs", 1, 1, currentTime))
-                    db.execSQL(insertSql, arrayOf("prod_009", "SKU-009", "Phone Case Universal", "Shockproof, clear design", "pcs", 1, 1, currentTime))
-                    db.execSQL(insertSql, arrayOf("prod_010", "SKU-010", "Tablet Stand", "Adjustable angle, aluminum", "pcs", 0, 1, currentTime))
-                    db.execSQL(insertSql, arrayOf("prod_011", "SKU-011", "Screen Protector", "Tempered glass, 9H hardness", "pcs", 0, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_001", "SKU001", "Laptop Dell XPS 15", "15.6 inch, Intel i7, 16GB RAM", "pcs", 0, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_002", "SKU002", "Wireless Mouse Logitech", "Bluetooth, ergonomic design", "pcs", 0, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_003", "SKU003", "USB-C Cable 2m", "Fast charging, data transfer", "pcs", 0, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_004", "SKU004", "Monitor Samsung 27\"", "4K UHD, IPS panel", "pcs", 0, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_005", "SKU005", "Keyboard Mechanical", "RGB backlight, Cherry MX switches", "pcs", 0, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_006", "SKU006", "Webcam HD 1080p", "Built-in microphone, autofocus", "pcs", 0, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_007", "SKU007", "Headphones Wireless", "Active noise cancellation, 30h battery", "pcs", 0, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_008", "SKU008", "Power Bank 20000mAh", "USB-C PD, fast charging", "pcs", 1, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_009", "SKU009", "Phone Case Universal", "Shockproof, clear design", "pcs", 1, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_010", "SKU010", "Tablet Stand", "Adjustable angle, aluminum", "pcs", 0, 1, currentTime))
+                    db.execSQL(insertSql, arrayOf("prod_011", "SKU011", "Screen Protector", "Tempered glass, 9H hardness", "pcs", 0, 1, currentTime))
                 }
 
                 private fun insertProductBarcodes(db: SupportSQLiteDatabase) {

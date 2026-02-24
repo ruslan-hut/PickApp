@@ -174,8 +174,22 @@ class DocumentDetailViewModel @Inject constructor(
                 Log.d("DocumentDetailViewModel", "handleScannedBarcode: line=$line")
 
                 if (line != null) {
+                    // Check if already fully collected
+                    if (line.plannedQuantity > 0 && line.actualQuantity >= line.plannedQuantity) {
+                        // Highlight the line but do not increment
+                        _uiState.update { current -> current.copy(selectedLineId = line.id) }
+                        _uiEvents.emit(DocumentDetailUiEvent.ShowBarcodeAlert(BarcodeAlertType.PRODUCT_ALREADY_COMPLETED))
+                        return
+                    }
+
+                    // Cap at planned quantity
+                    val newQty = if (line.plannedQuantity > 0) {
+                        (line.actualQuantity + 1.0).coerceAtMost(line.plannedQuantity)
+                    } else {
+                        line.actualQuantity + 1.0
+                    }
+
                     // Update UI immediately: select line and update quantity
-                    val newQty = line.actualQuantity + 1.0
                     _uiState.update { current ->
                         val updated = current.lines.map { if (it.id == line.id) it.copy(actualQuantity = newQty) else it }
                         val newTotalActual = updated.sumOf { it.actualQuantity }
@@ -184,8 +198,9 @@ class DocumentDetailViewModel @Inject constructor(
                     }
 
                     // Persist change
+                    val delta = newQty - line.actualQuantity
                     try {
-                        documentRepository.incrementLineQuantity(line.id, 1.0)
+                        documentRepository.incrementLineQuantity(line.id, delta)
                         notifyDocumentLinesChanged()
                     } catch (_: Exception) {
                         // Fallback to updateLine
@@ -198,7 +213,7 @@ class DocumentDetailViewModel @Inject constructor(
                     }
                 } else {
                     Log.d("DocumentDetailViewModel", "handleScannedBarcode: line not found")
-                    _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.PRODUCT_NOT_IN_DOCUMENT))
+                    _uiEvents.emit(DocumentDetailUiEvent.ShowBarcodeAlert(BarcodeAlertType.PRODUCT_NOT_IN_DOCUMENT))
                 }
             }
 

@@ -46,6 +46,7 @@ fun QuantityStepper(
     onChange: (Double) -> Unit,
     modifier: Modifier = Modifier,
     minValue: Double = 0.0,
+    maxValue: Double = Double.MAX_VALUE,
     step: Double = 1.0
 ) {
     var showDialog by remember { mutableStateOf(false) }
@@ -99,8 +100,9 @@ fun QuantityStepper(
 
         // Plus button
         FilledIconButton(
-            onClick = { onChange(value + step) },
+            onClick = { onChange((value + step).coerceAtMost(maxValue)) },
             modifier = Modifier.size(40.dp),
+            enabled = value < maxValue,
             colors = IconButtonDefaults.filledIconButtonColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -117,6 +119,7 @@ fun QuantityStepper(
         QuantityInputDialog(
             currentValue = value,
             minValue = minValue,
+            maxValue = maxValue,
             onDismiss = { showDialog = false },
             onConfirm = { newValue ->
                 onChange(newValue)
@@ -130,6 +133,7 @@ fun QuantityStepper(
 private fun QuantityInputDialog(
     currentValue: Double,
     minValue: Double,
+    maxValue: Double,
     onDismiss: () -> Unit,
     onConfirm: (Double) -> Unit
 ) {
@@ -151,7 +155,7 @@ private fun QuantityInputDialog(
     val confirmAction = {
         val parsed = textFieldValue.text.toIntOrNull()
         if (parsed != null) {
-            onConfirm(parsed.toDouble().coerceAtLeast(minValue))
+            onConfirm(parsed.toDouble().coerceIn(minValue, maxValue))
         }
     }
 

@@ -150,7 +150,8 @@ fun DocumentLineRow(
                 // Quantity stepper
                 QuantityStepper(
                     value = line.actualQuantity,
-                    onChange = { newVal -> onQuantityChange(line.id, newVal) }
+                    onChange = { newVal -> onQuantityChange(line.id, newVal) },
+                    maxValue = if (line.plannedQuantity > 0) line.plannedQuantity else Double.MAX_VALUE
                 )
             }
         }
