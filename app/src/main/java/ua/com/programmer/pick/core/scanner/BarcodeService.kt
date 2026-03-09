@@ -1,11 +1,9 @@
 package ua.com.programmer.pick.core.scanner
 
 import ua.com.programmer.pick.core.util.AppLog
-import android.view.InputDevice
 import android.view.KeyEvent
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -102,8 +100,12 @@ class BarcodeService @Inject constructor(
             val char = event.unicodeChar.toChar()
             if (char.isLetterOrDigit()) {
                 hardwareBarcodeBuffer.append(char)
+                hardwareLastKeystrokeTime = currentTime
+                return true
             }
-            hardwareLastKeystrokeTime = currentTime
+
+            // Non-printable keys (backspace, arrows, etc.) — let the system handle them
+            return false
 
         } else if (event.action == KeyEvent.ACTION_UP) {
             if (event.keyCode == KeyEvent.KEYCODE_ENTER || event.keyCode == KeyEvent.KEYCODE_TAB) {
@@ -135,7 +137,7 @@ class BarcodeService @Inject constructor(
             }
         }
 
-        return true
+        return false
     }
 
     /**

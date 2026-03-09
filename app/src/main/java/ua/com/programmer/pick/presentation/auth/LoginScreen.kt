@@ -204,6 +204,14 @@ fun LoginScreen(
                 }
 
                 Spacer(modifier = Modifier.weight(0.5f))
+
+                if (uiState.deviceId.isNotBlank()) {
+                    Text(
+                        text = stringResource(R.string.device_id_label_fmt, uiState.deviceId),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
