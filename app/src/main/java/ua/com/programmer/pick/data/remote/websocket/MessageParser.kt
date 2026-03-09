@@ -232,11 +232,18 @@ class MessageParser @Inject constructor(
 
     private fun parseSyncData(id: String, timestamp: String, payload: JsonObject?): SyncMessage.SyncData? {
         if (payload == null) return null
+        val rawData = payload.get(FIELD_DATA)
+        val data = if (rawData == null || rawData.isJsonNull) {
+            Log.w(TAG, "SYNC_DATA payload has null/missing 'data' field, using empty array")
+            JsonArray()
+        } else {
+            rawData
+        }
         return SyncMessage.SyncData(
             id = id,
             timestamp = timestamp,
             entityType = payload.get(FIELD_ENTITY_TYPE)?.asString ?: return null,
-            data = payload.get(FIELD_DATA) ?: JsonArray(),
+            data = data,
             deletedIds = payload.get(FIELD_DELETED_IDS)?.asJsonArray?.map { it.asString }
         )
     }

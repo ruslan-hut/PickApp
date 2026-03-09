@@ -10,12 +10,16 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ua.com.programmer.pick.BuildConfig
+import ua.com.programmer.pick.data.local.database.dao.SyncStateDao
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
+import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val appPreferences: AppPreferences
+    private val appPreferences: AppPreferences,
+    private val syncStateDao: SyncStateDao,
+    private val syncOrchestrator: SyncOrchestrator
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -100,7 +104,8 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {
-                // TODO: Implement force sync via sync repository
+                syncStateDao.deleteAll()
+                syncOrchestrator.requestFullSync()
                 _uiState.update {
                     it.copy(
                         isLoading = false,

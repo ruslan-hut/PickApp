@@ -141,6 +141,7 @@ class SyncOrchestrator @Inject constructor(
     private var pendingSyncCursors: Map<String, String>? = null
     private var syncTimeoutJob: Job? = null
     private var isFullSyncActive = false
+    private val syncReceivedCounts = mutableMapOf<String, Int>()
 
     private var isInitialized = false
 
@@ -246,6 +247,7 @@ class SyncOrchestrator @Inject constructor(
                     append("syncing=${state.isSyncing} ")
                     append("pending=${state.pendingOperationsCount}")
                     state.lastSyncTime?.let { append(" lastSync=${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(it))}") }
+                    if (state.entityStates.isNotEmpty()) append(" entities=${state.entityStates}")
                     state.lastError?.let { append(" error=$it") }
                 })
             }
@@ -338,6 +340,7 @@ class SyncOrchestrator @Inject constructor(
             return Result.Error(Exception("User not authenticated"))
         }
 
+        syncReceivedCounts.clear()
         _syncState.value = _syncState.value.copy(isSyncing = true)
 
         // Get cursors from database
@@ -400,6 +403,7 @@ class SyncOrchestrator @Inject constructor(
             return Result.Error(Exception("User not authenticated"))
         }
 
+        syncReceivedCounts.clear()
         _syncState.value = _syncState.value.copy(isSyncing = true)
         isFullSyncActive = true
 
@@ -722,7 +726,10 @@ class SyncOrchestrator @Inject constructor(
     }
 
     private suspend fun handleSyncData(message: SyncMessage.SyncData) {
-        Log.d(TAG, "Received sync data for ${message.entityType}")
+        val itemCount = if (message.data.isJsonArray) message.data.asJsonArray.size() else 0
+        val deletedCount = message.deletedIds?.size ?: 0
+        syncReceivedCounts[message.entityType] = (syncReceivedCounts[message.entityType] ?: 0) + itemCount
+        Log.i(TAG, "SYNC_DATA entity=${message.entityType} upsert=$itemCount delete=$deletedCount")
 
         try {
             applySync(message.entityType, message.data, message.deletedIds)
@@ -734,7 +741,8 @@ class SyncOrchestrator @Inject constructor(
     }
 
     private suspend fun handleSyncComplete(message: SyncMessage.SyncComplete) {
-        Log.i(TAG, "Sync complete: syncId=${message.syncId} cursors=${message.cursors}")
+        Log.i(TAG, "Sync complete: syncId=${message.syncId} received=$syncReceivedCounts cursors=${message.cursors}")
+        syncReceivedCounts.clear()
 
         syncTimeoutJob?.cancel()
         syncTimeoutJob = null
