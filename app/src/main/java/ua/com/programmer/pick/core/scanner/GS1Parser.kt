@@ -1,6 +1,6 @@
 package ua.com.programmer.pick.core.scanner
 
-import android.util.Log
+import ua.com.programmer.pick.core.util.AppLog
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -112,11 +112,11 @@ class GS1Parser @Inject constructor() {
             val ais = extractAIs(cleanBarcode)
 
             if (ais.isEmpty()) {
-                Log.d(TAG, "No AIs found in barcode")
+                AppLog.d(TAG, "No AIs found in barcode")
                 return null
             }
 
-            Log.d(TAG, "Parsed AIs: $ais")
+            AppLog.d(TAG, "Parsed AIs: $ais")
 
             GS1Data(
                 gtin = ais["01"],
@@ -129,7 +129,7 @@ class GS1Parser @Inject constructor() {
                 rawAIs = ais
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse GS1 barcode: ${e.message}", e)
+            AppLog.e(TAG, "Failed to parse GS1 barcode: ${e.message}", e)
             null
         }
     }
@@ -319,7 +319,7 @@ class GS1Parser @Inject constructor() {
 
             calendar.timeInMillis
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse date: $dateStr", e)
+            AppLog.e(TAG, "Failed to parse date: $dateStr", e)
             null
         }
     }

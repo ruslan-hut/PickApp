@@ -1,7 +1,7 @@
 package ua.com.programmer.pick.data.sync
 
 import android.content.Context
-import android.util.Log
+import ua.com.programmer.pick.core.util.AppLog
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -36,7 +36,7 @@ class SyncScheduler @Inject constructor(
      * Called once on app initialization.
      */
     fun schedulePeriodicSync() {
-        Log.d(TAG, "Scheduling periodic sync")
+        AppLog.d(TAG, "Scheduling periodic sync")
 
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -65,7 +65,7 @@ class SyncScheduler @Inject constructor(
      * Trigger immediate sync when network becomes available.
      */
     fun triggerImmediateSync() {
-        Log.d(TAG, "Triggering immediate sync")
+        AppLog.d(TAG, "Triggering immediate sync")
 
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -88,7 +88,7 @@ class SyncScheduler @Inject constructor(
      * Called when there are dirty records to sync.
      */
     fun scheduleUpload() {
-        Log.d(TAG, "Scheduling upload")
+        AppLog.d(TAG, "Scheduling upload")
 
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -115,7 +115,7 @@ class SyncScheduler @Inject constructor(
      * Cancel all scheduled sync work.
      */
     fun cancelAllSync() {
-        Log.d(TAG, "Cancelling all sync work")
+        AppLog.d(TAG, "Cancelling all sync work")
         workManager.cancelUniqueWork(Constants.Work.SYNC_WORK_NAME)
         workManager.cancelUniqueWork(Constants.Work.UPLOAD_WORK_NAME)
     }
@@ -124,7 +124,7 @@ class SyncScheduler @Inject constructor(
      * Cancel only periodic sync (keep one-time jobs).
      */
     fun cancelPeriodicSync() {
-        Log.d(TAG, "Cancelling periodic sync")
+        AppLog.d(TAG, "Cancelling periodic sync")
         workManager.cancelUniqueWork(Constants.Work.SYNC_WORK_NAME)
     }
 }

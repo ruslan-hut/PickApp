@@ -92,9 +92,4 @@ class ProductRepositoryImpl @Inject constructor(
         productDao.deleteAllBarcodes()
         productDao.deleteAllProducts()
     }
-
-    override suspend fun syncProducts(): Result<Unit> = withContext(ioDispatcher) {
-        // TODO: Implement sync with server
-        Result.Success(Unit)
-    }
 }

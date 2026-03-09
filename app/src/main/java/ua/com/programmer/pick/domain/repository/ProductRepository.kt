@@ -23,6 +23,4 @@ interface ProductRepository {
     suspend fun deleteProduct(id: String)
 
     suspend fun deleteAllProducts()
-
-    suspend fun syncProducts(): Result<Unit>
 }

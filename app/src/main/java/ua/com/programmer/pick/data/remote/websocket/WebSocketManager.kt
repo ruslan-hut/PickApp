@@ -1,6 +1,6 @@
 package ua.com.programmer.pick.data.remote.websocket
 
-import android.util.Log
+import ua.com.programmer.pick.core.util.AppLog
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -128,7 +128,7 @@ class WebSocketManager @Inject constructor(
         if (_connectionState.value is ConnectionState.Connected ||
             _connectionState.value is ConnectionState.Connecting
         ) {
-            Log.d(TAG, "Already connected or connecting, skipping")
+            AppLog.d(TAG, "Already connected or connecting, skipping")
             return
         }
 
@@ -153,7 +153,7 @@ class WebSocketManager @Inject constructor(
         _userAuthState.value = UserAuthState.NotAuthenticated
         pendingResponses.clear()
 
-        Log.d(TAG, "WebSocket disconnected manually")
+        AppLog.d(TAG, "WebSocket disconnected manually")
     }
 
     /**
@@ -185,7 +185,7 @@ class WebSocketManager @Inject constructor(
                 role = response.role ?: "",
                 offlineHash = response.offlineHash
             )
-            Log.d(TAG, "User authenticated: ${response.userName} (${response.role})")
+            AppLog.d(TAG, "User authenticated: ${response.userName} (${response.role})")
             UserLoginResult(
                 success = true,
                 userId = response.userId,
@@ -196,7 +196,7 @@ class WebSocketManager @Inject constructor(
         } else {
             val error = response?.errorMessage ?: "Login failed"
             _userAuthState.value = UserAuthState.AuthFailed(error)
-            Log.w(TAG, "User authentication failed: $error")
+            AppLog.w(TAG, "User authentication failed: $error")
             UserLoginResult(success = false, errorMessage = error)
         }
     }
@@ -214,13 +214,13 @@ class WebSocketManager @Inject constructor(
     fun sendMessage(message: SyncMessage): Boolean {
         val ws = webSocket
         if (ws == null || _connectionState.value !is ConnectionState.Connected) {
-            Log.w(TAG, "Cannot send message - not connected")
+            AppLog.w(TAG, "Cannot send message - not connected")
             return false
         }
 
         // Check if message requires user authentication
         if (requiresUserAuth(message) && !isUserAuthenticated()) {
-            Log.w(TAG, "Cannot send ${message.type} - user not authenticated")
+            AppLog.w(TAG, "Cannot send ${message.type} - user not authenticated")
             return false
         }
 
@@ -229,19 +229,19 @@ class WebSocketManager @Inject constructor(
 
             // Enforce max message size
             if (json.length > Constants.Network.WEBSOCKET_MAX_MESSAGE_SIZE) {
-                Log.w(TAG, "Message exceeds max size (${json.length} > ${Constants.Network.WEBSOCKET_MAX_MESSAGE_SIZE}), type: ${message.type}")
+                AppLog.w(TAG, "Message exceeds max size (${json.length} > ${Constants.Network.WEBSOCKET_MAX_MESSAGE_SIZE}), type: ${message.type}")
                 return false
             }
 
             val sent = ws.send(json)
             if (sent) {
-                Log.d(TAG, "Message sent: ${message.type}")
+                AppLog.d(TAG, "Message sent: ${message.type}")
             } else {
-                Log.e(TAG, "Failed to send message")
+                AppLog.e(TAG, "Failed to send message")
             }
             sent
         } catch (e: Exception) {
-            Log.e(TAG, "Error sending message: ${e.message}", e)
+            AppLog.e(TAG, "Error sending message: ${e.message}", e)
             false
         }
     }
@@ -315,7 +315,7 @@ class WebSocketManager @Inject constructor(
 
     private fun startConnection() {
         if (!networkMonitor.isCurrentlyConnected()) {
-            Log.d(TAG, "No network connectivity, waiting...")
+            AppLog.d(TAG, "No network connectivity, waiting...")
             _connectionState.value = ConnectionState.Disconnected
             scheduleReconnect()
             return
@@ -326,7 +326,7 @@ class WebSocketManager @Inject constructor(
 
         val deviceId = appPreferences.getDeviceIdSync()
         val wsUrl = buildWebSocketUrl(deviceId)
-        Log.d(TAG, "Connecting to WebSocket: $wsUrl")
+        AppLog.d(TAG, "Connecting to WebSocket: $wsUrl")
 
         val request = Request.Builder()
             .url(wsUrl)
@@ -358,7 +358,7 @@ class WebSocketManager @Inject constructor(
 
     private fun createWebSocketListener() = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
-            Log.d(TAG, "WebSocket opened: ${response.code}")
+            AppLog.d(TAG, "WebSocket opened: ${response.code}")
             reconnectAttempts = 0
             lastPongReceived = System.currentTimeMillis()
             _connectionState.value = ConnectionState.Connected
@@ -371,28 +371,28 @@ class WebSocketManager @Inject constructor(
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
-            Log.d(TAG, "Message received: ${text.take(200)}")
+            AppLog.d(TAG, "Message received: ${text.take(200)}")
 
             val message = messageParser.parseMessage(text)
             if (message != null) {
                 handleIncomingMessage(message)
             } else {
-                Log.w(TAG, "Failed to parse message")
+                AppLog.w(TAG, "Failed to parse message")
             }
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-            Log.d(TAG, "WebSocket closing: $code - $reason")
+            AppLog.d(TAG, "WebSocket closing: $code - $reason")
             webSocket.close(code, reason)
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            Log.d(TAG, "WebSocket closed: $code - $reason")
+            AppLog.d(TAG, "WebSocket closed: $code - $reason")
             handleDisconnection(code, reason)
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            Log.e(TAG, "WebSocket failure: ${t.message}", t)
+            AppLog.e(TAG, "WebSocket failure: ${t.message}", t)
             _connectionState.value = ConnectionState.Error(
                 t.message ?: "Connection failed",
                 response?.code
@@ -411,16 +411,16 @@ class WebSocketManager @Inject constructor(
             val currentAuthState = _userAuthState.value
             if (currentAuthState is UserAuthState.Authenticated ||
                 currentAuthState is UserAuthState.Authenticating) {
-                Log.d(TAG, "User already authenticated or authenticating, skipping auto-login")
+                AppLog.d(TAG, "User already authenticated or authenticating, skipping auto-login")
                 return@launch
             }
 
             val credentials = appPreferences.getUserCredentialsSync()
             if (credentials != null) {
-                Log.d(TAG, "Attempting auto-login with stored credentials")
+                AppLog.d(TAG, "Attempting auto-login with stored credentials")
                 loginUser(credentials.first, credentials.second)
             } else {
-                Log.d(TAG, "No stored credentials for auto-login")
+                AppLog.d(TAG, "No stored credentials for auto-login")
             }
         }
     }
@@ -437,7 +437,7 @@ class WebSocketManager @Inject constructor(
             is SyncMessage.ServerError -> {
                 // Check if NOT_AUTHENTICATED error
                 if (message.code == NOT_AUTHENTICATED_ERROR_CODE) {
-                    Log.w(TAG, "Server requires user authentication for this operation")
+                    AppLog.w(TAG, "Server requires user authentication for this operation")
                     _userAuthState.value = UserAuthState.NotAuthenticated
                 }
                 // Forward to observers
@@ -510,7 +510,7 @@ class WebSocketManager @Inject constructor(
                 val timeSinceLastPong = System.currentTimeMillis() - lastPongReceived
                 if (timeSinceLastPong > Constants.Network.WEBSOCKET_PING_INTERVAL_SECONDS * 1000) {
                     // Previous ping still unanswered — let the existing timeout handle it
-                    Log.w(TAG, "Previous PING still unanswered, skipping new PING")
+                    AppLog.w(TAG, "Previous PING still unanswered, skipping new PING")
                 } else {
                     sendPing()
                     startPongTimeoutTimer()
@@ -538,7 +538,7 @@ class WebSocketManager @Inject constructor(
             timestamp = messageParser.getCurrentTimestamp()
         )
         sendMessage(pingMessage)
-        Log.d(TAG, "PING sent")
+        AppLog.d(TAG, "PING sent")
     }
 
     private fun startPongTimeoutTimer() {
@@ -549,7 +549,7 @@ class WebSocketManager @Inject constructor(
             // Check if PONG was received after last PING
             val timeSinceLastPong = System.currentTimeMillis() - lastPongReceived
             if (timeSinceLastPong > Constants.Network.WEBSOCKET_PONG_TIMEOUT_SECONDS * 1000) {
-                Log.w(TAG, "PONG timeout - reconnecting")
+                AppLog.w(TAG, "PONG timeout - reconnecting")
                 webSocket?.close(4000, "PONG timeout")
             }
         }
@@ -558,7 +558,7 @@ class WebSocketManager @Inject constructor(
     private fun handlePong() {
         lastPongReceived = System.currentTimeMillis()
         pongTimeoutJob?.cancel()
-        Log.d(TAG, "PONG received")
+        AppLog.d(TAG, "PONG received")
     }
 
     // ============================================
@@ -584,22 +584,22 @@ class WebSocketManager @Inject constructor(
             // Check for device-related errors (should not auto-reconnect)
             when (code) {
                 DEVICE_PENDING_CLOSE_CODE -> {
-                    Log.w(TAG, "Device is PENDING approval - not reconnecting")
+                    AppLog.w(TAG, "Device is PENDING approval - not reconnecting")
                     _connectionState.value = ConnectionState.Error("Device pending approval", code)
                     return
                 }
                 DEVICE_REJECTED_CLOSE_CODE -> {
-                    Log.w(TAG, "Device is REJECTED - not reconnecting")
+                    AppLog.w(TAG, "Device is REJECTED - not reconnecting")
                     _connectionState.value = ConnectionState.Error("Device rejected", code)
                     return
                 }
                 401 -> {
-                    Log.w(TAG, "Invalid app token - not reconnecting")
+                    AppLog.w(TAG, "Invalid app token - not reconnecting")
                     _connectionState.value = ConnectionState.Error("Invalid app token", code)
                     return
                 }
                 403 -> {
-                    Log.w(TAG, "Device forbidden (${reason}) - not reconnecting")
+                    AppLog.w(TAG, "Device forbidden (${reason}) - not reconnecting")
                     _connectionState.value = ConnectionState.Error("Device forbidden: $reason", code)
                     return
                 }
@@ -618,7 +618,7 @@ class WebSocketManager @Inject constructor(
         }
 
         if (reconnectAttempts >= Constants.Network.WEBSOCKET_MAX_RECONNECT_ATTEMPTS) {
-            Log.w(TAG, "Max reconnect attempts reached")
+            AppLog.w(TAG, "Max reconnect attempts reached")
             _connectionState.value = ConnectionState.Error("Max reconnect attempts reached", null)
             return
         }
@@ -626,7 +626,7 @@ class WebSocketManager @Inject constructor(
         reconnectJob?.cancel()
         reconnectJob = scope.launch {
             val delayMs = calculateReconnectDelay()
-            Log.d(TAG, "Scheduling reconnect in ${delayMs}ms (attempt ${reconnectAttempts + 1})")
+            AppLog.d(TAG, "Scheduling reconnect in ${delayMs}ms (attempt ${reconnectAttempts + 1})")
 
             delay(delayMs)
             reconnectAttempts++
@@ -654,7 +654,7 @@ class WebSocketManager @Inject constructor(
             val response = pendingResponses.remove(id)
             val continuation = response?.continuation as? CancellableContinuation<SyncMessage>
             continuation?.cancel()
-            Log.w(TAG, "Removed stale pending response: $id")
+            AppLog.w(TAG, "Removed stale pending response: $id")
         }
     }
 

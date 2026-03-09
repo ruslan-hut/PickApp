@@ -91,9 +91,4 @@ class WarehouseRepositoryImpl @Inject constructor(
         warehouseDao.deleteAllLocations()
         warehouseDao.deleteAllWarehouses()
     }
-
-    override suspend fun syncWarehouses(): Result<Unit> = withContext(ioDispatcher) {
-        // TODO: Implement sync with server
-        Result.Success(Unit)
-    }
 }

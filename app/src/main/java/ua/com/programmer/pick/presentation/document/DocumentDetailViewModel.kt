@@ -1,6 +1,6 @@
 package ua.com.programmer.pick.presentation.document
 
-import android.util.Log
+import ua.com.programmer.pick.core.util.AppLog
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -127,7 +127,7 @@ class DocumentDetailViewModel @Inject constructor(
     }
 
     private fun subscribeToScans() {
-        Log.d("DocumentDetailViewModel", "subscribeToScans")
+        AppLog.d("DocumentDetailViewModel", "subscribeToScans")
         barcodeService.scannedBarcodes
             .onEach { scanned ->
                 handleScannedBarcode(scanned)
@@ -171,7 +171,7 @@ class DocumentDetailViewModel @Inject constructor(
                     }
                 }
 
-                Log.d("DocumentDetailViewModel", "handleScannedBarcode: line=$line")
+                AppLog.d("DocumentDetailViewModel", "handleScannedBarcode: line=$line")
 
                 if (line != null) {
                     // Check if already fully collected
@@ -212,7 +212,7 @@ class DocumentDetailViewModel @Inject constructor(
                         }
                     }
                 } else {
-                    Log.d("DocumentDetailViewModel", "handleScannedBarcode: line not found")
+                    AppLog.d("DocumentDetailViewModel", "handleScannedBarcode: line not found")
                     _uiEvents.emit(DocumentDetailUiEvent.ShowBarcodeAlert(BarcodeAlertType.PRODUCT_NOT_IN_DOCUMENT))
                 }
             }
@@ -379,7 +379,7 @@ class DocumentDetailViewModel @Inject constructor(
                             try {
                                 syncOrchestrator.lockDocument(documentId)
                             } catch (e: Exception) {
-                                Log.w("DocumentDetailViewModel", "Failed to sync lock: ${e.message}")
+                                AppLog.w("DocumentDetailViewModel", "Failed to sync lock: ${e.message}")
                             }
                         }
                     }
@@ -392,7 +392,7 @@ class DocumentDetailViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                Log.e("DocumentDetailViewModel", "takeIntoWork failed", e)
+                AppLog.e("DocumentDetailViewModel", "takeIntoWork failed", e)
                 _uiState.update { it.copy(isProcessingAction = false) }
                 _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_TAKE_INTO_WORK))
             }
@@ -428,7 +428,7 @@ class DocumentDetailViewModel @Inject constructor(
                                 }
                                 syncOrchestrator.updateDocument(documentId, DocumentState.PACKAGING.name, lines)
                             } catch (e: Exception) {
-                                Log.w("DocumentDetailViewModel", "Failed to sync packaging: ${e.message}")
+                                AppLog.w("DocumentDetailViewModel", "Failed to sync packaging: ${e.message}")
                             }
                         }
                     }
@@ -439,7 +439,7 @@ class DocumentDetailViewModel @Inject constructor(
                     else -> _uiState.update { it.copy(isProcessingAction = false) }
                 }
             } catch (e: Exception) {
-                Log.e("DocumentDetailViewModel", "packageDocument failed", e)
+                AppLog.e("DocumentDetailViewModel", "packageDocument failed", e)
                 _uiState.update { it.copy(isProcessingAction = false) }
                 _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_PACKAGE_DOCUMENT))
             }
@@ -476,7 +476,7 @@ class DocumentDetailViewModel @Inject constructor(
                                 }
                                 syncOrchestrator.updateDocument(documentId, DocumentState.IN_PROGRESS.name, lines)
                             } catch (e: Exception) {
-                                Log.w("DocumentDetailViewModel", "Failed to sync release from packaging: ${e.message}")
+                                AppLog.w("DocumentDetailViewModel", "Failed to sync release from packaging: ${e.message}")
                             }
                         }
                     }
@@ -487,7 +487,7 @@ class DocumentDetailViewModel @Inject constructor(
                     else -> _uiState.update { it.copy(isProcessingAction = false) }
                 }
             } catch (e: Exception) {
-                Log.e("DocumentDetailViewModel", "releaseFromPackaging failed", e)
+                AppLog.e("DocumentDetailViewModel", "releaseFromPackaging failed", e)
                 _uiState.update { it.copy(isProcessingAction = false) }
                 _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_RELEASE_DOCUMENT))
             }
@@ -523,7 +523,7 @@ class DocumentDetailViewModel @Inject constructor(
                             try {
                                 syncOrchestrator.completeDocument(documentId)
                             } catch (e: Exception) {
-                                Log.w("DocumentDetailViewModel", "Failed to sync complete: ${e.message}")
+                                AppLog.w("DocumentDetailViewModel", "Failed to sync complete: ${e.message}")
                             }
                         }
                     }
@@ -536,7 +536,7 @@ class DocumentDetailViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                Log.e("DocumentDetailViewModel", "completeDocument failed", e)
+                AppLog.e("DocumentDetailViewModel", "completeDocument failed", e)
                 _uiState.update { it.copy(isProcessingAction = false) }
                 _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_COMPLETE_DOCUMENT))
             }
@@ -564,7 +564,7 @@ class DocumentDetailViewModel @Inject constructor(
             try {
                 syncOrchestrator.updateDocument(doc.id, doc.state.name, lines)
             } catch (e: Exception) {
-                Log.w("DocumentDetailViewModel", "Failed to sync lines: ${e.message}")
+                AppLog.w("DocumentDetailViewModel", "Failed to sync lines: ${e.message}")
             }
         }
     }

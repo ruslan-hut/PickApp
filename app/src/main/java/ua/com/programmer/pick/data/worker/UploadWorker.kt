@@ -1,7 +1,7 @@
 package ua.com.programmer.pick.data.worker
 
 import android.content.Context
-import android.util.Log
+import ua.com.programmer.pick.core.util.AppLog
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
@@ -25,14 +25,14 @@ class UploadWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result {
-        Log.d(TAG, "Starting upload work, attempt: $runAttemptCount")
+        AppLog.d(TAG, "Starting upload work, attempt: $runAttemptCount")
 
         return try {
             syncOrchestrator.processPendingOperations()
-            Log.d(TAG, "Upload completed successfully")
+            AppLog.d(TAG, "Upload completed successfully")
             Result.success()
         } catch (e: Exception) {
-            Log.e(TAG, "Upload work failed with exception: ${e.message}", e)
+            AppLog.e(TAG, "Upload work failed with exception: ${e.message}", e)
             if (runAttemptCount < 3) {
                 Result.retry()
             } else {

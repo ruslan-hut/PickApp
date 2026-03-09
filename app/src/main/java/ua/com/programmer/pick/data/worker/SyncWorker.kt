@@ -1,7 +1,7 @@
 package ua.com.programmer.pick.data.worker
 
 import android.content.Context
-import android.util.Log
+import ua.com.programmer.pick.core.util.AppLog
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
@@ -26,26 +26,26 @@ class SyncWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result {
-        Log.d(TAG, "Starting sync work, attempt: $runAttemptCount")
+        AppLog.d(TAG, "Starting sync work, attempt: $runAttemptCount")
 
         return try {
             // First process any pending offline operations via WebSocket
             try {
                 syncOrchestrator.processPendingOperations()
-                Log.d(TAG, "Processed pending operations")
+                AppLog.d(TAG, "Processed pending operations")
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to process pending operations: ${e.message}")
+                AppLog.w(TAG, "Failed to process pending operations: ${e.message}")
                 // Continue with sync even if processing fails
             }
 
             // Then request delta sync via WebSocket
             when (val syncResult = syncOrchestrator.requestDeltaSync()) {
                 is ua.com.programmer.pick.core.util.Result.Success -> {
-                    Log.d(TAG, "Delta sync requested successfully")
+                    AppLog.d(TAG, "Delta sync requested successfully")
                     Result.success()
                 }
                 is ua.com.programmer.pick.core.util.Result.Error -> {
-                    Log.e(TAG, "Delta sync request failed: ${syncResult.exception.message}")
+                    AppLog.e(TAG, "Delta sync request failed: ${syncResult.exception.message}")
                     if (runAttemptCount < 3) {
                         Result.retry()
                     } else {
@@ -57,7 +57,7 @@ class SyncWorker @AssistedInject constructor(
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Sync work failed with exception: ${e.message}", e)
+            AppLog.e(TAG, "Sync work failed with exception: ${e.message}", e)
             if (runAttemptCount < 3) {
                 Result.retry()
             } else {

@@ -1,6 +1,6 @@
 package ua.com.programmer.pick.data.remote.interceptor
 
-import android.util.Log
+import ua.com.programmer.pick.core.util.AppLog
 import okhttp3.Authenticator
 import okhttp3.Request
 import okhttp3.Response
@@ -41,13 +41,13 @@ class TokenAuthenticator @Inject constructor(
     override fun authenticate(route: Route?, response: Response): Request? {
         // Don't retry if we've already tried
         if (responseCount(response) >= MAX_RETRY_COUNT) {
-            Log.w(TAG, "Max retry count reached, giving up")
+            AppLog.w(TAG, "Max retry count reached, giving up")
             return null
         }
 
         // Don't authenticate for refresh endpoint itself (avoid infinite loop)
         if (response.request.url.encodedPath.contains("auth/refresh")) {
-            Log.w(TAG, "Refresh endpoint failed, clearing session")
+            AppLog.w(TAG, "Refresh endpoint failed, clearing session")
             appPreferences.clearSessionSync()
             return null
         }
@@ -69,21 +69,21 @@ class TokenAuthenticator @Inject constructor(
         try {
             val refreshToken = appPreferences.getRefreshTokenSync()
             if (refreshToken == null) {
-                Log.w(TAG, "No refresh token available")
+                AppLog.w(TAG, "No refresh token available")
                 appPreferences.clearSessionSync()
                 return null
             }
 
             val newTokens = refreshTokens(refreshToken)
             if (newTokens != null) {
-                Log.d(TAG, "Token refresh successful")
+                AppLog.d(TAG, "Token refresh successful")
                 appPreferences.setTokensSync(newTokens.token, newTokens.refreshToken)
 
                 return response.request.newBuilder()
                     .header("Authorization", "Bearer ${newTokens.token}")
                     .build()
             } else {
-                Log.w(TAG, "Token refresh failed")
+                AppLog.w(TAG, "Token refresh failed")
                 appPreferences.clearSessionSync()
                 return null
             }
@@ -131,11 +131,11 @@ class TokenAuthenticator @Inject constructor(
                     gson.fromJson(body, AuthDto.LoginResponse::class.java)
                 }
             } else {
-                Log.w(TAG, "Refresh request failed with code: ${response.code}")
+                AppLog.w(TAG, "Refresh request failed with code: ${response.code}")
                 null
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error refreshing token", e)
+            AppLog.e(TAG, "Error refreshing token", e)
             null
         }
     }

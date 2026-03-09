@@ -2,7 +2,7 @@ package ua.com.programmer.pick
 
 import android.annotation.SuppressLint
 import android.os.Bundle
-import android.util.Log
+import ua.com.programmer.pick.core.util.AppLog
 import android.view.InputDevice
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity

@@ -82,7 +82,8 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {
-                // TODO: Implement cache clearing via sync repository
+                syncStateDao.deleteAll()
+                syncOrchestrator.requestFullSync()
                 _uiState.update {
                     it.copy(
                         isLoading = false,

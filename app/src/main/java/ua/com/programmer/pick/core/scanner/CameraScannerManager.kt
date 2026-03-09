@@ -3,7 +3,7 @@ package ua.com.programmer.pick.core.scanner
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.util.Log
+import ua.com.programmer.pick.core.util.AppLog
 import androidx.annotation.OptIn
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
@@ -78,7 +78,7 @@ class CameraScannerManager @Inject constructor(
     private fun checkCameraAvailability() {
         val hasCamera = context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
         _isAvailable.value = hasCamera
-        Log.d(TAG, "Camera available: $hasCamera")
+        AppLog.d(TAG, "Camera available: $hasCamera")
     }
 
     private fun initializeBarcodeScanner() {
@@ -118,7 +118,7 @@ class CameraScannerManager @Inject constructor(
      */
     fun startCamera(lifecycleOwner: LifecycleOwner, previewView: PreviewView) {
         if (!hasCameraPermission()) {
-            Log.w(TAG, "Camera permission not granted")
+            AppLog.w(TAG, "Camera permission not granted")
             scope.launch {
                 _scanResults.emit(
                     ScanResult.Error(
@@ -142,7 +142,7 @@ class CameraScannerManager @Inject constructor(
                 bindCameraUseCases(lifecycleOwner, previewView)
                 _isScanning.value = true
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start camera: ${e.message}", e)
+                AppLog.e(TAG, "Failed to start camera: ${e.message}", e)
                 scope.launch {
                     _scanResults.emit(
                         ScanResult.Error(
@@ -187,9 +187,9 @@ class CameraScannerManager @Inject constructor(
                 preview,
                 imageAnalyzer
             )
-            Log.d(TAG, "Camera use cases bound successfully")
+            AppLog.d(TAG, "Camera use cases bound successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "Use case binding failed: ${e.message}", e)
+            AppLog.e(TAG, "Use case binding failed: ${e.message}", e)
         }
     }
 
@@ -200,7 +200,7 @@ class CameraScannerManager @Inject constructor(
     }
 
     override fun stopScanning() {
-        Log.d(TAG, "Stopping camera scanner")
+        AppLog.d(TAG, "Stopping camera scanner")
         _isScanning.value = false
         stopCamera()
     }
@@ -212,7 +212,7 @@ class CameraScannerManager @Inject constructor(
         try {
             cameraProvider?.unbindAll()
         } catch (e: Exception) {
-            Log.w(TAG, "Error unbinding camera: ${e.message}")
+            AppLog.w(TAG, "Error unbinding camera: ${e.message}")
         }
     }
 
@@ -246,7 +246,7 @@ class CameraScannerManager @Inject constructor(
                     processDetectedBarcodes(barcodes)
                 }
                 ?.addOnFailureListener { e ->
-                    Log.e(TAG, "Barcode scanning failed: ${e.message}")
+                    AppLog.e(TAG, "Barcode scanning failed: ${e.message}")
                 }
                 ?.addOnCompleteListener {
                     imageProxy.close()
@@ -271,7 +271,7 @@ class CameraScannerManager @Inject constructor(
         lastScanTime = now
         lastScannedBarcode = rawValue
 
-        Log.d(TAG, "Barcode detected: $rawValue (format: ${barcode.format})")
+        AppLog.d(TAG, "Barcode detected: $rawValue (format: ${barcode.format})")
 
         scope.launch {
             try {
@@ -292,7 +292,7 @@ class CameraScannerManager @Inject constructor(
 
                 _scanResults.emit(result)
             } catch (e: Exception) {
-                Log.e(TAG, "Error processing barcode: ${e.message}", e)
+                AppLog.e(TAG, "Error processing barcode: ${e.message}", e)
                 _scanResults.emit(
                     ScanResult.Error(
                         message = "Failed to process barcode: ${e.message}",

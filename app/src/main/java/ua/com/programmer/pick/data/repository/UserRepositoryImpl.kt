@@ -1,6 +1,6 @@
 package ua.com.programmer.pick.data.repository
 
-import android.util.Log
+import ua.com.programmer.pick.core.util.AppLog
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -68,11 +68,11 @@ class UserRepositoryImpl @Inject constructor(
                     loginViaWebSocket(login, password)
                 } else {
                     // No network, try offline login
-                    Log.d(TAG, "No network, attempting offline login")
+                    AppLog.d(TAG, "No network, attempting offline login")
                     loginOffline(login, password)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Login error: ${e.message}", e)
+                AppLog.e(TAG, "Login error: ${e.message}", e)
                 // Network error, try offline login
                 loginOffline(login, password)
             }
@@ -82,17 +82,17 @@ class UserRepositoryImpl @Inject constructor(
      * Login via WebSocket using USER_LOGIN message (per protocol)
      */
     private suspend fun loginViaWebSocket(login: String, password: String): Result<User> {
-        Log.d(TAG, "Attempting WebSocket login for user: $login")
+        AppLog.d(TAG, "Attempting WebSocket login for user: $login")
 
         // Ensure WebSocket is connected
         if (!webSocketManager.isConnected()) {
-            Log.d(TAG, "WebSocket not connected, connecting...")
+            AppLog.d(TAG, "WebSocket not connected, connecting...")
             webSocketManager.connect()
 
             // Wait for connection with timeout
             val connectionError = waitForWebSocketConnection()
             if (connectionError != null) {
-                Log.w(TAG, "WebSocket connection failed: $connectionError, falling back to offline login")
+                AppLog.w(TAG, "WebSocket connection failed: $connectionError, falling back to offline login")
                 val offlineResult = loginOffline(login, password)
                 if (offlineResult is Result.Success) return offlineResult
                 return Result.Error(Exception(connectionError), connectionError)
@@ -103,7 +103,7 @@ class UserRepositoryImpl @Inject constructor(
         val loginResult = webSocketManager.loginUser(login, password)
 
         return if (loginResult.success) {
-            Log.d(TAG, "WebSocket login successful: ${loginResult.userName}")
+            AppLog.d(TAG, "WebSocket login successful: ${loginResult.userName}")
 
             // Hash password for offline login
             val passwordHash = passwordHasher.hash(password, login)
@@ -155,7 +155,7 @@ class UserRepositoryImpl @Inject constructor(
             Result.Success(user)
         } else {
             val error = loginResult.errorMessage ?: "Login failed"
-            Log.w(TAG, "WebSocket login failed: $error")
+            AppLog.w(TAG, "WebSocket login failed: $error")
 
             // If WebSocket login fails, try offline login as fallback
             // (in case user exists locally with valid credentials)
@@ -192,7 +192,7 @@ class UserRepositoryImpl @Inject constructor(
     override suspend fun loginOffline(login: String, password: String): Result<User> =
         withContext(ioDispatcher) {
             try {
-                Log.d(TAG, "Attempting offline login for user: $login")
+                AppLog.d(TAG, "Attempting offline login for user: $login")
 
                 val userEntity = userDao.getUserByLogin(login) ?: return@withContext Result.Error(
                     Exception("User not found"),
@@ -224,17 +224,17 @@ class UserRepositoryImpl @Inject constructor(
                 // Store credentials for WebSocket auto-login on reconnect
                 appPreferences.setUserCredentials(login, password)
 
-                Log.d(TAG, "Offline login successful for user: $login")
+                AppLog.d(TAG, "Offline login successful for user: $login")
                 val user = userEntity.toDomain().copy(lastLoginAt = currentTime)
                 Result.Success(user)
             } catch (e: Exception) {
-                Log.e(TAG, "Offline login error: ${e.message}", e)
+                AppLog.e(TAG, "Offline login error: ${e.message}", e)
                 Result.Error(e, e.message ?: "Offline login failed")
             }
         }
 
     override suspend fun logout() = withContext(ioDispatcher) {
-        Log.d(TAG, "Logging out user")
+        AppLog.d(TAG, "Logging out user")
         // Clear local session and credentials
         appPreferences.clearSession()
         // WebSocket will be disconnected by SyncOrchestrator when user logs out

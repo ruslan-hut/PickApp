@@ -26,6 +26,4 @@ interface WarehouseRepository {
     suspend fun deleteWarehouse(id: String)
 
     suspend fun deleteAllWarehouses()
-
-    suspend fun syncWarehouses(): Result<Unit>
 }

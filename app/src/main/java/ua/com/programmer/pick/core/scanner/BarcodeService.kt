@@ -1,6 +1,6 @@
 package ua.com.programmer.pick.core.scanner
 
-import android.util.Log
+import ua.com.programmer.pick.core.util.AppLog
 import android.view.InputDevice
 import android.view.KeyEvent
 import kotlinx.coroutines.CoroutineDispatcher
@@ -68,7 +68,7 @@ class BarcodeService @Inject constructor(
         if (isInitialized) return
         isInitialized = true
 
-        Log.d(TAG, "Initializing BarcodeService")
+        AppLog.d(TAG, "Initializing BarcodeService")
 
         // Monitor scanner availability
         hardwareScannerManager.isAvailable
@@ -143,7 +143,7 @@ class BarcodeService @Inject constructor(
      * Preferred method on TSD devices.
      */
     fun startHardwareScanner() {
-        Log.d(TAG, "Starting hardware scanner")
+        AppLog.d(TAG, "Starting hardware scanner")
         hardwareScannerManager.startScanning()
         _activeScanner.value = ScannerType.HARDWARE
     }
@@ -152,7 +152,7 @@ class BarcodeService @Inject constructor(
      * Stop hardware scanner.
      */
     fun stopHardwareScanner() {
-        Log.d(TAG, "Stopping hardware scanner")
+        AppLog.d(TAG, "Stopping hardware scanner")
         hardwareScannerManager.stopScanning()
         if (_activeScanner.value == ScannerType.HARDWARE) {
             _activeScanner.value = null
@@ -168,7 +168,7 @@ class BarcodeService @Inject constructor(
      * Stop camera scanner.
      */
     fun stopCameraScanner() {
-        Log.d(TAG, "Stopping camera scanner")
+        AppLog.d(TAG, "Stopping camera scanner")
         cameraScannerManager.stopScanning()
         if (_activeScanner.value == ScannerType.CAMERA) {
             _activeScanner.value = null
@@ -188,7 +188,7 @@ class BarcodeService @Inject constructor(
      */
     fun processManualEntry(barcode: String) {
         scope.launch {
-            Log.d(TAG, "Processing manual entry: $barcode")
+            AppLog.d(TAG, "Processing manual entry: $barcode")
 
             val format = detectBarcodeFormat(barcode)
             val gs1Data = if (format.supportsGS1() && gs1Parser.isGS1Barcode(barcode)) {
@@ -211,12 +211,12 @@ class BarcodeService @Inject constructor(
     private suspend fun handleScanResult(result: ScanResult, scannerType: ScannerType?) {
         when (result) {
             is ScanResult.Success -> {
-                Log.d(TAG, "Scan success: ${result.rawValue}")
+                AppLog.d(TAG, "Scan success: ${result.rawValue}")
                 val scannedBarcode = enrichWithProductInfo(result)
                 _scannedBarcodes.emit(scannedBarcode)
             }
             is ScanResult.Error -> {
-                Log.e(TAG, "Scan error: ${result.message}")
+                AppLog.e(TAG, "Scan error: ${result.message}")
                 _scanErrors.emit(result)
             }
             is ScanResult.Empty -> {
@@ -234,7 +234,7 @@ class BarcodeService @Inject constructor(
         val product = try {
             productRepository.getProductByBarcode(searchBarcode)
         } catch (e: Exception) {
-            Log.e(TAG, "Error looking up product: ${e.message}")
+            AppLog.e(TAG, "Error looking up product: ${e.message}")
             null
         }
 

@@ -255,7 +255,7 @@ sealed class SyncMessage {
         val success: Boolean,
         val state: String? = null,
         val completedAt: String? = null,
-        val version: Int? = null,
+        val version: Long? = null,
         val error: String? = null
     ) : SyncMessage() {
         override val type = MessageType.DOCUMENT_COMPLETE_RESULT

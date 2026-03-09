@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
-import android.util.Log
+import ua.com.programmer.pick.core.util.AppLog
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -81,7 +81,7 @@ class HardwareScannerManager @Inject constructor(
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent == null) return
 
-            Log.d(TAG, "Received intent: ${intent.action}")
+            AppLog.d(TAG, "Received intent: ${intent.action}")
 
             val (barcode, formatHint) = extractBarcodeData(intent)
             if (barcode != null) {
@@ -109,7 +109,7 @@ class HardwareScannerManager @Inject constructor(
         }
 
         _isAvailable.value = isTsdDevice || hasHardwareScannerApp()
-        Log.d(TAG, "Hardware scanner available: ${_isAvailable.value}")
+        AppLog.d(TAG, "Hardware scanner available: ${_isAvailable.value}")
     }
 
     private fun hasHardwareScannerApp(): Boolean {
@@ -134,11 +134,11 @@ class HardwareScannerManager @Inject constructor(
 
     override fun startScanning() {
         if (isReceiverRegistered) {
-            Log.d(TAG, "Scanner already started")
+            AppLog.d(TAG, "Scanner already started")
             return
         }
 
-        Log.d(TAG, "Starting hardware scanner")
+        AppLog.d(TAG, "Starting hardware scanner")
 
         val filter = IntentFilter().apply {
             // Honeywell
@@ -171,16 +171,16 @@ class HardwareScannerManager @Inject constructor(
 
     override fun stopScanning() {
         if (!isReceiverRegistered) {
-            Log.d(TAG, "Scanner not running")
+            AppLog.d(TAG, "Scanner not running")
             return
         }
 
-        Log.d(TAG, "Stopping hardware scanner")
+        AppLog.d(TAG, "Stopping hardware scanner")
 
         try {
             context.unregisterReceiver(scanReceiver)
         } catch (e: Exception) {
-            Log.w(TAG, "Error unregistering receiver: ${e.message}")
+            AppLog.w(TAG, "Error unregistering receiver: ${e.message}")
         }
 
         isReceiverRegistered = false
@@ -240,7 +240,7 @@ class HardwareScannerManager @Inject constructor(
     }
 
     private fun processScan(barcode: String, formatHint: String?) {
-        Log.d(TAG, "Processing scan: $barcode (format hint: $formatHint)")
+        AppLog.d(TAG, "Processing scan: $barcode (format hint: $formatHint)")
 
         scope.launch {
             try {
@@ -262,7 +262,7 @@ class HardwareScannerManager @Inject constructor(
 
                 _scanResults.emit(result)
             } catch (e: Exception) {
-                Log.e(TAG, "Error processing scan: ${e.message}", e)
+                AppLog.e(TAG, "Error processing scan: ${e.message}", e)
                 _scanResults.emit(
                     ScanResult.Error(
                         message = "Failed to process barcode: ${e.message}",
@@ -311,7 +311,7 @@ class HardwareScannerManager @Inject constructor(
             honeywellIntent.putExtra("com.honeywell.aidc.extra.EXTRA_SCAN", true)
             context.sendBroadcast(honeywellIntent)
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to enable hardware scanner: ${e.message}")
+            AppLog.w(TAG, "Failed to enable hardware scanner: ${e.message}")
         }
     }
 
@@ -327,7 +327,7 @@ class HardwareScannerManager @Inject constructor(
             honeywellIntent.putExtra("com.honeywell.aidc.extra.EXTRA_SCAN", false)
             context.sendBroadcast(honeywellIntent)
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to disable hardware scanner: ${e.message}")
+            AppLog.w(TAG, "Failed to disable hardware scanner: ${e.message}")
         }
     }
 }

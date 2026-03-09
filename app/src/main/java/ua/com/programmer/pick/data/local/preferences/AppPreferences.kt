@@ -2,7 +2,7 @@ package ua.com.programmer.pick.data.local.preferences
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.util.Log
+import ua.com.programmer.pick.core.util.AppLog
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
@@ -57,7 +57,7 @@ class AppPreferences @Inject constructor(
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to create EncryptedSharedPreferences: ${e.message}", e)
+            AppLog.e(TAG, "Failed to create EncryptedSharedPreferences: ${e.message}", e)
             null
         }
     }
@@ -84,11 +84,11 @@ class AppPreferences @Inject constructor(
                         mutable.remove(USER_LOGIN)
                         mutable.remove(USER_PASSWORD)
                     }
-                    Log.d(TAG, "Migrated plaintext credentials to encrypted storage")
+                    AppLog.d(TAG, "Migrated plaintext credentials to encrypted storage")
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to migrate credentials: ${e.message}", e)
+            AppLog.e(TAG, "Failed to migrate credentials: ${e.message}", e)
         }
     }
 

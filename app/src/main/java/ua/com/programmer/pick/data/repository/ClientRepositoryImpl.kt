@@ -62,9 +62,4 @@ class ClientRepositoryImpl @Inject constructor(
     override suspend fun deleteAllClients() = withContext(ioDispatcher) {
         clientDao.deleteAllClients()
     }
-
-    override suspend fun syncClients(): Result<Unit> = withContext(ioDispatcher) {
-        // TODO: Implement sync with server
-        Result.Success(Unit)
-    }
 }

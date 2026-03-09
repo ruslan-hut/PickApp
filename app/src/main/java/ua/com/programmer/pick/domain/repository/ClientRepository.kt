@@ -21,6 +21,4 @@ interface ClientRepository {
     suspend fun deleteClient(id: String)
 
     suspend fun deleteAllClients()
-
-    suspend fun syncClients(): Result<Unit>
 }

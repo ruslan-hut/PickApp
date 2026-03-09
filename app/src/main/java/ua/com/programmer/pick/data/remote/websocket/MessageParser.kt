@@ -1,6 +1,6 @@
 package ua.com.programmer.pick.data.remote.websocket
 
-import android.util.Log
+import ua.com.programmer.pick.core.util.AppLog
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -102,12 +102,12 @@ class MessageParser @Inject constructor(
                 MessageType.SERVER_ERROR.name -> parseServerError(id, timestamp, payload)
                 MessageType.PUSH.name -> parsePush(id, timestamp, payload)
                 else -> {
-                    Log.w(TAG, "Unknown message type: $typeStr")
+                    AppLog.w(TAG, "Unknown message type: $typeStr")
                     null
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse message: ${e.message}", e)
+            AppLog.e(TAG, "Failed to parse message: ${e.message}", e)
             null
         }
     }
@@ -234,7 +234,7 @@ class MessageParser @Inject constructor(
         if (payload == null) return null
         val rawData = payload.get(FIELD_DATA)
         val data = if (rawData == null || rawData.isJsonNull) {
-            Log.w(TAG, "SYNC_DATA payload has null/missing 'data' field, using empty array")
+            AppLog.w(TAG, "SYNC_DATA payload has null/missing 'data' field, using empty array")
             JsonArray()
         } else {
             rawData
@@ -287,7 +287,7 @@ class MessageParser @Inject constructor(
             success = payload.get(FIELD_SUCCESS)?.asBoolean ?: false,
             state = payload.get(FIELD_STATE)?.asString,
             completedAt = payload.get(FIELD_COMPLETED_AT)?.asString,
-            version = payload.get(FIELD_VERSION)?.asInt,
+            version = payload.get(FIELD_VERSION)?.asLong,
             error = payload.get(FIELD_ERROR)?.asString
         )
     }
