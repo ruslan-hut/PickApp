@@ -92,6 +92,21 @@ fun DocumentListItem(
                     overflow = TextOverflow.Ellipsis
                 )
 
+                // Warehouse name
+                if (!document.warehouseName.isNullOrBlank()) {
+                    Text(
+                        text = document.warehouseName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isComplete) {
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Progress bar

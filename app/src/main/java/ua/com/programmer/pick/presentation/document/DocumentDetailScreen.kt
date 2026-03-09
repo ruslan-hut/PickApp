@@ -198,6 +198,7 @@ fun DocumentDetailScreen(
                         item {
                             DocumentHeaderCard(
                                 clientName = uiState.document?.clientName ?: "",
+                                warehouseName = uiState.document?.warehouseName ?: "",
                                 totalPlanned = uiState.document?.totalPlanned ?: 0.0,
                                 totalActual = uiState.document?.totalActual ?: 0.0,
                                 linesTotal = uiState.lines.size,
@@ -252,6 +253,7 @@ fun DocumentDetailScreen(
 @Composable
 private fun DocumentHeaderCard(
     clientName: String,
+    warehouseName: String,
     totalPlanned: Double,
     totalActual: Double,
     linesTotal: Int,
@@ -282,6 +284,20 @@ private fun DocumentHeaderCard(
                 Text(
                     text = clientName,
                     style = MaterialTheme.typography.titleMedium,
+                    color = if (isComplete) {
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+
+            // Warehouse name
+            if (warehouseName.isNotBlank()) {
+                Text(
+                    text = warehouseName,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = if (isComplete) {
                         MaterialTheme.colorScheme.onSecondaryContainer
                     } else {
