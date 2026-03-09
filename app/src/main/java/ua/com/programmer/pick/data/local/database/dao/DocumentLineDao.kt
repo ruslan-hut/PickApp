@@ -44,6 +44,9 @@ interface DocumentLineDao {
     @Query("SELECT SUM(actual_quantity) FROM document_lines WHERE document_id = :documentId")
     suspend fun getTotalActualQuantity(documentId: String): Double?
 
+    @Query("SELECT SUM(planned_quantity) FROM document_lines WHERE document_id = :documentId")
+    suspend fun getTotalPlannedQuantity(documentId: String): Double?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLine(line: DocumentLineEntity)
 

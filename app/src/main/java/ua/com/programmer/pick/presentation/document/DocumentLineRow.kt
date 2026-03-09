@@ -80,19 +80,36 @@ fun DocumentLineRow(
                     )
                 }
 
-                // Product name
-                Text(
-                    text = line.productName,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (isComplete) {
-                        MaterialTheme.colorScheme.onSecondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    // Product name
+                    Text(
+                        text = line.productName,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (isComplete) {
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    // Product code
+                    if (line.productCode.isNotBlank()) {
+                        Text(
+                            text = line.productCode,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontFamily = ua.com.programmer.pick.ui.theme.FiraMono
+                            ),
+                            color = if (isComplete) {
+                                MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(12.dp))

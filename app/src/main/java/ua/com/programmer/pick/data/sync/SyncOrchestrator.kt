@@ -872,7 +872,7 @@ class SyncOrchestrator @Inject constructor(
             users.forEach { dto ->
                 // Preserve existing passwordHash if user already exists locally
                 val existingUser = userDao.getUserById(dto.id)
-                val entity = dto.toEntityForSync(existingUser?.passwordHash)
+                val entity = dto.toEntityForSync(existingUser?.passwordHash, existingUser?.operatingMode)
                 userDao.insertUser(entity)
             }
         }
@@ -912,6 +912,12 @@ class SyncOrchestrator @Inject constructor(
                 dto.lines?.forEach { lineDto ->
                     val lineEntity = documentMapper.toLineEntity(lineDto)
                     documentLineDao.upsertLine(lineEntity)
+                }
+
+                // Recalculate totalPlanned from lines
+                val totalPlanned = documentLineDao.getTotalPlannedQuantity(dto.id) ?: 0.0
+                if (totalPlanned != entity.totalPlanned) {
+                    documentDao.updateTotalPlanned(dto.id, totalPlanned, System.currentTimeMillis())
                 }
             }
         }

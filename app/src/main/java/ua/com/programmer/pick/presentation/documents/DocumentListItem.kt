@@ -1,5 +1,6 @@
 package ua.com.programmer.pick.presentation.documents
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,7 +10,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -24,7 +27,6 @@ import androidx.compose.ui.unit.dp
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.domain.model.Document
 import ua.com.programmer.pick.domain.model.DocumentState
-import ua.com.programmer.pick.presentation.common.PickElevatedCard
 import ua.com.programmer.pick.ui.theme.CardShape
 
 @Composable
@@ -39,15 +41,24 @@ fun DocumentListItem(
 
     val isComplete = document.state == DocumentState.COMPLETED || document.state == DocumentState.SENT
 
-    PickElevatedCard(
+    OutlinedCard(
         onClick = { onClick(document.id) },
         modifier = modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-        elevation = 1.dp,
-        containerColor = if (isComplete) {
-            MaterialTheme.colorScheme.secondaryContainer
-        } else {
-            MaterialTheme.colorScheme.surface
-        }
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = if (isComplete) {
+                MaterialTheme.colorScheme.secondaryContainer
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
+        ),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (isComplete) {
+                MaterialTheme.colorScheme.secondary
+            } else {
+                MaterialTheme.colorScheme.outlineVariant
+            }
+        )
     ) {
         Row(
             modifier = Modifier

@@ -65,6 +65,9 @@ interface DocumentDao {
     @Query("UPDATE documents SET total_actual = :totalActual, is_dirty = 1, last_modified = :lastModified WHERE id = :documentId")
     suspend fun updateTotalActual(documentId: String, totalActual: Double, lastModified: Long)
 
+    @Query("UPDATE documents SET total_planned = :totalPlanned, last_modified = :lastModified WHERE id = :documentId")
+    suspend fun updateTotalPlanned(documentId: String, totalPlanned: Double, lastModified: Long)
+
     @Query("UPDATE documents SET is_dirty = 0 WHERE id = :documentId")
     suspend fun markDocumentAsSynced(documentId: String)
 

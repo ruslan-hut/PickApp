@@ -36,6 +36,7 @@ class AppPreferences @Inject constructor(
         private val OFFLINE_HASH = stringPreferencesKey("offline_hash")
         private val EXPIRES_AT = longPreferencesKey("expires_at")
         private val DEVICE_ID = stringPreferencesKey("device_id")
+        private val SELECTED_OPERATING_MODE = stringPreferencesKey("selected_operating_mode")
         // Plaintext keys kept for migration only
         private val USER_LOGIN = stringPreferencesKey("user_login")
         private val USER_PASSWORD = stringPreferencesKey("user_password")
@@ -126,6 +127,16 @@ class AppPreferences @Inject constructor(
 
     val userPassword: Flow<String?> = context.dataStore.data.map {
         encryptedPrefs?.getString(KEY_ENCRYPTED_PASSWORD, null)
+    }
+
+    val selectedOperatingMode: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[SELECTED_OPERATING_MODE]
+    }
+
+    suspend fun setSelectedOperatingMode(mode: String) {
+        context.dataStore.edit { preferences ->
+            preferences[SELECTED_OPERATING_MODE] = mode
+        }
     }
 
     // Synchronous getter for interceptor (use with caution)

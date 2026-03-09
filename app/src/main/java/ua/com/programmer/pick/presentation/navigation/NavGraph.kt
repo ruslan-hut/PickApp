@@ -18,7 +18,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -123,7 +122,8 @@ fun PickNavGraph(
                             popUpTo(Screen.Home.route) { inclusive = true }
                         }
                     },
-                    onDocumentsClick = {
+                    onDocumentTypeClick = { mode ->
+                        viewModel.setOperatingMode(mode)
                         navController.navigate(Screen.Documents.route) {
                             popUpTo(navController.graph.findStartDestination().id) {
                                 saveState = true
@@ -131,20 +131,7 @@ fun PickNavGraph(
                             launchSingleTop = true
                             restoreState = true
                         }
-                    },
-                    onSettingsClick = {
-                        navController.navigate(Screen.Settings.route)
-                    },
-                    onProfileClick = {
-                        navController.navigate(Screen.Profile.route) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    onModeChange = viewModel::setOperatingMode
+                    }
                 )
             }
 
@@ -176,7 +163,10 @@ fun PickNavGraph(
 
             composable(route = Screen.Profile.route) {
                 ProfileScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    onSettingsClick = {
+                        navController.navigate(Screen.Settings.route)
+                    }
                 )
             }
         }

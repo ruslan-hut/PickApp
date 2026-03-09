@@ -1,0 +1,137 @@
+<resources>
+    <string name="app_name">Pick</string>
+
+    <!-- General -->
+    <string name="retry">Повторити</string>
+    <string name="app_logo_description">Логотип додатку</string>
+    <string name="search_label">Пошук</string>
+    <string name="clear_search_cd">Очистити пошук</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Скасувати</string>
+    <string name="plus">+</string>
+    <string name="minus">-</string>
+    <string name="enter_quantity">Введіть кількість</string>
+    <string name="quantity_overflow_fmt">Ви ввели %1$.0f, але заплановано %2$.0f. %3$.0f не додано.</string>
+
+    <!-- Home -->
+    <string name="title_app">Pick</string>
+    <string name="operating_mode">Тип документа</string>
+    <string name="mode_receipt">Прийом</string>
+    <string name="mode_shipment">Відвантаження</string>
+    <string name="mode_inventory">Інвентаризація</string>
+    <string name="logout_cd">Вийти</string>
+    <string name="online">Онлайн</string>
+    <string name="offline">Офлайн</string>
+    <string name="welcome_fmt">Вітаємо, %1$s</string>
+    <string name="dashboard_coming_soon">Панель буде незабаром</string>
+    <string name="documents">Документи</string>
+    <string name="documents_description">Перегляд та управління складськими документами</string>
+    <string name="profile_description">Перегляд та редагування профілю</string>
+    <string name="settings_description">Налаштування додатку</string>
+    <string name="quick_actions">Швидкі дії</string>
+    <string name="sync_status_label">Стан синхронізації</string>
+    <string name="no_documents">Немає документів</string>
+    <string name="no_documents_description">Документи з\'являться тут, коли будуть доступні</string>
+    <string name="user_default">Користувач</string>
+
+    <!-- Splash -->
+    <string name="initialization_error">Помилка ініціалізації</string>
+
+    <!-- Login -->
+    <string name="subtitle_warehouse">Управління складом</string>
+    <string name="label_login">Логін</string>
+    <string name="label_password">Пароль</string>
+    <string name="toggle_password_visibility_cd">Показати/сховати пароль</string>
+    <string name="offline_mode">Офлайн режим</string>
+    <string name="login_button">Увійти</string>
+    <string name="error_empty_credentials">Введіть логін та пароль</string>
+    <string name="error_login_failed">Помилка входу</string>
+
+    <!-- Documents list -->
+    <string name="planned">План: %1$.0f</string>
+    <string name="actual">Факт: %1$.0f</string>
+    <string name="document_item_title_fmt">%1$s — %2$s</string>
+    <string name="error_loading_documents">Помилка завантаження документів</string>
+    <string name="error_loading_document">Помилка завантаження документа</string>
+    <string name="document_lines">Рядки</string>
+    <string name="no_lines_description">Немає рядків у цьому документі</string>
+    <string name="lines_progress_fmt">%1$d / %2$d рядків</string>
+    <string name="error_saving">Помилка збереження</string>
+    <string name="product_not_in_document">Товар не знайдено в цьому документі</string>
+    <string name="product_already_completed">Цей товар вже повністю зібрано</string>
+    <string name="product_not_found">Товар не знайдено в базі даних</string>
+    <string name="take_into_work">Взяти в роботу</string>
+    <string name="package_document">Пакування</string>
+    <string name="complete_document">Завершити</string>
+    <string name="document_packaged">Документ запаковано</string>
+    <string name="error_package_document">Не вдалося запакувати документ</string>
+    <string name="complete_document_confirm_title">Завершити документ?</string>
+    <string name="complete_document_remain_fmt">Залишилось: %1$d з %2$d рядків не повністю зібрано</string>
+    <string name="yes">Так</string>
+    <string name="no">Ні</string>
+    <string name="document_taken_into_work">Документ взято в роботу</string>
+    <string name="document_completed">Документ завершено</string>
+    <string name="error_take_into_work">Не вдалося взяти документ в роботу</string>
+    <string name="error_complete_document">Не вдалося завершити документ</string>
+    <string name="document_already_taken">Документ вже обробляється</string>
+    <string name="document_released">Документ звільнено</string>
+    <string name="error_release_document">Не вдалося звільнити документ</string>
+    <string name="document_taken_by_other">Документ зайнятий іншим користувачем</string>
+    <string name="cannot_edit_document">Ви не можете редагувати цей документ</string>
+    <string name="release_document">Звільнити</string>
+    <string name="document_state_loaded">Новий</string>
+    <string name="document_state_in_progress">В роботі</string>
+    <string name="document_state_packaging">Пакування</string>
+    <string name="document_state_completed">Завершено</string>
+    <string name="document_state_sent">Відправлено</string>
+    <string name="document_state_error">Помилка</string>
+
+    <!-- Sync status -->
+    <string name="sync_idle">Очікування</string>
+    <string name="sync_syncing">Синхронізація</string>
+    <string name="sync_success">Синхронізовано</string>
+    <string name="sync_error">Помилка</string>
+
+    <!-- Navigation -->
+    <string name="back_cd">Назад</string>
+    <string name="nav_home">Головна</string>
+    <string name="nav_documents">Документи</string>
+    <string name="nav_profile">Профіль</string>
+    <string name="settings">Налаштування</string>
+    <string name="profile">Профіль</string>
+
+    <!-- Settings -->
+    <string name="server_settings">Налаштування сервера</string>
+    <string name="server_url">URL сервера</string>
+    <string name="save_settings">Зберегти налаштування</string>
+    <string name="sync_settings">Синхронізація</string>
+    <string name="force_sync">Примусова синхронізація</string>
+    <string name="force_sync_description">Синхронізувати всі дані з сервером</string>
+    <string name="clear_cache">Очистити кеш</string>
+    <string name="clear_cache_description">Видалити всі локально збережені дані</string>
+    <string name="app_info">Про додаток</string>
+    <string name="app_version_fmt">Версія: %1$s</string>
+    <string name="error_loading_settings">Помилка завантаження налаштувань</string>
+    <string name="error_saving_settings">Помилка збереження налаштувань</string>
+    <string name="error_clearing_cache">Помилка очищення кешу</string>
+    <string name="error_sync_failed">Помилка синхронізації</string>
+    <string name="settings_saved">Налаштування збережено</string>
+    <string name="cache_cleared">Кеш очищено</string>
+    <string name="sync_started">Синхронізацію розпочато</string>
+
+    <!-- Profile -->
+    <string name="user_info">Інформація про користувача</string>
+    <string name="login_label_fmt">Логін: %1$s</string>
+    <string name="role_label_fmt">Роль: %1$s</string>
+    <string name="device_id_label_fmt">Пристрій: %1$s</string>
+    <string name="status_active">Активний</string>
+    <string name="edit_profile">Редагувати профіль</string>
+    <string name="display_name">Ім\'я</string>
+    <string name="save_profile">Зберегти профіль</string>
+    <string name="no_user_data">Дані користувача відсутні</string>
+    <string name="error_loading_profile">Помилка завантаження профілю</string>
+    <string name="error_saving_profile">Помилка збереження профілю</string>
+    <string name="error_no_user">Користувач не увійшов</string>
+    <string name="profile_updated">Профіль оновлено</string>
+
+</resources>

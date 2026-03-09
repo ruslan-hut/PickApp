@@ -73,7 +73,7 @@ fun UserDto.toDomain(): User {
  * Preserves existing passwordHash if user already exists,
  * otherwise sets empty passwordHash (user must login online first).
  */
-fun UserDto.toEntityForSync(existingPasswordHash: String?): UserEntity {
+fun UserDto.toEntityForSync(existingPasswordHash: String?, existingOperatingMode: String?): UserEntity {
     return UserEntity(
         id = id,
         login = login,
@@ -82,6 +82,7 @@ fun UserDto.toEntityForSync(existingPasswordHash: String?): UserEntity {
         role = role,
         isActive = isActive,
         lastLoginAt = null,
-        lastUpdated = lastUpdated
+        lastUpdated = lastUpdated,
+        operatingMode = existingOperatingMode ?: "RECEIPT"
     )
 }

@@ -1,6 +1,6 @@
 package ua.com.programmer.pick.presentation.home
 
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -9,27 +9,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.MenuAnchorType
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -38,23 +31,18 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.domain.model.OperatingMode
-import ua.com.programmer.pick.domain.model.SyncStatus
 import ua.com.programmer.pick.presentation.common.OfflineBanner
 import ua.com.programmer.pick.presentation.common.PickAppBar
 import ua.com.programmer.pick.presentation.common.PickElevatedCard
 import ua.com.programmer.pick.presentation.common.SectionHeader
 import ua.com.programmer.pick.presentation.common.StatusIndicator
-import ua.com.programmer.pick.presentation.common.SyncStatusChip
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     uiState: HomeUiState,
     onLogoutClick: () -> Unit,
-    onDocumentsClick: () -> Unit,
-    onSettingsClick: () -> Unit,
-    onProfileClick: () -> Unit,
-    onModeChange: (OperatingMode) -> Unit,
+    onDocumentTypeClick: (OperatingMode) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
@@ -96,60 +84,19 @@ fun HomeScreen(
                     )
                 }
 
-                // Operating mode selector
-                item {
-                    OperatingModeSelector(
-                        selectedMode = uiState.currentUser?.operatingMode ?: OperatingMode.RECEIPT,
-                        onModeSelected = onModeChange
-                    )
-                }
-
-                // Sync status section
+                // Document type selector
                 item {
                     SectionHeader(
-                        title = stringResource(R.string.sync_settings),
+                        title = stringResource(R.string.operating_mode),
                         modifier = Modifier.padding(top = 8.dp)
                     )
                 }
 
-                item {
-                    val syncStatus = uiState.syncStates.firstOrNull()?.status ?: SyncStatus.IDLE
-                    SyncStatusCard(syncStatus = syncStatus)
-                }
-
-                // Quick actions section
-                item {
-                    SectionHeader(
-                        title = stringResource(R.string.quick_actions),
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                }
-
-                // Action cards
-                item {
-                    QuickActionCard(
-                        icon = R.drawable.baseline_description_24,
-                        title = stringResource(R.string.documents),
-                        description = stringResource(R.string.documents_description),
-                        onClick = onDocumentsClick
-                    )
-                }
-
-                item {
-                    QuickActionCard(
-                        icon = R.drawable.baseline_person_24,
-                        title = stringResource(R.string.profile),
-                        description = stringResource(R.string.profile_description),
-                        onClick = onProfileClick
-                    )
-                }
-
-                item {
-                    QuickActionCard(
-                        icon = R.drawable.baseline_settings_24,
-                        title = stringResource(R.string.settings),
-                        description = stringResource(R.string.settings_description),
-                        onClick = onSettingsClick
+                items(OperatingMode.entries.toList()) { mode ->
+                    DocumentTypeButton(
+                        mode = mode,
+                        isSelected = mode == uiState.selectedMode,
+                        onClick = { onDocumentTypeClick(mode) }
                     )
                 }
 
@@ -199,141 +146,46 @@ private fun WelcomeCard(
 }
 
 @Composable
-private fun SyncStatusCard(
-    syncStatus: SyncStatus,
-    modifier: Modifier = Modifier
-) {
-    PickElevatedCard(
-        modifier = modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-        elevation = 1.dp
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = stringResource(R.string.sync_status_label),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            SyncStatusChip(status = syncStatus)
-        }
-    }
-}
-
-@Composable
-private fun QuickActionCard(
-    icon: Int,
-    title: String,
-    description: String,
+private fun DocumentTypeButton(
+    mode: OperatingMode,
+    isSelected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    PickElevatedCard(
+    OutlinedCard(
         onClick = onClick,
         modifier = modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-        elevation = 1.dp
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = if (isSelected) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
+        ),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (isSelected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.outlineVariant
+            }
+        )
     ) {
-        Row(
+        Text(
+            text = when (mode) {
+                OperatingMode.RECEIPT -> stringResource(R.string.mode_receipt)
+                OperatingMode.SHIPMENT -> stringResource(R.string.mode_shipment)
+                OperatingMode.INVENTORY -> stringResource(R.string.mode_inventory)
+            },
+            style = MaterialTheme.typography.titleMedium,
+            color = if (isSelected) {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                painter = painterResource(icon),
-                contentDescription = null,
-                modifier = Modifier.size(32.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun OperatingModeSelector(
-    selectedMode: OperatingMode,
-    onModeSelected: (OperatingMode) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    PickElevatedCard(
-        modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        elevation = 2.dp
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.operating_mode),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            ExposedDropdownMenuBox(
-                expanded = expanded,
-                onExpandedChange = { expanded = it },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                OutlinedTextField(
-                    value = when (selectedMode) {
-                        OperatingMode.RECEIPT -> stringResource(R.string.mode_receipt)
-                        OperatingMode.SHIPMENT -> stringResource(R.string.mode_shipment)
-                        OperatingMode.INVENTORY -> stringResource(R.string.mode_inventory)
-                    },
-                    onValueChange = {},
-                    readOnly = true,
-                    singleLine = true,
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor(MenuAnchorType.PrimaryNotEditable)
-                )
-                ExposedDropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
-                ) {
-                    OperatingMode.entries.forEach { mode ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = when (mode) {
-                                        OperatingMode.RECEIPT -> stringResource(R.string.mode_receipt)
-                                        OperatingMode.SHIPMENT -> stringResource(R.string.mode_shipment)
-                                        OperatingMode.INVENTORY -> stringResource(R.string.mode_inventory)
-                                    }
-                                )
-                            },
-                            onClick = {
-                                onModeSelected(mode)
-                                expanded = false
-                            },
-                            contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
-                        )
-                    }
-                }
-            }
-        }
+                .padding(20.dp)
+        )
     }
 }

@@ -215,7 +215,7 @@ class DocumentRepositoryImpl @Inject constructor(
         try {
             documentLineDao.updateActualQuantity(lineId, actualQuantity)
             notes?.let { documentLineDao.updateLineNotes(lineId, it) }
-            updateDocumentTotalActual(lineId)
+            updateDocumentTotals(lineId)
             Result.Success(Unit)
         } catch (e: Exception) {
             Result.Error(e, e.message ?: "Failed to update line")
@@ -225,7 +225,7 @@ class DocumentRepositoryImpl @Inject constructor(
     override suspend fun incrementLineQuantity(lineId: String, delta: Double): Result<Unit> = withContext(ioDispatcher) {
         try {
             documentLineDao.incrementActualQuantity(lineId, delta)
-            updateDocumentTotalActual(lineId)
+            updateDocumentTotals(lineId)
             Result.Success(Unit)
         } catch (e: Exception) {
             Result.Error(e, e.message ?: "Failed to increment line quantity")
@@ -289,9 +289,12 @@ class DocumentRepositoryImpl @Inject constructor(
         documentLineDao.markAllLinesAsSynced(documentId)
     }
 
-    private suspend fun updateDocumentTotalActual(lineId: String) {
+    private suspend fun updateDocumentTotals(lineId: String) {
         val line = documentLineDao.getLineById(lineId) ?: return
+        val now = System.currentTimeMillis()
         val totalActual = documentLineDao.getTotalActualQuantity(line.documentId) ?: 0.0
-        documentDao.updateTotalActual(line.documentId, totalActual, System.currentTimeMillis())
+        documentDao.updateTotalActual(line.documentId, totalActual, now)
+        val totalPlanned = documentLineDao.getTotalPlannedQuantity(line.documentId) ?: 0.0
+        documentDao.updateTotalPlanned(line.documentId, totalPlanned, now)
     }
 }

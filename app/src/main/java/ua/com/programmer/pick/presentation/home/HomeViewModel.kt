@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ua.com.programmer.pick.core.util.NetworkMonitor
+import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.domain.model.OperatingMode
 import ua.com.programmer.pick.domain.repository.UserRepository
@@ -18,7 +19,8 @@ import javax.inject.Inject
 class HomeViewModel @Inject constructor(
     private val userRepository: UserRepository,
     private val networkMonitor: NetworkMonitor,
-    private val syncOrchestrator: SyncOrchestrator
+    private val syncOrchestrator: SyncOrchestrator,
+    private val appPreferences: AppPreferences
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -27,6 +29,7 @@ class HomeViewModel @Inject constructor(
     init {
         observeNetworkState()
         loadCurrentUser()
+        restoreSelectedMode()
     }
 
     private fun observeNetworkState() {
@@ -65,8 +68,25 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    private fun restoreSelectedMode() {
+        viewModelScope.launch {
+            appPreferences.selectedOperatingMode.collect { savedMode ->
+                if (savedMode != null) {
+                    val mode = try {
+                        OperatingMode.valueOf(savedMode)
+                    } catch (e: IllegalArgumentException) {
+                        OperatingMode.RECEIPT
+                    }
+                    _uiState.update { it.copy(selectedMode = mode) }
+                }
+            }
+        }
+    }
+
     fun setOperatingMode(mode: OperatingMode) {
         viewModelScope.launch {
+            _uiState.update { it.copy(selectedMode = mode) }
+            appPreferences.setSelectedOperatingMode(mode.name)
             val currentUser = _uiState.value.currentUser ?: return@launch
             val updatedUser = currentUser.copy(operatingMode = mode)
             userRepository.updateUser(updatedUser)
