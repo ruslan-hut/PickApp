@@ -213,6 +213,13 @@ fun ProfileScreen(
                                 label = stringResource(R.string.role_label_fmt, ""),
                                 value = user.role.name
                             )
+                            if (uiState.deviceId.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                ProfileInfoRow(
+                                    label = stringResource(R.string.device_id_label_fmt, ""),
+                                    value = uiState.deviceId
+                                )
+                            }
                         }
                     }
 

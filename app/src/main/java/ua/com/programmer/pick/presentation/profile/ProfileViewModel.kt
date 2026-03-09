@@ -6,13 +6,16 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.domain.repository.UserRepository
 import javax.inject.Inject
 
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
+    private val appPreferences: AppPreferences,
     private val userRepository: UserRepository
 ) : ViewModel() {
 
@@ -20,6 +23,10 @@ class ProfileViewModel @Inject constructor(
     val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            val fullId = appPreferences.deviceId.first()
+            _uiState.update { it.copy(deviceId = fullId.take(8)) }
+        }
         loadProfile()
     }
 

@@ -234,6 +234,22 @@ class SyncOrchestrator @Inject constructor(
                 _syncState.value = _syncState.value.copy(pendingOperationsCount = count)
             }
             .launchIn(scope)
+
+        // Log overall sync state changes
+        syncState
+            .onEach { state ->
+                Log.i(TAG, buildString {
+                    append("SyncState | ")
+                    append("online=${state.isOnline} ")
+                    append("ws=${state.isWebSocketConnected} ")
+                    append("auth=${state.isUserAuthenticated} ")
+                    append("syncing=${state.isSyncing} ")
+                    append("pending=${state.pendingOperationsCount}")
+                    state.lastSyncTime?.let { append(" lastSync=${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(it))}") }
+                    state.lastError?.let { append(" error=$it") }
+                })
+            }
+            .launchIn(scope)
     }
 
     /**
@@ -718,7 +734,7 @@ class SyncOrchestrator @Inject constructor(
     }
 
     private suspend fun handleSyncComplete(message: SyncMessage.SyncComplete) {
-        Log.d(TAG, "Sync complete: ${message.syncId}")
+        Log.i(TAG, "Sync complete: syncId=${message.syncId} cursors=${message.cursors}")
 
         syncTimeoutJob?.cancel()
         syncTimeoutJob = null
@@ -844,6 +860,7 @@ class SyncOrchestrator @Inject constructor(
             val type = object : TypeToken<List<UserDto>>() {}.type
             val users: List<UserDto> = gson.fromJson(data, type)
 
+            Log.i(TAG, "Sync users: ${users.size} upsert, ${deletedIds?.size ?: 0} delete")
             users.forEach { dto ->
                 // Preserve existing passwordHash if user already exists locally
                 val existingUser = userDao.getUserById(dto.id)
@@ -871,6 +888,7 @@ class SyncOrchestrator @Inject constructor(
             val type = object : TypeToken<List<DocumentDto>>() {}.type
             val documents: List<DocumentDto> = gson.fromJson(data, type)
 
+            Log.i(TAG, "Sync documents: ${documents.size} upsert, ${deletedIds?.size ?: 0} delete")
             documents.forEach { dto ->
                 // Skip overwriting locally dirty documents — server will get our version when uploaded
                 val existing = documentDao.getDocumentById(dto.id)
@@ -903,6 +921,7 @@ class SyncOrchestrator @Inject constructor(
             val type = object : TypeToken<List<ProductDto>>() {}.type
             val products: List<ProductDto> = gson.fromJson(data, type)
 
+            Log.i(TAG, "Sync products: ${products.size} upsert, ${deletedIds?.size ?: 0} delete")
             products.forEach { dto ->
                 val entity = productMapper.toEntity(dto)
                 productDao.upsertProduct(entity)
@@ -937,6 +956,7 @@ class SyncOrchestrator @Inject constructor(
             val type = object : TypeToken<List<ClientDto>>() {}.type
             val clients: List<ClientDto> = gson.fromJson(data, type)
 
+            Log.i(TAG, "Sync clients: ${clients.size} upsert, ${deletedIds?.size ?: 0} delete")
             clients.forEach { dto ->
                 val entity = clientMapper.toEntity(dto)
                 clientDao.upsertClient(entity)
@@ -956,6 +976,7 @@ class SyncOrchestrator @Inject constructor(
             val type = object : TypeToken<List<WarehouseDto>>() {}.type
             val warehouses: List<WarehouseDto> = gson.fromJson(data, type)
 
+            Log.i(TAG, "Sync warehouses: ${warehouses.size} upsert, ${deletedIds?.size ?: 0} delete")
             warehouses.forEach { dto ->
                 val entity = warehouseMapper.toEntity(dto)
                 warehouseDao.upsertWarehouse(entity)
