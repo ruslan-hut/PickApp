@@ -22,7 +22,8 @@ enum class ToastMessage(@StringRes val resId: Int) {
     ERROR_RELEASE_DOCUMENT(R.string.error_release_document),
     DOCUMENT_ALREADY_TAKEN(R.string.document_already_taken),
     DOCUMENT_TAKEN_BY_OTHER(R.string.document_taken_by_other),
-    CANNOT_EDIT_DOCUMENT(R.string.cannot_edit_document)
+    CANNOT_EDIT_DOCUMENT(R.string.cannot_edit_document),
+    CANNOT_RELEASE_DOCUMENT(R.string.cannot_release_document)
 }
 
 enum class BarcodeAlertType(@StringRes val resId: Int) {

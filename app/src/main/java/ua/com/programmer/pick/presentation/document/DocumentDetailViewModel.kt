@@ -494,6 +494,105 @@ class DocumentDetailViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Save and complete: packages the document (if IN_PROGRESS) then completes it.
+     * Used when user taps the save/complete button in the top bar.
+     */
+    fun saveAndComplete() {
+        val documentId = currentDocumentId ?: return
+        val currentState = _uiState.value.document?.state ?: return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isProcessingAction = true) }
+
+            // Step 1: package if still IN_PROGRESS
+            if (currentState == DocumentState.IN_PROGRESS) {
+                try {
+                    when (val pkgResult = documentRepository.packageDocument(documentId)) {
+                        is Result.Success -> {
+                            _uiState.update { it.copy(document = pkgResult.data) }
+                        }
+                        is Result.Error -> {
+                            _uiState.update { it.copy(isProcessingAction = false) }
+                            _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_PACKAGE_DOCUMENT))
+                            return@launch
+                        }
+                        else -> {
+                            _uiState.update { it.copy(isProcessingAction = false) }
+                            return@launch
+                        }
+                    }
+                } catch (e: Exception) {
+                    AppLog.e("DocumentDetailViewModel", "saveAndComplete: package failed", e)
+                    _uiState.update { it.copy(isProcessingAction = false) }
+                    _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_PACKAGE_DOCUMENT))
+                    return@launch
+                }
+            }
+
+            // Step 2: complete
+            try {
+                when (val result = documentRepository.completeDocument(documentId)) {
+                    is Result.Success -> {
+                        _uiState.update { it.copy(document = result.data, isProcessingAction = false) }
+                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_COMPLETED))
+                        _uiEvents.emit(DocumentDetailUiEvent.NavigateBack)
+
+                        viewModelScope.launch(ioDispatcher) {
+                            try {
+                                syncOrchestrator.completeDocument(documentId)
+                            } catch (e: Exception) {
+                                AppLog.w("DocumentDetailViewModel", "Failed to sync complete: ${e.message}")
+                            }
+                        }
+                    }
+                    is Result.Error -> {
+                        _uiState.update { it.copy(isProcessingAction = false) }
+                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_COMPLETE_DOCUMENT))
+                    }
+                    else -> _uiState.update { it.copy(isProcessingAction = false) }
+                }
+            } catch (e: Exception) {
+                AppLog.e("DocumentDetailViewModel", "saveAndComplete: complete failed", e)
+                _uiState.update { it.copy(isProcessingAction = false) }
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_COMPLETE_DOCUMENT))
+            }
+        }
+    }
+
+    /**
+     * Ask the server to release (unlock) the document so the user can navigate back.
+     * Emits NavigateBack on success, or ShowToast(CANNOT_RELEASE_DOCUMENT) on failure.
+     */
+    fun tryReleaseDocument() {
+        val documentId = currentDocumentId ?: return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isProcessingAction = true) }
+            try {
+                when (syncOrchestrator.unlockDocument(documentId)) {
+                    is Result.Success -> {
+                        // Also reset local state to LOADED so the list reflects it immediately
+                        try {
+                            documentRepository.updateDocumentState(documentId, DocumentState.LOADED)
+                        } catch (_: Exception) { /* best-effort */ }
+                        _uiState.update { it.copy(isProcessingAction = false) }
+                        _uiEvents.emit(DocumentDetailUiEvent.NavigateBack)
+                    }
+                    is Result.Error -> {
+                        _uiState.update { it.copy(isProcessingAction = false) }
+                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.CANNOT_RELEASE_DOCUMENT))
+                    }
+                    else -> _uiState.update { it.copy(isProcessingAction = false) }
+                }
+            } catch (e: Exception) {
+                AppLog.e("DocumentDetailViewModel", "tryReleaseDocument failed", e)
+                _uiState.update { it.copy(isProcessingAction = false) }
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.CANNOT_RELEASE_DOCUMENT))
+            }
+        }
+    }
+
     fun completeDocument() {
         val documentId = currentDocumentId ?: return
         val currentState = _uiState.value.document?.state ?: return

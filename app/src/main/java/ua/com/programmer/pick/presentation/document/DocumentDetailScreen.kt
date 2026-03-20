@@ -1,5 +1,6 @@
 package ua.com.programmer.pick.presentation.document
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,11 +15,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.res.painterResource
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -67,6 +70,9 @@ fun DocumentDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     var barcodeAlert by remember { mutableStateOf<BarcodeAlertType?>(null) }
+    // Dialog: ask user whether to save before leaving
+    var showSaveOnBackDialog by remember { mutableStateOf(false) }
+    // Dialog: confirm complete when there are incomplete lines (save/complete action)
     var showCompleteConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(documentId) {
@@ -90,6 +96,11 @@ fun DocumentDetailScreen(
         }
     }
 
+    // Intercept back navigation when user owns an in-progress document
+    BackHandler(enabled = uiState.canEdit) {
+        showSaveOnBackDialog = true
+    }
+
     barcodeAlert?.let { alertType ->
         BarcodeAlertDialog(
             alertType = alertType,
@@ -97,6 +108,29 @@ fun DocumentDetailScreen(
         )
     }
 
+    // "Save document?" dialog shown when user tries to go back
+    if (showSaveOnBackDialog) {
+        SaveOnBackDialog(
+            onSave = {
+                showSaveOnBackDialog = false
+                val incompleteCount = uiState.lines.count {
+                    it.plannedQuantity > 0 && it.actualQuantity < it.plannedQuantity
+                }
+                if (incompleteCount == 0) {
+                    viewModel.saveAndComplete()
+                } else {
+                    showCompleteConfirm = true
+                }
+            },
+            onDiscard = {
+                showSaveOnBackDialog = false
+                viewModel.tryReleaseDocument()
+            },
+            onDismiss = { showSaveOnBackDialog = false }
+        )
+    }
+
+    // "Incomplete lines — proceed?" dialog shown before save/complete
     if (showCompleteConfirm) {
         val incompleteCount = uiState.lines.count {
             it.plannedQuantity > 0 && it.actualQuantity < it.plannedQuantity
@@ -106,7 +140,7 @@ fun DocumentDetailScreen(
             totalCount = uiState.lines.count { it.plannedQuantity > 0 },
             onConfirm = {
                 showCompleteConfirm = false
-                viewModel.packageDocument()
+                viewModel.saveAndComplete()
             },
             onDismiss = { showCompleteConfirm = false }
         )
@@ -128,33 +162,55 @@ fun DocumentDetailScreen(
         topBar = {
             PickAppBar(
                 title = uiState.document?.number ?: stringResource(R.string.documents),
-                onNavigateBack = onNavigateBack,
+                onNavigateBack = if (uiState.canEdit) {
+                    // Show dialog instead of navigating directly
+                    { showSaveOnBackDialog = true }
+                } else {
+                    onNavigateBack
+                },
+                actions = {
+                    if (uiState.canEdit) {
+                        if (uiState.isProcessingAction) {
+                            CircularProgressIndicator(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .padding(end = 8.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            IconButton(
+                                onClick = {
+                                    val incompleteCount = uiState.lines.count {
+                                        it.plannedQuantity > 0 && it.actualQuantity < it.plannedQuantity
+                                    }
+                                    if (incompleteCount == 0) {
+                                        viewModel.saveAndComplete()
+                                    } else {
+                                        showCompleteConfirm = true
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_save_24),
+                                    contentDescription = stringResource(R.string.save_complete_cd),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                },
                 scrollBehavior = scrollBehavior
             )
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         bottomBar = {
-            DocumentActionBar(
-                documentState = uiState.document?.state,
-                isProcessing = uiState.isProcessingAction,
-                canTake = uiState.canTakeIntoWork,
-                canPackage = uiState.canPackage,
-                canComplete = uiState.canComplete,
-                canRelease = uiState.canRelease,
-                onTakeIntoWork = { viewModel.takeIntoWork() },
-                onPackage = {
-                    val incompleteCount = uiState.lines.count {
-                        it.plannedQuantity > 0 && it.actualQuantity < it.plannedQuantity
-                    }
-                    if (incompleteCount == 0) {
-                        viewModel.packageDocument()
-                    } else {
-                        showCompleteConfirm = true
-                    }
-                },
-                onComplete = { viewModel.completeDocument() },
-                onRelease = { viewModel.releaseFromPackaging() }
-            )
+            // Only show "Take into Work" button for LOADED documents
+            if (uiState.canTakeIntoWork) {
+                TakeIntoWorkBar(
+                    isProcessing = uiState.isProcessingAction,
+                    onTakeIntoWork = { viewModel.takeIntoWork() }
+                )
+            }
         }
     ) { paddingValues ->
         Box(
@@ -368,27 +424,11 @@ private fun DocumentHeaderCard(
 }
 
 @Composable
-private fun DocumentActionBar(
-    documentState: DocumentState?,
+private fun TakeIntoWorkBar(
     isProcessing: Boolean,
-    canTake: Boolean,
-    canPackage: Boolean,
-    canComplete: Boolean,
-    canRelease: Boolean,
     onTakeIntoWork: () -> Unit,
-    onPackage: () -> Unit,
-    onComplete: () -> Unit,
-    onRelease: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    if (documentState == null) return
-
-    if (documentState != DocumentState.LOADED &&
-        documentState != DocumentState.IN_PROGRESS &&
-        documentState != DocumentState.PACKAGING) {
-        return
-    }
-
     Surface(
         modifier = modifier.fillMaxWidth(),
         tonalElevation = 3.dp,
@@ -399,92 +439,50 @@ private fun DocumentActionBar(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            when (documentState) {
-                DocumentState.LOADED -> {
-                    if (canTake) {
-                        Button(
-                            onClick = onTakeIntoWork,
-                            enabled = !isProcessing,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            if (isProcessing) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    strokeWidth = 2.dp
-                                )
-                            } else {
-                                Text(stringResource(R.string.take_into_work))
-                            }
-                        }
-                    }
+            Button(
+                onClick = onTakeIntoWork,
+                enabled = !isProcessing,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (isProcessing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(stringResource(R.string.take_into_work))
                 }
-                DocumentState.IN_PROGRESS -> {
-                    if (canPackage) {
-                        Button(
-                            onClick = onPackage,
-                            enabled = !isProcessing,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.secondary
-                            )
-                        ) {
-                            if (isProcessing) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    color = MaterialTheme.colorScheme.onSecondary,
-                                    strokeWidth = 2.dp
-                                )
-                            } else {
-                                Text(stringResource(R.string.package_document))
-                            }
-                        }
-                    }
-                }
-                DocumentState.PACKAGING -> {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        if (canRelease) {
-                            Button(
-                                onClick = onRelease,
-                                enabled = !isProcessing,
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            ) {
-                                Text(stringResource(R.string.release_document))
-                            }
-                        }
-                        if (canComplete) {
-                            Button(
-                                onClick = onComplete,
-                                enabled = !isProcessing,
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary
-                                )
-                            ) {
-                                if (isProcessing) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(20.dp),
-                                        color = MaterialTheme.colorScheme.onPrimary,
-                                        strokeWidth = 2.dp
-                                    )
-                                } else {
-                                    Text(stringResource(R.string.complete_document))
-                                }
-                            }
-                        }
-                    }
-                }
-                else -> { /* No action bar for other states */ }
             }
         }
     }
+}
+
+@Composable
+private fun SaveOnBackDialog(
+    onSave: () -> Unit,
+    onDiscard: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(stringResource(R.string.save_document_dialog_title))
+        },
+        text = {
+            Text(stringResource(R.string.save_document_dialog_message))
+        },
+        confirmButton = {
+            TextButton(onClick = onSave) {
+                Text(stringResource(R.string.yes))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDiscard) {
+                Text(stringResource(R.string.no))
+            }
+        }
+    )
 }
 
 @Composable

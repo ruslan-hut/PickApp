@@ -79,6 +79,10 @@
     <string name="document_taken_by_other">Документ занят другим пользователем</string>
     <string name="cannot_edit_document">Вы не можете редактировать этот документ</string>
     <string name="release_document">Освободить</string>
+    <string name="save_document_dialog_title">Сохранить документ?</string>
+    <string name="save_document_dialog_message">Сохранить и завершить документ перед выходом?</string>
+    <string name="cannot_release_document">Невозможно освободить документ: сервер отклонил запрос</string>
+    <string name="save_complete_cd">Сохранить и завершить документ</string>
     <string name="document_state_loaded">Новый</string>
     <string name="document_state_in_progress">В работе</string>
     <string name="document_state_packaging">Упаковка</string>

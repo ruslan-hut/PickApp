@@ -79,6 +79,10 @@
     <string name="document_taken_by_other">Document is taken by another user</string>
     <string name="cannot_edit_document">You cannot edit this document</string>
     <string name="release_document">Release</string>
+    <string name="save_document_dialog_title">Save document?</string>
+    <string name="save_document_dialog_message">Do you want to save and complete the document before leaving?</string>
+    <string name="cannot_release_document">Cannot release document: server denied the request</string>
+    <string name="save_complete_cd">Save and complete document</string>
     <string name="document_state_loaded">New</string>
     <string name="document_state_in_progress">In Progress</string>
     <string name="document_state_packaging">Packaging</string>
