@@ -47,7 +47,6 @@ class DocumentDetailViewModel @Inject constructor(
 ) : ViewModel() {
 
     companion object {
-        private const val TAG = "DocumentDetailVM"
         const val ERROR_LOADING_DOCUMENT = "ERROR_LOADING_DOCUMENT"
     }
 
