@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.domain.model.OperatingMode
 import ua.com.programmer.pick.domain.repository.DocumentRepository
 import ua.com.programmer.pick.domain.repository.UserRepository
@@ -21,7 +22,8 @@ import javax.inject.Inject
 @HiltViewModel
 class DocumentsViewModel @Inject constructor(
     private val documentRepository: DocumentRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val syncOrchestrator: SyncOrchestrator
 ) : ViewModel() {
 
     companion object {
@@ -51,6 +53,14 @@ class DocumentsViewModel @Inject constructor(
             } catch (ex: Exception) {
                 _uiState.update { it.copy(errorMessage = ERROR_LOADING_DOCUMENTS, isLoading = false) }
             }
+        }
+    }
+
+    fun onRefresh() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRefreshing = true) }
+            syncOrchestrator.requestFullSync()
+            _uiState.update { it.copy(isRefreshing = false) }
         }
     }
 
