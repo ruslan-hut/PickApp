@@ -12,6 +12,7 @@ import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.util.NetworkMonitor
 import ua.com.programmer.pick.core.util.PasswordHasher
 import ua.com.programmer.pick.core.util.Result
+import ua.com.programmer.pick.data.local.database.AppDatabase
 import ua.com.programmer.pick.data.local.database.dao.UserDao
 import ua.com.programmer.pick.data.local.database.entity.UserEntity
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
@@ -31,6 +32,7 @@ class UserRepositoryImpl @Inject constructor(
     private val webSocketManager: WebSocketManager,
     private val userDao: UserDao,
     private val appPreferences: AppPreferences,
+    private val appDatabase: AppDatabase,
     private val passwordHasher: PasswordHasher,
     private val networkMonitor: NetworkMonitor,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher
@@ -104,6 +106,17 @@ class UserRepositoryImpl @Inject constructor(
 
         return if (loginResult.success) {
             AppLog.d(TAG, "WebSocket login successful: ${loginResult.userName}")
+
+            // Detect tenant change and wipe local data if needed
+            val newTenantId = loginResult.tenantId
+            if (newTenantId != null) {
+                val currentTenantId = appPreferences.getTenantIdSync()
+                if (currentTenantId != null && currentTenantId != newTenantId) {
+                    AppLog.w(TAG, "Tenant changed from $currentTenantId to $newTenantId, clearing local data")
+                    appDatabase.clearAllTables()
+                }
+                appPreferences.setTenantId(newTenantId)
+            }
 
             // Hash password for offline login
             val passwordHash = passwordHasher.hash(password, login)
@@ -237,6 +250,8 @@ class UserRepositoryImpl @Inject constructor(
         AppLog.d(TAG, "Logging out user")
         // Clear local session and credentials
         appPreferences.clearSession()
+        // Clear all local data
+        appDatabase.clearAllTables()
         // WebSocket will be disconnected by SyncOrchestrator when user logs out
     }
 

@@ -101,6 +101,7 @@ sealed class SyncMessage {
         val userName: String? = null,
         val role: String? = null,
         val offlineHash: String? = null,
+        val tenantId: String? = null,
         val errorMessage: String? = null
     ) : SyncMessage() {
         override val type = MessageType.USER_LOGIN_RESULT
@@ -349,26 +350,3 @@ data class DocumentLineUpdate(
     val batchNumber: String? = null,
     val isCompleted: Boolean = false
 )
-
-/**
- * Operation types for outgoing queue
- */
-enum class OperationType {
-    DOCUMENT_LOCK,
-    DOCUMENT_UNLOCK,
-    DOCUMENT_UPDATE,
-    DOCUMENT_COMPLETE,
-    SYNC_REQUEST,
-    PRODUCT_LOOKUP
-}
-
-/**
- * Status of outgoing operations
- */
-enum class OperationStatus {
-    PENDING,
-    PROCESSING,
-    RETRYING,
-    COMPLETED,
-    FAILED
-}

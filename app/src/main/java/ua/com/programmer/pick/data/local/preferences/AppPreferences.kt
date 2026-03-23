@@ -6,11 +6,10 @@ import ua.com.programmer.pick.core.util.AppLog
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKeys
+import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -24,7 +23,7 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 
 @Singleton
 class AppPreferences @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
 
     companion object {
@@ -34,9 +33,9 @@ class AppPreferences @Inject constructor(
         private val CURRENT_USER_ID = stringPreferencesKey("current_user_id")
         private val SERVER_URL = stringPreferencesKey("server_url")
         private val OFFLINE_HASH = stringPreferencesKey("offline_hash")
-        private val EXPIRES_AT = longPreferencesKey("expires_at")
         private val DEVICE_ID = stringPreferencesKey("device_id")
         private val SELECTED_OPERATING_MODE = stringPreferencesKey("selected_operating_mode")
+        private val TENANT_ID = stringPreferencesKey("tenant_id")
         // Plaintext keys kept for migration only
         private val USER_LOGIN = stringPreferencesKey("user_login")
         private val USER_PASSWORD = stringPreferencesKey("user_password")
@@ -49,11 +48,13 @@ class AppPreferences @Inject constructor(
 
     private val encryptedPrefs: SharedPreferences? by lazy {
         try {
-            val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
             EncryptedSharedPreferences.create(
-                ENCRYPTED_PREFS_NAME,
-                masterKeyAlias,
                 context,
+                ENCRYPTED_PREFS_NAME,
+                masterKey,
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
@@ -93,14 +94,6 @@ class AppPreferences @Inject constructor(
         }
     }
 
-    val authToken: Flow<String?> = context.dataStore.data.map { preferences ->
-        preferences[AUTH_TOKEN]
-    }
-
-    val refreshToken: Flow<String?> = context.dataStore.data.map { preferences ->
-        preferences[REFRESH_TOKEN]
-    }
-
     val currentUserId: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[CURRENT_USER_ID]
     }
@@ -109,24 +102,8 @@ class AppPreferences @Inject constructor(
         preferences[SERVER_URL]
     }
 
-    val offlineHash: Flow<String?> = context.dataStore.data.map { preferences ->
-        preferences[OFFLINE_HASH]
-    }
-
-    val expiresAt: Flow<Long?> = context.dataStore.data.map { preferences ->
-        preferences[EXPIRES_AT]
-    }
-
     val deviceId: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[DEVICE_ID] ?: generateAndStoreDeviceId()
-    }
-
-    val userLogin: Flow<String?> = context.dataStore.data.map {
-        encryptedPrefs?.getString(KEY_ENCRYPTED_LOGIN, null)
-    }
-
-    val userPassword: Flow<String?> = context.dataStore.data.map {
-        encryptedPrefs?.getString(KEY_ENCRYPTED_PASSWORD, null)
     }
 
     val selectedOperatingMode: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -137,6 +114,20 @@ class AppPreferences @Inject constructor(
         context.dataStore.edit { preferences ->
             preferences[SELECTED_OPERATING_MODE] = mode
         }
+    }
+
+    suspend fun setTenantId(tenantId: String?) {
+        context.dataStore.edit { preferences ->
+            if (tenantId != null) {
+                preferences[TENANT_ID] = tenantId
+            } else {
+                preferences.remove(TENANT_ID)
+            }
+        }
+    }
+
+    fun getTenantIdSync(): String? = runBlocking {
+        context.dataStore.data.first()[TENANT_ID]
     }
 
     // Synchronous getter for interceptor (use with caution)
@@ -154,11 +145,6 @@ class AppPreferences @Inject constructor(
         context.dataStore.data.first()[OFFLINE_HASH]
     }
 
-    // Synchronous getter for token expiry (use with caution)
-    fun getExpiresAtSync(): Long? = runBlocking {
-        context.dataStore.data.first()[EXPIRES_AT]
-    }
-
     // Synchronous setter for authenticator (use with caution)
     fun setTokensSync(authToken: String, refreshToken: String) = runBlocking {
         context.dataStore.edit { preferences ->
@@ -173,26 +159,6 @@ class AppPreferences @Inject constructor(
             preferences.remove(AUTH_TOKEN)
             preferences.remove(REFRESH_TOKEN)
             preferences.remove(CURRENT_USER_ID)
-        }
-    }
-
-    suspend fun setAuthToken(token: String?) {
-        context.dataStore.edit { preferences ->
-            if (token != null) {
-                preferences[AUTH_TOKEN] = token
-            } else {
-                preferences.remove(AUTH_TOKEN)
-            }
-        }
-    }
-
-    suspend fun setRefreshToken(token: String?) {
-        context.dataStore.edit { preferences ->
-            if (token != null) {
-                preferences[REFRESH_TOKEN] = token
-            } else {
-                preferences.remove(REFRESH_TOKEN)
-            }
         }
     }
 
@@ -216,16 +182,6 @@ class AppPreferences @Inject constructor(
         }
     }
 
-    suspend fun setExpiresAt(expiresAt: Long?) {
-        context.dataStore.edit { preferences ->
-            if (expiresAt != null) {
-                preferences[EXPIRES_AT] = expiresAt
-            } else {
-                preferences.remove(EXPIRES_AT)
-            }
-        }
-    }
-
     suspend fun setServerUrl(url: String) {
         context.dataStore.edit { preferences ->
             preferences[SERVER_URL] = url
@@ -237,6 +193,7 @@ class AppPreferences @Inject constructor(
             preferences.remove(AUTH_TOKEN)
             preferences.remove(REFRESH_TOKEN)
             preferences.remove(CURRENT_USER_ID)
+            preferences.remove(TENANT_ID)
         }
         encryptedPrefs?.edit()?.clear()?.apply()
     }
@@ -264,7 +221,7 @@ class AppPreferences @Inject constructor(
      * Store user credentials for WebSocket login (encrypted at rest).
      * These are used to re-authenticate after WebSocket reconnects.
      */
-    suspend fun setUserCredentials(login: String, password: String) {
+    fun setUserCredentials(login: String, password: String) {
         encryptedPrefs?.edit()
             ?.putString(KEY_ENCRYPTED_LOGIN, login)
             ?.putString(KEY_ENCRYPTED_PASSWORD, password)
@@ -288,7 +245,7 @@ class AppPreferences @Inject constructor(
     /**
      * Clear stored user credentials
      */
-    suspend fun clearUserCredentials() {
+    fun clearUserCredentials() {
         encryptedPrefs?.edit()
             ?.remove(KEY_ENCRYPTED_LOGIN)
             ?.remove(KEY_ENCRYPTED_PASSWORD)

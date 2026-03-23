@@ -65,6 +65,7 @@ data class UserLoginResult(
     val userName: String? = null,
     val role: String? = null,
     val offlineHash: String? = null,
+    val tenantId: String? = null,
     val errorMessage: String? = null
 )
 
@@ -191,7 +192,8 @@ class WebSocketManager @Inject constructor(
                 userId = response.userId,
                 userName = response.userName,
                 role = response.role,
-                offlineHash = response.offlineHash
+                offlineHash = response.offlineHash,
+                tenantId = response.tenantId
             )
         } else {
             val error = response?.errorMessage ?: "Login failed"

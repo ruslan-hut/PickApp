@@ -5,10 +5,10 @@ import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import com.google.gson.reflect.TypeToken
-import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -74,9 +74,12 @@ class MessageParser @Inject constructor(
         private const val FIELD_USER_NAME = "user_name"
         private const val FIELD_ROLE = "role"
         private const val FIELD_OFFLINE_HASH = "offline_hash"
+        private const val FIELD_TENANT_ID = "tenant_id"
         private const val FIELD_ERROR_MESSAGE = "error_message"
 
-        private val ISO_8601_FORMATTER = DateTimeFormatter.ISO_INSTANT
+        private val ISO_8601_FORMATTER = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
     }
 
     /**
@@ -226,6 +229,7 @@ class MessageParser @Inject constructor(
             userName = payload?.get(FIELD_USER_NAME)?.asString,
             role = payload?.get(FIELD_ROLE)?.asString,
             offlineHash = payload?.get(FIELD_OFFLINE_HASH)?.asString,
+            tenantId = payload?.get(FIELD_TENANT_ID)?.asString,
             errorMessage = payload?.get(FIELD_ERROR_MESSAGE)?.asString
         )
     }
@@ -337,5 +341,5 @@ class MessageParser @Inject constructor(
     /**
      * Get current timestamp in ISO 8601 format
      */
-    fun getCurrentTimestamp(): String = Instant.now().atOffset(ZoneOffset.UTC).format(ISO_8601_FORMATTER)
+    fun getCurrentTimestamp(): String = ISO_8601_FORMATTER.format(Date())
 }
