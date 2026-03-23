@@ -85,7 +85,7 @@ class WebSocketManager @Inject constructor(
     private val messageParser: MessageParser,
     private val appPreferences: AppPreferences,
     private val networkMonitor: NetworkMonitor,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+    @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) {
     companion object {
         private const val TAG = "WebSocketManager"
@@ -577,6 +577,7 @@ class WebSocketManager @Inject constructor(
 
         // Cancel all pending responses
         pendingResponses.forEach { (_, response) ->
+            @Suppress("UNCHECKED_CAST")
             val continuation = response.continuation as? CancellableContinuation<SyncMessage>
             continuation?.cancel()
         }
@@ -654,6 +655,7 @@ class WebSocketManager @Inject constructor(
 
         staleIds.forEach { id ->
             val response = pendingResponses.remove(id)
+            @Suppress("UNCHECKED_CAST")
             val continuation = response?.continuation as? CancellableContinuation<SyncMessage>
             continuation?.cancel()
             AppLog.w(TAG, "Removed stale pending response: $id")

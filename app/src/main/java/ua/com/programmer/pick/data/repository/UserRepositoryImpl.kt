@@ -35,7 +35,7 @@ class UserRepositoryImpl @Inject constructor(
     private val appDatabase: AppDatabase,
     private val passwordHasher: PasswordHasher,
     private val networkMonitor: NetworkMonitor,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+    @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : UserRepository {
 
     companion object {
