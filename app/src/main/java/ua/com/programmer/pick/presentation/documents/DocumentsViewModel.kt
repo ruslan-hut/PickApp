@@ -58,7 +58,7 @@ class DocumentsViewModel @Inject constructor(
     fun onRefresh() {
         viewModelScope.launch {
             _uiState.update { it.copy(isRefreshing = true) }
-            syncOrchestrator.requestFullSync()
+            syncOrchestrator.requestDocumentListRefresh()
             _uiState.update { it.copy(isRefreshing = false) }
         }
     }

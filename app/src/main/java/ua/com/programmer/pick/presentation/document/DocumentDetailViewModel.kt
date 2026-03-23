@@ -93,25 +93,15 @@ class DocumentDetailViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
+                // Request products for this document from server (async, updates local DB)
+                syncOrchestrator.requestDocumentProducts(documentId)
+
                 val doc = documentRepository.getDocumentById(documentId)
                 val lines = documentRepository.getLinesByDocumentId(documentId).first()
 
-                // Load product images
+                // Load product images from local DB
                 val productIds = lines.map { it.productId }
-                AppLog.d(TAG, "Loading images for ${productIds.size} products: $productIds")
-                val images = productImageDao.getByProductIds(productIds)
-                AppLog.d(TAG, "Found ${images.size} product images in DB")
-                images.forEach { img ->
-                    AppLog.d(TAG, "  Image: productId=${img.productId}, url=${img.url}")
-                }
-                val imagesMap = images.associate { entity ->
-                    entity.productId to ProductImage(
-                        id = entity.id,
-                        productId = entity.productId,
-                        url = entity.url,
-                        base64 = entity.base64
-                    )
-                }
+                val imagesMap = loadProductImages(productIds)
 
                 _uiState.update {
                     it.copy(
@@ -126,8 +116,34 @@ class DocumentDetailViewModel @Inject constructor(
                     )
                 }
 
+                // Reload images after sync completes (products may arrive after initial load)
+                reloadImagesAfterSync(productIds)
+
             } catch (_: Exception) {
                 _uiState.update { it.copy(errorMessage = ERROR_LOADING_DOCUMENT, isLoading = false) }
+            }
+        }
+    }
+
+    private suspend fun loadProductImages(productIds: List<String>): Map<String, ProductImage> {
+        val images = productImageDao.getByProductIds(productIds)
+        return images.associate { entity ->
+            entity.productId to ProductImage(
+                id = entity.id,
+                productId = entity.productId,
+                url = entity.url,
+                base64 = entity.base64
+            )
+        }
+    }
+
+    private fun reloadImagesAfterSync(productIds: List<String>) {
+        viewModelScope.launch {
+            // Wait briefly for sync data to arrive and be applied
+            kotlinx.coroutines.delay(2000)
+            val imagesMap = loadProductImages(productIds)
+            if (imagesMap.isNotEmpty()) {
+                _uiState.update { it.copy(productImages = imagesMap) }
             }
         }
     }

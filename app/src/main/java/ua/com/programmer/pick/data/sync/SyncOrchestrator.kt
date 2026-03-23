@@ -428,6 +428,68 @@ class SyncOrchestrator @Inject constructor(
     }
 
     // ============================================
+    // Targeted Refresh
+    // ============================================
+
+    /**
+     * Request document list with related warehouses and clients.
+     * Server sends only documents + referenced warehouses/clients (no products).
+     */
+    suspend fun requestDocumentListRefresh(): Result<Unit> {
+        AppLog.d(TAG, "Requesting document list refresh")
+
+        if (!webSocketManager.isConnected()) {
+            return Result.Error(Exception("WebSocket not connected"))
+        }
+        if (!webSocketManager.isUserAuthenticated()) {
+            return Result.Error(Exception("User not authenticated"))
+        }
+
+        isFullSyncActive = true
+
+        val message = SyncMessage.DocumentListRefresh(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp()
+        )
+
+        val sent = webSocketManager.sendMessage(message)
+        if (!sent) {
+            isFullSyncActive = false
+            return Result.Error(Exception("Failed to send document list refresh"))
+        }
+
+        return Result.Success(Unit)
+    }
+
+    /**
+     * Request products for a specific document's lines.
+     * Server sends only products referenced by the document.
+     */
+    suspend fun requestDocumentProducts(documentId: String): Result<Unit> {
+        AppLog.d(TAG, "Requesting products for document: $documentId")
+
+        if (!webSocketManager.isConnected()) {
+            return Result.Error(Exception("WebSocket not connected"))
+        }
+        if (!webSocketManager.isUserAuthenticated()) {
+            return Result.Error(Exception("User not authenticated"))
+        }
+
+        val message = SyncMessage.DocumentProducts(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp(),
+            documentId = documentId
+        )
+
+        val sent = webSocketManager.sendMessage(message)
+        if (!sent) {
+            return Result.Error(Exception("Failed to send document products request"))
+        }
+
+        return Result.Success(Unit)
+    }
+
+    // ============================================
     // Document Operations
     // ============================================
 

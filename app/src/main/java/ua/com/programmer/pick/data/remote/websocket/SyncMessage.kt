@@ -33,6 +33,10 @@ enum class MessageType {
     PRODUCT_LOOKUP,
     PRODUCT_LOOKUP_RESULT,
 
+    // Targeted refresh
+    DOCUMENT_LIST_REFRESH,
+    DOCUMENT_PRODUCTS,
+
     // Errors and notifications
     ERROR_REPORT,
     SERVER_ERROR,
@@ -174,6 +178,32 @@ sealed class SyncMessage {
         val cursors: Map<String, String>
     ) : SyncMessage() {
         override val type = MessageType.ACK
+    }
+
+    // ============================================
+    // Targeted Refresh Messages
+    // ============================================
+
+    /**
+     * Client request to refresh document list with related warehouses and clients
+     */
+    data class DocumentListRefresh(
+        override val id: String,
+        override val timestamp: String
+    ) : SyncMessage() {
+        override val type = MessageType.DOCUMENT_LIST_REFRESH
+    }
+
+    /**
+     * Client request for products referenced by a specific document
+     * Payload: document_id
+     */
+    data class DocumentProducts(
+        override val id: String,
+        override val timestamp: String,
+        val documentId: String
+    ) : SyncMessage() {
+        override val type = MessageType.DOCUMENT_PRODUCTS
     }
 
     // ============================================

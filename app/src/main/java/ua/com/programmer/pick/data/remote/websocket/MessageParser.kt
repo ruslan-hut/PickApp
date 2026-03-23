@@ -155,6 +155,12 @@ class MessageParser @Inject constructor(
                 add(FIELD_ENTITY_TYPES, gson.toJsonTree(message.entityTypes))
             }
 
+            is SyncMessage.DocumentListRefresh -> null  // No payload needed
+
+            is SyncMessage.DocumentProducts -> JsonObject().apply {
+                addProperty(FIELD_DOCUMENT_ID, message.documentId)
+            }
+
             is SyncMessage.Ack -> JsonObject().apply {
                 addProperty(FIELD_SYNC_ID, message.syncId)
                 add(FIELD_CURSORS, gson.toJsonTree(message.cursors))
