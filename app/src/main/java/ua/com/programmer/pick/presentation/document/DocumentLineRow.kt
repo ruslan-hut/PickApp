@@ -1,9 +1,11 @@
 package ua.com.programmer.pick.presentation.document
 
 import android.util.Base64
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -161,27 +163,15 @@ fun DocumentLineRow(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text(
-                        text = stringResource(R.string.planned, line.plannedQuantity),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (isComplete) {
-                            MaterialTheme.colorScheme.onSecondaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        }
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = stringResource(R.string.actual, line.actualQuantity),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (isComplete) {
-                            MaterialTheme.colorScheme.secondary
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        }
-                    )
-                }
+                Text(
+                    text = stringResource(R.string.planned, line.plannedQuantity),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (isComplete) {
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
 
                 Spacer(modifier = Modifier.width(16.dp))
 
@@ -271,6 +261,10 @@ private fun FullScreenImagePreview(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(16.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                        shape = CircleShape
+                    )
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,

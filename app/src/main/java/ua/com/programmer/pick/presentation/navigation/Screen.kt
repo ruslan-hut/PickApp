@@ -12,6 +12,8 @@ sealed class Screen(val route: String) {
         fun createRoute(documentId: String) = "document/$documentId"
     }
     data object Settings : Screen("settings")
+    data object ScannerSettings : Screen("scanner_settings")
+    data object ScannerTest : Screen("scanner_test")
     data object Profile : Screen("profile")
 
     companion object {

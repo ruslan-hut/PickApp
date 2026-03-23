@@ -139,4 +139,38 @@
     <string name="profile_updated">Профиль обновлён</string>
     <string name="close">Закрыть</string>
 
+    <!-- Scanner Settings -->
+    <string name="scanner_settings">Настройки сканера</string>
+    <string name="scanner_settings_description">Настройка обнаружения аппаратного сканера штрих-кодов</string>
+    <string name="scanner_detection_settings">Настройки обнаружения</string>
+    <string name="scanner_keystroke_timeout">Таймаут нажатий (мс)</string>
+    <string name="scanner_keystroke_timeout_hint">50–500 мс, интервал между нажатиями в одном скане</string>
+    <string name="scanner_min_barcode_length">Мин. длина штрих-кода</string>
+    <string name="scanner_min_barcode_length_hint">1–20, минимум символов для срабатывания</string>
+    <string name="scanner_terminator_key">Клавиша-терминатор</string>
+    <string name="scanner_terminator_both">Обе</string>
+    <string name="scanner_prefix_to_strip">Префикс для удаления</string>
+    <string name="scanner_suffix_to_strip">Суффикс для удаления</string>
+    <string name="scanner_settings_saved">Настройки сканера сохранены</string>
+
+    <!-- Scanner Test -->
+    <string name="scanner_test">Тест сканера</string>
+    <string name="scanner_open_test">Открыть тест сканера</string>
+    <string name="scanner_test_barcode">Последний штрих-код</string>
+    <string name="scanner_test_waiting">Ожидание сканирования…</string>
+    <string name="scanner_test_buffer">Буфер</string>
+    <string name="scanner_test_log">Журнал событий клавиш</string>
+    <string name="scanner_test_log_empty">Здесь появятся события клавиш…</string>
+    <string name="scanner_test_clear">Очистить журнал</string>
+
+    <!-- Scanner Diagnostics -->
+    <string name="scanner_diagnostics">Диагностика</string>
+    <string name="scanner_diag_recording">Запись событий клавиш</string>
+    <string name="scanner_diag_status_recording">Запись… %1$d событий</string>
+    <string name="scanner_diag_status_stopped">Остановлено — %1$d событий</string>
+    <string name="scanner_diag_status_idle">Ожидание</string>
+    <string name="scanner_diag_copy">Копировать отчёт в буфер обмена</string>
+    <string name="scanner_diag_copied">Диагностика скопирована</string>
+    <string name="scanner_diag_no_data">Нет диагностических данных</string>
+
 </resources>

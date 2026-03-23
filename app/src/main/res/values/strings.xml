@@ -137,6 +137,40 @@
     <string name="error_saving_profile">Error saving profile</string>
     <string name="error_no_user">No user logged in</string>
     <string name="profile_updated">Profile updated</string>
-    <string name="close">Закрити</string>
+    <string name="close">Close</string>
+
+    <!-- Scanner Settings -->
+    <string name="scanner_settings">Scanner Settings</string>
+    <string name="scanner_settings_description">Configure hardware barcode scanner detection</string>
+    <string name="scanner_detection_settings">Detection Settings</string>
+    <string name="scanner_keystroke_timeout">Keystroke Timeout (ms)</string>
+    <string name="scanner_keystroke_timeout_hint">50–500 ms, gap between keystrokes in one scan</string>
+    <string name="scanner_min_barcode_length">Min Barcode Length</string>
+    <string name="scanner_min_barcode_length_hint">1–20, minimum characters to trigger scan</string>
+    <string name="scanner_terminator_key">Terminator Key</string>
+    <string name="scanner_terminator_both">Both</string>
+    <string name="scanner_prefix_to_strip">Prefix to Strip</string>
+    <string name="scanner_suffix_to_strip">Suffix to Strip</string>
+    <string name="scanner_settings_saved">Scanner settings saved</string>
+
+    <!-- Scanner Test -->
+    <string name="scanner_test">Scanner Test</string>
+    <string name="scanner_open_test">Open Scanner Test</string>
+    <string name="scanner_test_barcode">Last Barcode</string>
+    <string name="scanner_test_waiting">Waiting for scan…</string>
+    <string name="scanner_test_buffer">Buffer</string>
+    <string name="scanner_test_log">Key Event Log</string>
+    <string name="scanner_test_log_empty">Key events will appear here…</string>
+    <string name="scanner_test_clear">Clear Log</string>
+
+    <!-- Scanner Diagnostics -->
+    <string name="scanner_diagnostics">Diagnostics</string>
+    <string name="scanner_diag_recording">Record Key Events</string>
+    <string name="scanner_diag_status_recording">Recording… %1$d events</string>
+    <string name="scanner_diag_status_stopped">Stopped — %1$d events</string>
+    <string name="scanner_diag_status_idle">Idle</string>
+    <string name="scanner_diag_copy">Copy Report to Clipboard</string>
+    <string name="scanner_diag_copied">Diagnostics copied to clipboard</string>
+    <string name="scanner_diag_no_data">No diagnostic data recorded</string>
 
 </resources>

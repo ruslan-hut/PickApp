@@ -29,6 +29,8 @@ class BarcodeService @Inject constructor(
     private val cameraScannerManager: CameraScannerManager,
     private val productRepository: ProductRepository,
     private val gs1Parser: GS1Parser,
+    val scannerSettings: ScannerSettings,
+    val diagnostics: ScannerDiagnostics,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) {
     companion object {
@@ -57,6 +59,18 @@ class BarcodeService @Inject constructor(
     // Buffer and timing for keyboard-style hardware scanners (key events)
     private val hardwareBarcodeBuffer = StringBuilder()
     private var hardwareLastKeystrokeTime = 0L
+    private var barcodeConsumed = false
+
+    // Test mode listener — when set, key events are forwarded here instead of processing
+    private var keyEventTestListener: ((KeyEvent) -> Boolean)? = null
+
+    /**
+     * Register a listener that intercepts all key events before barcode processing.
+     * Used by the scanner test screen for diagnostics.
+     */
+    fun setKeyEventTestListener(listener: ((KeyEvent) -> Boolean)?) {
+        keyEventTestListener = listener
+    }
 
     /**
      * Initialize the barcode service.
@@ -90,41 +104,36 @@ class BarcodeService @Inject constructor(
 
 
     fun onHardwareKeyEvent(event: KeyEvent): Boolean {
+        // When a test listener is active, forward all events to it
+        keyEventTestListener?.let { listener ->
+            if (listener(event)) return true
+        }
+
+        diagnostics.recordKeyEvent(event)
 
         if (event.action == KeyEvent.ACTION_DOWN) {
-            val currentTime = System.currentTimeMillis()
-            if (hardwareBarcodeBuffer.isNotEmpty() && currentTime - hardwareLastKeystrokeTime > 60) {
-                hardwareBarcodeBuffer.clear()
-            }
+            val isTerminator = scannerSettings.isTerminator(event.keyCode)
 
-            val char = event.unicodeChar.toChar()
-            if (char.isLetterOrDigit()) {
-                hardwareBarcodeBuffer.append(char)
-                hardwareLastKeystrokeTime = currentTime
-                return true
-            }
-
-            // Non-printable keys (backspace, arrows, etc.) — let the system handle them
-            return false
-
-        } else if (event.action == KeyEvent.ACTION_UP) {
-            if (event.keyCode == KeyEvent.KEYCODE_ENTER || event.keyCode == KeyEvent.KEYCODE_TAB) {
-                if (hardwareBarcodeBuffer.isNotEmpty()) {
-                    val barcode = hardwareBarcodeBuffer.toString()
+            if (isTerminator) {
+                if (hardwareBarcodeBuffer.length >= scannerSettings.minBarcodeLength) {
+                    val raw = hardwareBarcodeBuffer.toString()
+                    val cleaned = scannerSettings.cleanBarcode(raw)
+                    AppLog.d(TAG, "barcode: $cleaned")
+                    diagnostics.recordDetection(raw, cleaned, success = true)
                     hardwareBarcodeBuffer.clear()
+                    barcodeConsumed = true
 
                     // Process the assembled barcode asynchronously
                     scope.launch {
-
-                        val format = detectBarcodeFormat(barcode)
-                        val gs1Data = if (format.supportsGS1() && gs1Parser.isGS1Barcode(barcode)) {
-                            gs1Parser.parse(barcode)
+                        val format = detectBarcodeFormat(cleaned)
+                        val gs1Data = if (format.supportsGS1() && gs1Parser.isGS1Barcode(cleaned)) {
+                            gs1Parser.parse(cleaned)
                         } else {
                             null
                         }
 
                         val result = ScanResult.Success(
-                            rawValue = barcode,
+                            rawValue = cleaned,
                             format = format,
                             gs1Data = gs1Data,
                             source = ScanSource.HARDWARE_SCANNER
@@ -132,8 +141,47 @@ class BarcodeService @Inject constructor(
 
                         handleScanResult(result, ScannerType.HARDWARE)
                     }
+                    return true
                 }
+                // Buffer had some chars but too few — still consume the terminator
+                if (hardwareBarcodeBuffer.isNotEmpty()) {
+                    AppLog.d(TAG, "barcode too short: $hardwareBarcodeBuffer (${hardwareBarcodeBuffer.length} < ${scannerSettings.minBarcodeLength})")
+                    diagnostics.recordDetection(hardwareBarcodeBuffer.toString(), "", success = false)
+                    hardwareBarcodeBuffer.clear()
+                    barcodeConsumed = false
+                    return true
+                }
+                // Buffer empty — normal keyboard TAB/ENTER, let it through
+                diagnostics.recordNote("terminator pass-through (empty buffer)")
+                hardwareBarcodeBuffer.clear()
+                barcodeConsumed = false
+                return false
+            }
+
+            val currentTime = System.currentTimeMillis()
+            if (hardwareBarcodeBuffer.isNotEmpty() && currentTime - hardwareLastKeystrokeTime > scannerSettings.keystrokeTimeout) {
+                diagnostics.recordBuffer("timeout_clear", hardwareBarcodeBuffer.toString(), hardwareBarcodeBuffer.length)
+                hardwareBarcodeBuffer.clear()
+            }
+
+            val char = event.unicodeChar.toChar()
+            if (char.code in 0x20..0x7E) {
+                hardwareBarcodeBuffer.append(char)
+                hardwareLastKeystrokeTime = currentTime
+                diagnostics.recordBuffer("append", hardwareBarcodeBuffer.toString(), hardwareBarcodeBuffer.length)
                 return true
+            }
+
+            // Non-printable keys — let the system handle them
+            return false
+        }
+
+        if (event.action == KeyEvent.ACTION_UP) {
+            if (scannerSettings.isTerminator(event.keyCode)) {
+                if (barcodeConsumed) {
+                    barcodeConsumed = false
+                    return true
+                }
             }
         }
 
@@ -292,6 +340,8 @@ class BarcodeService @Inject constructor(
      * Release all resources.
      */
     fun release() {
+        diagnostics.stop()
+        diagnostics.clear()
         hardwareScannerManager.release()
         cameraScannerManager.release()
     }

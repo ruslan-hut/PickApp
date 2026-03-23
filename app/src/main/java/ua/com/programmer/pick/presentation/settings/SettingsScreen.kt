@@ -51,6 +51,7 @@ import ua.com.programmer.pick.ui.theme.ButtonShape
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
+    onScannerSettingsClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -171,6 +172,16 @@ fun SettingsScreen(
                     subtitle = stringResource(R.string.clear_cache_description),
                     onClick = viewModel::clearCache,
                     isDestructive = true
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                SettingsItem(
+                    icon = R.drawable.outline_settings_24,
+                    title = stringResource(R.string.scanner_settings),
+                    subtitle = stringResource(R.string.scanner_settings_description),
+                    onClick = onScannerSettingsClick
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
