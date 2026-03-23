@@ -137,5 +137,6 @@
     <string name="error_saving_profile">Ошибка сохранения профиля</string>
     <string name="error_no_user">Пользователь не авторизован</string>
     <string name="profile_updated">Профиль обновлён</string>
+    <string name="close">Закрыть</string>
 
 </resources>

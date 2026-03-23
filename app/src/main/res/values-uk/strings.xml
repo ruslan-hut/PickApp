@@ -137,5 +137,6 @@
     <string name="error_saving_profile">Помилка збереження профілю</string>
     <string name="error_no_user">Користувач не увійшов</string>
     <string name="profile_updated">Профіль оновлено</string>
+    <string name="close">Закрити</string>
 
 </resources>
