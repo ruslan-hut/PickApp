@@ -28,7 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.presentation.common.EmptyState
 import ua.com.programmer.pick.presentation.common.PickAppBar

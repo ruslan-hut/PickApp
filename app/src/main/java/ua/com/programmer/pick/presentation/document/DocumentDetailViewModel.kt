@@ -47,6 +47,7 @@ class DocumentDetailViewModel @Inject constructor(
 ) : ViewModel() {
 
     companion object {
+        private const val TAG = "DocumentDetailVM"
         const val ERROR_LOADING_DOCUMENT = "ERROR_LOADING_DOCUMENT"
     }
 
@@ -97,7 +98,12 @@ class DocumentDetailViewModel @Inject constructor(
 
                 // Load product images
                 val productIds = lines.map { it.productId }
+                AppLog.d(TAG, "Loading images for ${productIds.size} products: $productIds")
                 val images = productImageDao.getByProductIds(productIds)
+                AppLog.d(TAG, "Found ${images.size} product images in DB")
+                images.forEach { img ->
+                    AppLog.d(TAG, "  Image: productId=${img.productId}, url=${img.url}")
+                }
                 val imagesMap = images.associate { entity ->
                     entity.productId to ProductImage(
                         id = entity.id,

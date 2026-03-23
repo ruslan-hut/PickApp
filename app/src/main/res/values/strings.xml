@@ -137,5 +137,6 @@
     <string name="error_saving_profile">Error saving profile</string>
     <string name="error_no_user">No user logged in</string>
     <string name="profile_updated">Profile updated</string>
+    <string name="close">Закрити</string>
 
 </resources>

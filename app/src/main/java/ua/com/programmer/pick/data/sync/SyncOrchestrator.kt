@@ -952,6 +952,7 @@ class SyncOrchestrator @Inject constructor(
                 if (imageEntity != null) {
                     productImageDao.deleteByProductId(dto.id)
                     productImageDao.insert(imageEntity)
+                    AppLog.d(TAG, "Saved image for product ${dto.id}: ${dto.imageUrl}")
                 }
             }
         }
