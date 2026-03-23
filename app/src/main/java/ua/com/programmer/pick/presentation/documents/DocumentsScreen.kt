@@ -1,6 +1,5 @@
 package ua.com.programmer.pick.presentation.documents
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,7 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.viewmodel.compose.hiltViewModel
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.presentation.common.EmptyState
 import ua.com.programmer.pick.presentation.common.PickAppBar

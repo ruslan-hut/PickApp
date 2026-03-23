@@ -9,7 +9,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
@@ -50,7 +49,7 @@ class DocumentsViewModel @Inject constructor(
                     .collectLatest { docs ->
                         _uiState.update { it.copy(documents = docs, isLoading = false) }
                     }
-            } catch (ex: Exception) {
+            } catch (_: Exception) {
                 _uiState.update { it.copy(errorMessage = ERROR_LOADING_DOCUMENTS, isLoading = false) }
             }
         }
