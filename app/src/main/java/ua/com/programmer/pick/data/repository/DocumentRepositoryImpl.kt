@@ -64,7 +64,7 @@ class DocumentRepositoryImpl @Inject constructor(
             val document = documentDao.getDocumentById(documentId)
                 ?: return@withContext Result.Error(Exception("Document not found"), "Document not found")
 
-            if (document.state != DocumentState.LOADED.name) {
+            if (document.state != DocumentState.LOADED.name && document.state != DocumentState.COLLECTING.name) {
                 return@withContext Result.Error(
                     Exception("Document cannot be taken into work"),
                     "Document is already in work or completed"
