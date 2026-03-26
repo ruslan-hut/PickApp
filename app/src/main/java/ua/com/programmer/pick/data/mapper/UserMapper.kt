@@ -11,18 +11,15 @@ fun UserEntity.toDomain(): User {
         id = id,
         login = login,
         name = name,
-        role = try {
-            UserRole.valueOf(role)
-        } catch (e: IllegalArgumentException) {
-            UserRole.WAREHOUSE_WORKER
-        },
+        role = UserRole.fromString(role),
         isActive = isActive,
         lastLoginAt = lastLoginAt,
         operatingMode = try {
             OperatingMode.valueOf(operatingMode)
         } catch (e: IllegalArgumentException) {
             OperatingMode.RECEIPT
-        }
+        },
+        warehouseId = warehouseId
     )
 }
 
@@ -36,6 +33,7 @@ fun User.toEntity(passwordHash: String, lastUpdated: Long): UserEntity {
         isActive = isActive,
         lastLoginAt = lastLoginAt,
         operatingMode = operatingMode.name,
+        warehouseId = warehouseId,
         lastUpdated = lastUpdated
     )
 }
@@ -49,6 +47,7 @@ fun UserDto.toEntity(passwordHash: String): UserEntity {
         role = role,
         isActive = isActive,
         lastLoginAt = null,
+        warehouseId = warehouseId,
         lastUpdated = lastUpdated
     )
 }
@@ -58,13 +57,10 @@ fun UserDto.toDomain(): User {
         id = id,
         login = login,
         name = name,
-        role = try {
-            UserRole.valueOf(role.uppercase())
-        } catch (e: IllegalArgumentException) {
-            UserRole.WAREHOUSE_WORKER
-        },
+        role = UserRole.fromString(role),
         isActive = isActive,
-        lastLoginAt = null
+        lastLoginAt = null,
+        warehouseId = warehouseId
     )
 }
 
@@ -83,6 +79,7 @@ fun UserDto.toEntityForSync(existingPasswordHash: String?, existingOperatingMode
         isActive = isActive,
         lastLoginAt = null,
         lastUpdated = lastUpdated,
-        operatingMode = existingOperatingMode ?: "RECEIPT"
+        operatingMode = existingOperatingMode ?: "RECEIPT",
+        warehouseId = warehouseId
     )
 }

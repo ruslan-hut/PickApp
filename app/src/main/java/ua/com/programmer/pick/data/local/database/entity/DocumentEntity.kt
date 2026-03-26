@@ -58,11 +58,20 @@ data class DocumentEntity(
     @ColumnInfo(name = "assigned_user_id")
     val assignedUserId: String?,
 
+    @ColumnInfo(name = "assigned_worker_id")
+    val assignedWorkerId: String? = null,
+
+    @ColumnInfo(name = "courier_user_id")
+    val courierUserId: String? = null,
+
     @ColumnInfo(name = "taken_at")
     val takenAt: Long?,
 
     @ColumnInfo(name = "completed_at")
     val completedAt: Long?,
+
+    @ColumnInfo(name = "delivered_at")
+    val deliveredAt: Long? = null,
 
     @ColumnInfo(name = "last_modified")
     val lastModified: Long,

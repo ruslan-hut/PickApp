@@ -424,7 +424,7 @@ class DocumentDetailViewModel @Inject constructor(
         val documentId = currentDocumentId ?: return
         val currentState = _uiState.value.document?.state ?: return
 
-        if (currentState != DocumentState.IN_PROGRESS) return
+        if (currentState != DocumentState.COLLECTING) return
 
         viewModelScope.launch {
             _uiState.update { it.copy(isProcessingAction = true) }
@@ -477,7 +477,7 @@ class DocumentDetailViewModel @Inject constructor(
             _uiState.update { it.copy(isProcessingAction = true) }
 
             try {
-                when (documentRepository.updateDocumentState(documentId, DocumentState.IN_PROGRESS)) {
+                when (documentRepository.updateDocumentState(documentId, DocumentState.COLLECTING)) {
                     is Result.Success -> {
                         val updatedDoc = documentRepository.getDocumentById(documentId)
                         _uiState.update {
@@ -495,7 +495,7 @@ class DocumentDetailViewModel @Inject constructor(
                                         isCompleted = line.isCompleted
                                     )
                                 }
-                                syncOrchestrator.updateDocument(documentId, DocumentState.IN_PROGRESS.name, lines)
+                                syncOrchestrator.updateDocument(documentId, DocumentState.COLLECTING.name, lines)
                             } catch (e: Exception) {
                                 AppLog.w("DocumentDetailViewModel", "Failed to sync release from packaging: ${e.message}")
                             }
@@ -516,7 +516,7 @@ class DocumentDetailViewModel @Inject constructor(
     }
 
     /**
-     * Save and complete: packages the document (if IN_PROGRESS) then completes it.
+     * Save and complete: packages the document (if COLLECTING) then completes it.
      * Used when user taps the save/complete button in the top bar.
      */
     fun saveAndComplete() {
@@ -526,8 +526,8 @@ class DocumentDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isProcessingAction = true) }
 
-            // Step 1: package if still IN_PROGRESS
-            if (currentState == DocumentState.IN_PROGRESS) {
+            // Step 1: package if still COLLECTING
+            if (currentState == DocumentState.COLLECTING) {
                 try {
                     when (val pkgResult = documentRepository.packageDocument(documentId)) {
                         is Result.Success -> {

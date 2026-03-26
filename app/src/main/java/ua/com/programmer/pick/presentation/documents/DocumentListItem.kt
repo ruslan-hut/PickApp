@@ -39,7 +39,10 @@ fun DocumentListItem(
         (document.totalActual / document.totalPlanned).toFloat().coerceIn(0f, 1f)
     } else 0f
 
-    val isComplete = document.state == DocumentState.COMPLETED || document.state == DocumentState.SENT
+    val isComplete = document.state == DocumentState.COLLECTED ||
+        document.state == DocumentState.DELIVERING ||
+        document.state == DocumentState.DELIVERED ||
+        document.state == DocumentState.SENT
 
     OutlinedCard(
         onClick = { onClick(document.id) },

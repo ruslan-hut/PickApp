@@ -30,8 +30,11 @@ class DocumentMapper @Inject constructor() {
             totalPlanned = dto.totalPlanned,
             totalActual = dto.totalActual,
             assignedUserId = dto.assignedUserId,
+            assignedWorkerId = dto.assignedWorkerId,
+            courierUserId = dto.courierUserId,
             takenAt = dto.takenAt,
             completedAt = dto.completedAt,
+            deliveredAt = dto.deliveredAt,
             lastModified = dto.lastModified,
             version = dto.version,
             isDirty = false
@@ -72,11 +75,7 @@ fun DocumentEntity.toDomain(): Document {
         },
         number = number,
         date = date,
-        state = try {
-            DocumentState.valueOf(state)
-        } catch (e: IllegalArgumentException) {
-            DocumentState.LOADED
-        },
+        state = DocumentState.fromString(state),
         clientId = clientId,
         clientName = clientName,
         warehouseId = warehouseId,
@@ -85,8 +84,11 @@ fun DocumentEntity.toDomain(): Document {
         totalPlanned = totalPlanned,
         totalActual = totalActual,
         assignedUserId = assignedUserId,
+        assignedWorkerId = assignedWorkerId,
+        courierUserId = courierUserId,
         takenAt = takenAt,
         completedAt = completedAt,
+        deliveredAt = deliveredAt,
         lastModified = lastModified,
         version = version,
         isDirty = isDirty
@@ -109,8 +111,11 @@ fun Document.toEntity(): DocumentEntity {
         totalPlanned = totalPlanned,
         totalActual = totalActual,
         assignedUserId = assignedUserId,
+        assignedWorkerId = assignedWorkerId,
+        courierUserId = courierUserId,
         takenAt = takenAt,
         completedAt = completedAt,
+        deliveredAt = deliveredAt,
         lastModified = lastModified,
         version = version,
         isDirty = isDirty

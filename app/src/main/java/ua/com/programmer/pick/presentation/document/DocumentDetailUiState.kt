@@ -18,13 +18,13 @@ data class DocumentDetailUiState(
 ) {
     /**
      * Check if the current user can edit this document.
-     * Editing is allowed only when the document is IN_PROGRESS and taken by the current user.
+     * Editing is allowed only when the document is COLLECTING and taken by the current user.
      */
     val canEdit: Boolean
         get() {
             val doc = document ?: return false
             val userId = currentUserId ?: return false
-            return doc.state == DocumentState.IN_PROGRESS &&
+            return doc.state == DocumentState.COLLECTING &&
                    doc.assignedUserId == userId
         }
 
@@ -36,13 +36,13 @@ data class DocumentDetailUiState(
 
     /**
      * Check if the current user can move this document to PACKAGING.
-     * Only the user who took it can package it.
+     * Only the user who took it into work can package it.
      */
     val canPackage: Boolean
         get() {
             val doc = document ?: return false
             val userId = currentUserId ?: return false
-            return doc.state == DocumentState.IN_PROGRESS &&
+            return doc.state == DocumentState.COLLECTING &&
                    doc.assignedUserId == userId
         }
 
@@ -76,7 +76,7 @@ data class DocumentDetailUiState(
         get() {
             val doc = document ?: return false
             val userId = currentUserId ?: return false
-            return (doc.state == DocumentState.IN_PROGRESS || doc.state == DocumentState.PACKAGING) &&
+            return (doc.state == DocumentState.COLLECTING || doc.state == DocumentState.PACKAGING) &&
                    doc.assignedUserId != null &&
                    doc.assignedUserId != userId
         }

@@ -48,11 +48,20 @@ data class DocumentDto(
     @SerializedName("assigned_user_id")
     val assignedUserId: String?,
 
+    @SerializedName("assigned_worker_id")
+    val assignedWorkerId: String? = null,
+
+    @SerializedName("courier_user_id")
+    val courierUserId: String? = null,
+
     @SerializedName("taken_at")
     val takenAt: Long?,
 
     @SerializedName("completed_at")
     val completedAt: Long?,
+
+    @SerializedName("delivered_at")
+    val deliveredAt: Long? = null,
 
     @SerializedName("last_modified")
     val lastModified: Long,

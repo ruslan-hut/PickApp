@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import ua.com.programmer.pick.R
+import ua.com.programmer.pick.domain.model.UserRole
 import ua.com.programmer.pick.presentation.common.PickAppBar
 import ua.com.programmer.pick.presentation.common.PickElevatedCard
 import ua.com.programmer.pick.presentation.common.SectionHeader
@@ -202,7 +203,13 @@ fun ProfileScreen(
                             Spacer(modifier = Modifier.height(8.dp))
                             ProfileInfoRow(
                                 label = stringResource(R.string.role_label_fmt, ""),
-                                value = user.role.name
+                                value = stringResource(
+                                    when (user.role) {
+                                        UserRole.COLLECTOR -> R.string.role_collector
+                                        UserRole.COURIER -> R.string.role_courier
+                                        UserRole.ADMINISTRATOR -> R.string.role_administrator
+                                    }
+                                )
                             )
                             if (uiState.deviceId.isNotBlank()) {
                                 Spacer(modifier = Modifier.height(8.dp))

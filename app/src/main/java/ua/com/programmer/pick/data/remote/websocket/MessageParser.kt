@@ -66,6 +66,12 @@ class MessageParser @Inject constructor(
         private const val FIELD_DETAILS = "details"
         private const val FIELD_EVENT = "event"
         private const val FIELD_ENTITY_ID = "entity_id"
+        private const val FIELD_WEIGHT = "weight"
+        private const val FIELD_BOX_ID = "box_id"
+        private const val FIELD_DOCUMENT = "document"
+        private const val FIELD_OFFLINE_SEQ = "offline_seq"
+        private const val FIELD_CLIENT_TS = "client_ts"
+        private const val FIELD_WAS_NOOP = "was_noop"
 
         // User login fields
         private const val FIELD_LOGIN = "login"
@@ -102,6 +108,10 @@ class MessageParser @Inject constructor(
                 MessageType.DOCUMENT_LOCK_RESULT.name -> parseDocumentLockResult(id, timestamp, payload)
                 MessageType.DOCUMENT_COMPLETE_RESULT.name -> parseDocumentCompleteResult(id, timestamp, payload)
                 MessageType.PRODUCT_LOOKUP_RESULT.name -> parseProductLookupResult(id, timestamp, payload)
+                MessageType.NEXT_DOCUMENT_RESULT.name -> parseNextDocumentResult(id, timestamp, payload)
+                MessageType.BOX_SCAN_RESULT.name -> parseBoxScanResult(id, timestamp, payload)
+                MessageType.BOX_PICKUP_CONFIRM_RESULT.name -> parseBoxPickupConfirmResult(id, timestamp, payload)
+                MessageType.BOX_DELIVERY_CONFIRM_RESULT.name -> parseBoxDeliveryConfirmResult(id, timestamp, payload)
                 MessageType.SERVER_ERROR.name -> parseServerError(id, timestamp, payload)
                 MessageType.PUSH.name -> parsePush(id, timestamp, payload)
                 else -> {
@@ -205,6 +215,30 @@ class MessageParser @Inject constructor(
                 message.metadata?.let { add(FIELD_METADATA, gson.toJsonTree(it)) }
             }
 
+            is SyncMessage.NextDocumentRequest -> JsonObject()
+
+            is SyncMessage.CollectionComplete -> JsonObject().apply {
+                addProperty(FIELD_DOCUMENT_ID, message.documentId)
+            }
+
+            is SyncMessage.BoxScan -> JsonObject().apply {
+                addProperty(FIELD_DOCUMENT_ID, message.documentId)
+                addProperty(FIELD_BARCODE, message.barcode)
+                addProperty(FIELD_WEIGHT, message.weight)
+            }
+
+            is SyncMessage.BoxPickupConfirm -> JsonObject().apply {
+                addProperty(FIELD_BARCODE, message.barcode)
+                addProperty(FIELD_OFFLINE_SEQ, message.offlineSeq)
+                addProperty(FIELD_CLIENT_TS, message.clientTs)
+            }
+
+            is SyncMessage.BoxDeliveryConfirm -> JsonObject().apply {
+                addProperty(FIELD_BARCODE, message.barcode)
+                addProperty(FIELD_OFFLINE_SEQ, message.offlineSeq)
+                addProperty(FIELD_CLIENT_TS, message.clientTs)
+            }
+
             // Server-to-client messages (not serialized by client)
             is SyncMessage.Pong,
             is SyncMessage.UserLoginResult,
@@ -213,6 +247,10 @@ class MessageParser @Inject constructor(
             is SyncMessage.DocumentLockResult,
             is SyncMessage.DocumentCompleteResult,
             is SyncMessage.ProductLookupResult,
+            is SyncMessage.NextDocumentResult,
+            is SyncMessage.BoxScanResult,
+            is SyncMessage.BoxPickupConfirmResult,
+            is SyncMessage.BoxDeliveryConfirmResult,
             is SyncMessage.ServerError,
             is SyncMessage.Push -> null
         }
@@ -332,6 +370,46 @@ class MessageParser @Inject constructor(
             entityType = payload.get(FIELD_ENTITY_TYPE)?.asString,
             entityId = payload.get(FIELD_ENTITY_ID)?.asString,
             data = payload.get(FIELD_DATA)
+        )
+    }
+
+    private fun parseNextDocumentResult(id: String, timestamp: String, payload: JsonObject?): SyncMessage.NextDocumentResult {
+        return SyncMessage.NextDocumentResult(
+            id = id,
+            timestamp = timestamp,
+            success = payload?.get(FIELD_SUCCESS)?.asBoolean ?: false,
+            document = payload?.get(FIELD_DOCUMENT),
+            error = payload?.get(FIELD_ERROR)?.asString
+        )
+    }
+
+    private fun parseBoxScanResult(id: String, timestamp: String, payload: JsonObject?): SyncMessage.BoxScanResult {
+        return SyncMessage.BoxScanResult(
+            id = id,
+            timestamp = timestamp,
+            success = payload?.get(FIELD_SUCCESS)?.asBoolean ?: false,
+            boxId = payload?.get(FIELD_BOX_ID)?.asString,
+            error = payload?.get(FIELD_ERROR)?.asString
+        )
+    }
+
+    private fun parseBoxPickupConfirmResult(id: String, timestamp: String, payload: JsonObject?): SyncMessage.BoxPickupConfirmResult {
+        return SyncMessage.BoxPickupConfirmResult(
+            id = id,
+            timestamp = timestamp,
+            success = payload?.get(FIELD_SUCCESS)?.asBoolean ?: false,
+            barcode = payload?.get(FIELD_BARCODE)?.asString,
+            wasNoop = payload?.get(FIELD_WAS_NOOP)?.asBoolean ?: false
+        )
+    }
+
+    private fun parseBoxDeliveryConfirmResult(id: String, timestamp: String, payload: JsonObject?): SyncMessage.BoxDeliveryConfirmResult {
+        return SyncMessage.BoxDeliveryConfirmResult(
+            id = id,
+            timestamp = timestamp,
+            success = payload?.get(FIELD_SUCCESS)?.asBoolean ?: false,
+            barcode = payload?.get(FIELD_BARCODE)?.asString,
+            wasNoop = payload?.get(FIELD_WAS_NOOP)?.asBoolean ?: false
         )
     }
 

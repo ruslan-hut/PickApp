@@ -16,7 +16,9 @@ import ua.com.programmer.pick.core.Constants
 import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.util.NetworkMonitor
 import ua.com.programmer.pick.core.util.Result
+import ua.com.programmer.pick.data.local.database.dao.BoxDao
 import ua.com.programmer.pick.data.local.database.dao.ClientDao
+import ua.com.programmer.pick.data.local.database.dao.DocumentBoxDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentLineDao
 import ua.com.programmer.pick.data.local.database.dao.ProductDao
@@ -28,11 +30,14 @@ import ua.com.programmer.pick.data.mapper.ClientMapper
 import ua.com.programmer.pick.data.mapper.DocumentMapper
 import ua.com.programmer.pick.data.mapper.ProductMapper
 import ua.com.programmer.pick.data.mapper.WarehouseMapper
+import ua.com.programmer.pick.data.mapper.toEntity
 import ua.com.programmer.pick.data.mapper.toEntityForSync
 import ua.com.programmer.pick.data.remote.dto.BarcodeDto
 import ua.com.programmer.pick.data.remote.dto.ClientDto
 import ua.com.programmer.pick.data.remote.dto.DocumentDto
 import ua.com.programmer.pick.data.remote.dto.ProductDto
+import ua.com.programmer.pick.data.remote.dto.BoxDto
+import ua.com.programmer.pick.data.remote.dto.DocumentBoxDto
 import ua.com.programmer.pick.data.remote.dto.UserDto
 import ua.com.programmer.pick.data.remote.dto.WarehouseDto
 import ua.com.programmer.pick.data.remote.websocket.ConnectionState
@@ -116,6 +121,8 @@ class SyncOrchestrator @Inject constructor(
     private val clientDao: ClientDao,
     private val warehouseDao: WarehouseDao,
     private val userDao: UserDao,
+    private val boxDao: BoxDao,
+    private val documentBoxDao: DocumentBoxDao,
     private val outgoingOperationRepository: OutgoingOperationRepository,
     private val networkMonitor: NetworkMonitor,
     private val documentMapper: DocumentMapper,
@@ -531,7 +538,7 @@ class SyncOrchestrator @Inject constructor(
 
             if (response.success) {
                 // Update local document state from server confirmation (don't mark dirty)
-                documentDao.updateDocumentStateFromServer(documentId, "IN_PROGRESS", System.currentTimeMillis())
+                documentDao.updateDocumentStateFromServer(documentId, "COLLECTING", System.currentTimeMillis())
                 response.lockedBy?.let { userId ->
                     documentDao.updateAssignedUser(documentId, userId, System.currentTimeMillis())
                 }
@@ -657,7 +664,7 @@ class SyncOrchestrator @Inject constructor(
 
             if (response.success) {
                 // Update local document state from server confirmation (don't mark dirty)
-                documentDao.updateDocumentStateFromServer(documentId, response.state ?: "COMPLETED", System.currentTimeMillis())
+                documentDao.updateDocumentStateFromServer(documentId, response.state ?: "COLLECTED", System.currentTimeMillis())
                 response.version?.let { version ->
                     documentDao.updateDocumentVersion(documentId, version.toInt())
                 }
@@ -841,7 +848,7 @@ class SyncOrchestrator @Inject constructor(
         AppLog.d(TAG, "Document lock result: ${message.documentId}, success: ${message.success}")
 
         if (message.success) {
-            documentDao.updateDocumentStateFromServer(message.documentId, "IN_PROGRESS", System.currentTimeMillis())
+            documentDao.updateDocumentStateFromServer(message.documentId, "COLLECTING", System.currentTimeMillis())
             message.lockedBy?.let { userId ->
                 documentDao.updateAssignedUser(message.documentId, userId, System.currentTimeMillis())
             }
@@ -852,7 +859,7 @@ class SyncOrchestrator @Inject constructor(
         AppLog.d(TAG, "Document complete result: ${message.documentId}, success: ${message.success}")
 
         if (message.success) {
-            documentDao.updateDocumentStateFromServer(message.documentId, message.state ?: "COMPLETED", System.currentTimeMillis())
+            documentDao.updateDocumentStateFromServer(message.documentId, message.state ?: "COLLECTED", System.currentTimeMillis())
             message.version?.let { version ->
                 documentDao.updateDocumentVersion(message.documentId, version.toInt())
             }
@@ -919,6 +926,8 @@ class SyncOrchestrator @Inject constructor(
             Constants.SyncEntity.PRODUCTS -> applyProductSync(data, deletedIds)
             Constants.SyncEntity.CLIENTS -> applyClientSync(data, deletedIds)
             Constants.SyncEntity.WAREHOUSES -> applyWarehouseSync(data, deletedIds)
+            Constants.SyncEntity.BOXES -> applyBoxSync(data, deletedIds)
+            Constants.SyncEntity.DOCUMENT_BOXES -> applyDocumentBoxSync(data, deletedIds)
         }
     }
 
@@ -1070,6 +1079,40 @@ class SyncOrchestrator @Inject constructor(
         }
     }
 
+    private suspend fun applyBoxSync(
+        data: com.google.gson.JsonElement,
+        deletedIds: List<String>?
+    ) {
+        if (data.isJsonArray) {
+            val type = object : TypeToken<List<BoxDto>>() {}.type
+            val boxes: List<BoxDto> = gson.fromJson(data, type)
+
+            AppLog.i(TAG, "Sync boxes: ${boxes.size} upsert, ${deletedIds?.size ?: 0} delete")
+            boxDao.insertBoxes(boxes.map { it.toEntity() })
+        }
+
+        deletedIds?.takeIf { it.isNotEmpty() }?.let { ids ->
+            boxDao.deleteBoxesByIds(ids)
+        }
+    }
+
+    private suspend fun applyDocumentBoxSync(
+        data: com.google.gson.JsonElement,
+        deletedIds: List<String>?
+    ) {
+        if (data.isJsonArray) {
+            val type = object : TypeToken<List<DocumentBoxDto>>() {}.type
+            val documentBoxes: List<DocumentBoxDto> = gson.fromJson(data, type)
+
+            AppLog.i(TAG, "Sync document_boxes: ${documentBoxes.size} upsert, ${deletedIds?.size ?: 0} delete")
+            documentBoxDao.insertDocumentBoxes(documentBoxes.map { it.toEntity() })
+        }
+
+        deletedIds?.takeIf { it.isNotEmpty() }?.let { ids ->
+            documentBoxDao.deleteDocumentBoxesByIds(ids)
+        }
+    }
+
     // ============================================
     // Helpers
     // ============================================
@@ -1165,7 +1208,7 @@ class SyncOrchestrator @Inject constructor(
                 if (response != null) {
                     if (response.success) {
                         documentDao.updateDocumentStateFromServer(
-                            response.documentId, "IN_PROGRESS", System.currentTimeMillis()
+                            response.documentId, "COLLECTING", System.currentTimeMillis()
                         )
                         response.lockedBy?.let { userId ->
                             documentDao.updateAssignedUser(response.documentId, userId, System.currentTimeMillis())
@@ -1192,7 +1235,7 @@ class SyncOrchestrator @Inject constructor(
                     if (response.success) {
                         documentDao.updateDocumentStateFromServer(
                             response.documentId,
-                            response.state ?: "COMPLETED",
+                            response.state ?: "COLLECTED",
                             System.currentTimeMillis()
                         )
                         response.version?.let { version ->

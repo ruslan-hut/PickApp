@@ -31,6 +31,9 @@ data class UserEntity(
     @ColumnInfo(name = "operating_mode", defaultValue = "RECEIPT")
     val operatingMode: String = "RECEIPT",
 
+    @ColumnInfo(name = "warehouse_id")
+    val warehouseId: String? = null,
+
     @ColumnInfo(name = "last_updated")
     val lastUpdated: Long
 )

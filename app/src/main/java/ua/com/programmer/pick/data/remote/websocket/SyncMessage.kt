@@ -29,6 +29,21 @@ enum class MessageType {
     DOCUMENT_LOCK_RESULT,
     DOCUMENT_COMPLETE_RESULT,
 
+    // Queue-based collector flow
+    NEXT_DOCUMENT_REQUEST,
+    NEXT_DOCUMENT_RESULT,
+    COLLECTION_COMPLETE,
+
+    // Box scanning
+    BOX_SCAN,
+    BOX_SCAN_RESULT,
+
+    // Courier box operations
+    BOX_PICKUP_CONFIRM,
+    BOX_PICKUP_CONFIRM_RESULT,
+    BOX_DELIVERY_CONFIRM,
+    BOX_DELIVERY_CONFIRM_RESULT,
+
     // Product lookup
     PRODUCT_LOOKUP,
     PRODUCT_LOOKUP_RESULT,
@@ -320,6 +335,130 @@ sealed class SyncMessage {
         val error: String? = null
     ) : SyncMessage() {
         override val type = MessageType.PRODUCT_LOOKUP_RESULT
+    }
+
+    // ============================================
+    // Queue-Based Collector Messages
+    // ============================================
+
+    /**
+     * Client request for next document from the queue
+     */
+    data class NextDocumentRequest(
+        override val id: String,
+        override val timestamp: String
+    ) : SyncMessage() {
+        override val type = MessageType.NEXT_DOCUMENT_REQUEST
+    }
+
+    /**
+     * Server response with next document or queue empty
+     */
+    data class NextDocumentResult(
+        override val id: String,
+        override val timestamp: String,
+        val success: Boolean,
+        val document: JsonElement? = null,
+        val error: String? = null
+    ) : SyncMessage() {
+        override val type = MessageType.NEXT_DOCUMENT_RESULT
+    }
+
+    /**
+     * Client signals collection is complete for a document
+     */
+    data class CollectionComplete(
+        override val id: String,
+        override val timestamp: String,
+        val documentId: String
+    ) : SyncMessage() {
+        override val type = MessageType.COLLECTION_COMPLETE
+    }
+
+    // ============================================
+    // Box Scanning Messages
+    // ============================================
+
+    /**
+     * Client scans a box barcode during collection
+     */
+    data class BoxScan(
+        override val id: String,
+        override val timestamp: String,
+        val documentId: String,
+        val barcode: String,
+        val weight: Int
+    ) : SyncMessage() {
+        override val type = MessageType.BOX_SCAN
+    }
+
+    /**
+     * Server response for box scan
+     */
+    data class BoxScanResult(
+        override val id: String,
+        override val timestamp: String,
+        val success: Boolean,
+        val boxId: String? = null,
+        val error: String? = null
+    ) : SyncMessage() {
+        override val type = MessageType.BOX_SCAN_RESULT
+    }
+
+    // ============================================
+    // Courier Box Operation Messages
+    // ============================================
+
+    /**
+     * Client confirms box pickup (offline-capable)
+     */
+    data class BoxPickupConfirm(
+        override val id: String,
+        override val timestamp: String,
+        val barcode: String,
+        val offlineSeq: Int,
+        val clientTs: Long
+    ) : SyncMessage() {
+        override val type = MessageType.BOX_PICKUP_CONFIRM
+    }
+
+    /**
+     * Server response for box pickup confirm
+     */
+    data class BoxPickupConfirmResult(
+        override val id: String,
+        override val timestamp: String,
+        val success: Boolean,
+        val barcode: String? = null,
+        val wasNoop: Boolean = false
+    ) : SyncMessage() {
+        override val type = MessageType.BOX_PICKUP_CONFIRM_RESULT
+    }
+
+    /**
+     * Client confirms box delivery (offline-capable)
+     */
+    data class BoxDeliveryConfirm(
+        override val id: String,
+        override val timestamp: String,
+        val barcode: String,
+        val offlineSeq: Int,
+        val clientTs: Long
+    ) : SyncMessage() {
+        override val type = MessageType.BOX_DELIVERY_CONFIRM
+    }
+
+    /**
+     * Server response for box delivery confirm
+     */
+    data class BoxDeliveryConfirmResult(
+        override val id: String,
+        override val timestamp: String,
+        val success: Boolean,
+        val barcode: String? = null,
+        val wasNoop: Boolean = false
+    ) : SyncMessage() {
+        override val type = MessageType.BOX_DELIVERY_CONFIRM_RESULT
     }
 
     // ============================================

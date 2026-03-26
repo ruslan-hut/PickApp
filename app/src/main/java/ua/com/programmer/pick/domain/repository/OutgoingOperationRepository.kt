@@ -58,6 +58,10 @@ enum class OperationType {
     DOCUMENT_UNLOCK,
     DOCUMENT_UPDATE,
     DOCUMENT_COMPLETE,
+    COLLECTION_COMPLETE,
+    BOX_SCAN,
+    BOX_PICKUP_CONFIRM,
+    BOX_DELIVERY_CONFIRM,
     SYNC_REQUEST,
     PRODUCT_LOOKUP;
 
@@ -73,7 +77,8 @@ enum class OperationType {
 
 enum class EntityType {
     DOCUMENT,
-    DOCUMENT_LINE
+    DOCUMENT_LINE,
+    DOCUMENT_BOX
 }
 
 enum class OperationStatus {

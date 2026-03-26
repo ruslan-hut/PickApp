@@ -27,7 +27,7 @@ class SplashViewModelTest {
 
     @Test
     fun `start navigates to home when user exists`() = runBlocking {
-        val testUser = User(id = "1", login = "demo", name = "Demo", role = UserRole.WAREHOUSE_WORKER, isActive = true)
+        val testUser = User(id = "1", login = "demo", name = "Demo", role = UserRole.COLLECTOR, isActive = true)
         val repo = FakeUserRepository(testUser)
         val vm = SplashViewModel(repo)
 

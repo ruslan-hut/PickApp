@@ -127,6 +127,9 @@
     <string name="user_info">Информация о пользователе</string>
     <string name="login_label_fmt">Логин: %1$s</string>
     <string name="role_label_fmt">Роль: %1$s</string>
+    <string name="role_collector">Сборщик</string>
+    <string name="role_courier">Курьер</string>
+    <string name="role_administrator">Администратор</string>
     <string name="device_id_label_fmt">Устройство: %1$s</string>
     <string name="status_active">Активен</string>
     <string name="edit_profile">Редактировать профиль</string>

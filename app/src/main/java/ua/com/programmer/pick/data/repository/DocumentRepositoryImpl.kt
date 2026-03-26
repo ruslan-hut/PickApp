@@ -76,7 +76,7 @@ class DocumentRepositoryImpl @Inject constructor(
                 documentId = documentId,
                 userId = userId,
                 takenAt = currentTime,
-                state = DocumentState.IN_PROGRESS.name,
+                state = DocumentState.COLLECTING.name,
                 lastModified = currentTime
             )
 
@@ -94,7 +94,7 @@ class DocumentRepositoryImpl @Inject constructor(
             val document = documentDao.getDocumentById(documentId)
                 ?: return@withContext Result.Error(Exception("Document not found"), "Document not found")
 
-            if (document.state != DocumentState.IN_PROGRESS.name) {
+            if (document.state != DocumentState.COLLECTING.name) {
                 return@withContext Result.Error(
                     Exception("Document cannot be packaged"),
                     "Document must be in progress to package"
@@ -129,7 +129,7 @@ class DocumentRepositoryImpl @Inject constructor(
             documentDao.completeDocument(
                 documentId = documentId,
                 completedAt = currentTime,
-                state = DocumentState.COMPLETED.name,
+                state = DocumentState.COLLECTED.name,
                 lastModified = currentTime
             )
 

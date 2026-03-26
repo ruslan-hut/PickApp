@@ -13,6 +13,8 @@ data class UserDto(
     val role: String,
     @SerializedName("is_active")
     val isActive: Boolean,
+    @SerializedName("warehouse_id")
+    val warehouseId: String? = null,
     @SerializedName("last_updated")
     val lastUpdated: Long
 )

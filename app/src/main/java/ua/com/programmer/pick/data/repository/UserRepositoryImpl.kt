@@ -145,7 +145,7 @@ class UserRepositoryImpl @Inject constructor(
                     login = login,
                     name = loginResult.userName ?: login,
                     passwordHash = passwordHash,
-                    role = loginResult.role ?: UserRole.WAREHOUSE_WORKER.name,
+                    role = loginResult.role ?: UserRole.COLLECTOR.name,
                     isActive = true,
                     lastLoginAt = currentTime,
                     lastUpdated = currentTime

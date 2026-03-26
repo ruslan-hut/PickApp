@@ -8,7 +8,9 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import ua.com.programmer.pick.data.local.database.AppDatabase
+import ua.com.programmer.pick.data.local.database.dao.BoxDao
 import ua.com.programmer.pick.data.local.database.dao.ClientDao
+import ua.com.programmer.pick.data.local.database.dao.DocumentBoxDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentLineDao
 import ua.com.programmer.pick.data.local.database.dao.OutgoingOperationDao
@@ -33,6 +35,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             AppDatabase.DATABASE_NAME
         )
+            .addMigrations(AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9)
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
     }
@@ -72,4 +75,12 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideOutgoingOperationDao(database: AppDatabase): OutgoingOperationDao = database.outgoingOperationDao()
+
+    @Provides
+    @Singleton
+    fun provideBoxDao(database: AppDatabase): BoxDao = database.boxDao()
+
+    @Provides
+    @Singleton
+    fun provideDocumentBoxDao(database: AppDatabase): DocumentBoxDao = database.documentBoxDao()
 }

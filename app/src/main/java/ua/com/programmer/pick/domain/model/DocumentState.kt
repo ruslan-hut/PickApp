@@ -2,9 +2,25 @@ package ua.com.programmer.pick.domain.model
 
 enum class DocumentState {
     LOADED,
-    IN_PROGRESS,
+    COLLECTING,
     PACKAGING,
-    COMPLETED,
+    COLLECTED,
+    DELIVERING,
+    DELIVERED,
     SENT,
-    ERROR
+    ERROR;
+
+    companion object {
+        fun fromString(value: String): DocumentState = when (value.uppercase()) {
+            "LOADED" -> LOADED
+            "COLLECTING", "IN_PROGRESS" -> COLLECTING
+            "PACKAGING" -> PACKAGING
+            "COLLECTED", "COMPLETED" -> COLLECTED
+            "DELIVERING" -> DELIVERING
+            "DELIVERED" -> DELIVERED
+            "SENT" -> SENT
+            "ERROR" -> ERROR
+            else -> LOADED
+        }
+    }
 }
