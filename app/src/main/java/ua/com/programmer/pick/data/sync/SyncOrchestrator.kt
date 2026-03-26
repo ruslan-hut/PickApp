@@ -1011,11 +1011,14 @@ class SyncOrchestrator @Inject constructor(
                 val entity = productMapper.toEntity(dto)
                 productDao.upsertProduct(entity)
 
-                // Save barcodes
-                val barcodes = productMapper.toBarcodeEntityList(dto)
-                productDao.deleteBarcodesForProduct(dto.id)
-                barcodes.forEach { barcode ->
-                    productDao.insertBarcode(barcode)
+                // Save barcodes only if the server included them in this sync payload.
+                // A delta update may omit barcodes — don't wipe existing ones.
+                if (dto.barcodes != null) {
+                    val barcodes = productMapper.toBarcodeEntityList(dto)
+                    productDao.deleteBarcodesForProduct(dto.id)
+                    barcodes.forEach { barcode ->
+                        productDao.insertBarcode(barcode)
+                    }
                 }
 
                 // Save product image if present
