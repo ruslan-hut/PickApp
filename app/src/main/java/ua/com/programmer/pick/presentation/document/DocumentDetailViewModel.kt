@@ -370,8 +370,9 @@ class DocumentDetailViewModel @Inject constructor(
         val documentId = currentDocumentId ?: return
         val currentState = _uiState.value.document?.state ?: return
 
-        // Only allow taking LOADED documents
-        if (currentState != DocumentState.LOADED) {
+        // Allow taking LOADED documents or re-locking COLLECTING documents
+        // (e.g., user exited without finishing and the server released the lock)
+        if (currentState != DocumentState.LOADED && currentState != DocumentState.COLLECTING) {
             viewModelScope.launch {
                 _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_ALREADY_TAKEN))
             }

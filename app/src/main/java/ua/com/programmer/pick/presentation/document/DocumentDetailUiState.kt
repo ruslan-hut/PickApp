@@ -30,9 +30,17 @@ data class DocumentDetailUiState(
 
     /**
      * Check if the current user can take this document into work.
+     * Also allows re-locking a COLLECTING document that was unlocked on the server
+     * (e.g., user exited without finishing and the server released the lock).
      */
     val canTakeIntoWork: Boolean
-        get() = document?.state == DocumentState.LOADED
+        get() {
+            val doc = document ?: return false
+            if (doc.state == DocumentState.LOADED) return true
+            // Allow re-locking if COLLECTING but not currently editable by this user
+            if (doc.state == DocumentState.COLLECTING && !canEdit) return true
+            return false
+        }
 
     /**
      * Check if the current user can move this document to PACKAGING.

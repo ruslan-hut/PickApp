@@ -992,10 +992,27 @@ class SyncOrchestrator @Inject constructor(
         documentDao.deleteDocumentsNotIn(receivedIds.toList())
 
         documents.forEach { dto ->
-            // Skip overwriting locally dirty documents — server will get our version when uploaded
             val existing = documentDao.getDocumentById(dto.id)
             if (existing != null && existing.isDirty) {
-                AppLog.w(TAG, "Skipping server upsert for dirty document: ${dto.id}")
+                // Server is authoritative for state transitions (e.g., lock released → LOADED).
+                // If the server version is newer, accept the state change and clear the dirty flag.
+                if (dto.version > existing.version) {
+                    AppLog.i(TAG, "Server version ${dto.version} > local ${existing.version} for dirty document ${dto.id}, accepting server state")
+                    val entity = documentMapper.toEntity(dto)
+                    documentDao.upsertDocument(entity)
+                    if (dto.lines != null) {
+                        documentLineDao.deleteLinesByDocumentId(dto.id)
+                        val lineEntities = dto.lines.map { documentMapper.toLineEntity(it) }
+                        documentLineDao.insertLines(lineEntities)
+                    }
+                    // Recalculate totals from synced lines
+                    val totalPlanned = documentLineDao.getTotalPlannedQuantity(dto.id) ?: 0.0
+                    val totalActual = documentLineDao.getTotalActualQuantity(dto.id) ?: 0.0
+                    documentDao.updateTotalPlanned(dto.id, totalPlanned, System.currentTimeMillis())
+                    documentDao.updateTotalActual(dto.id, totalActual, System.currentTimeMillis())
+                } else {
+                    AppLog.w(TAG, "Skipping server upsert for dirty document: ${dto.id}")
+                }
                 return@forEach
             }
 
@@ -1009,10 +1026,14 @@ class SyncOrchestrator @Inject constructor(
                 documentLineDao.insertLines(lineEntities)
             }
 
-            // Recalculate totalPlanned from lines
+            // Recalculate totals from lines
             val totalPlanned = documentLineDao.getTotalPlannedQuantity(dto.id) ?: 0.0
             if (totalPlanned != entity.totalPlanned) {
                 documentDao.updateTotalPlanned(dto.id, totalPlanned, System.currentTimeMillis())
+            }
+            val totalActual = documentLineDao.getTotalActualQuantity(dto.id) ?: 0.0
+            if (totalActual != entity.totalActual) {
+                documentDao.updateTotalActual(dto.id, totalActual, System.currentTimeMillis())
             }
         }
 
