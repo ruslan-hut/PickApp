@@ -151,7 +151,6 @@ class SyncOrchestrator @Inject constructor(
     private var currentSyncId: String? = null
     private var pendingSyncCursors: Map<String, String>? = null
     private var syncTimeoutJob: Job? = null
-    private var isFullSyncActive = false
     private val syncReceivedCounts = mutableMapOf<String, Int>()
 
     private var isInitialized = false
@@ -419,7 +418,6 @@ class SyncOrchestrator @Inject constructor(
 
         syncReceivedCounts.clear()
         _syncState.value = _syncState.value.copy(isSyncing = true)
-        isFullSyncActive = true
 
         val message = SyncMessage.FullSyncRequest(
             id = messageParser.generateMessageId(),
@@ -459,7 +457,6 @@ class SyncOrchestrator @Inject constructor(
             return Result.Error(Exception("User not authenticated"))
         }
 
-        isFullSyncActive = true
 
         val message = SyncMessage.DocumentListRefresh(
             id = messageParser.generateMessageId(),
@@ -468,7 +465,6 @@ class SyncOrchestrator @Inject constructor(
 
         val sent = webSocketManager.sendMessage(message)
         if (!sent) {
-            isFullSyncActive = false
             return Result.Error(Exception("Failed to send document list refresh"))
         }
 
@@ -685,13 +681,15 @@ class SyncOrchestrator @Inject constructor(
             )
 
             if (response.success) {
-                // Update local document state from server confirmation (don't mark dirty)
-                documentDao.updateDocumentStateFromServer(documentId, response.state ?: "COLLECTED", System.currentTimeMillis())
-                response.version?.let { version ->
-                    documentDao.updateDocumentVersion(documentId, version.toInt())
-                }
+                // Remove the completed document locally — the server no longer
+                // includes it in this user's document set.
+                documentLineDao.deleteLinesByDocumentId(documentId)
+                documentDao.deleteDocument(documentId)
 
-                // After completion, the document list will refresh via delta sync
+                // Refresh document list to get the next document from server
+                scope.launch {
+                    requestDocumentListRefresh()
+                }
             }
 
             Result.Success(result)
@@ -841,7 +839,6 @@ class SyncOrchestrator @Inject constructor(
         syncTimeoutJob = null
         currentSyncId = message.syncId
         pendingSyncCursors = message.cursors
-        isFullSyncActive = false
 
         // Update all cursors in database
         syncStateDao.updateCursors(message.cursors)
@@ -981,39 +978,41 @@ class SyncOrchestrator @Inject constructor(
         data: com.google.gson.JsonElement,
         deletedIds: List<String>?
     ) {
-        if (isFullSyncActive) {
-            AppLog.d(TAG, "Full sync: clearing all non-dirty documents and their lines")
-            documentLineDao.deleteAllNonDirtyDocumentLines()
-            documentDao.deleteAllNonDirtyDocuments()
-        }
+        if (!data.isJsonArray) return
 
-        if (data.isJsonArray) {
-            val type = object : TypeToken<List<DocumentDto>>() {}.type
-            val documents: List<DocumentDto> = gson.fromJson(data, type)
+        val type = object : TypeToken<List<DocumentDto>>() {}.type
+        val documents: List<DocumentDto> = gson.fromJson(data, type)
+        val receivedIds = documents.map { it.id }.toSet()
 
-            AppLog.i(TAG, "Sync documents: ${documents.size} upsert, ${deletedIds?.size ?: 0} delete")
-            documents.forEach { dto ->
-                // Skip overwriting locally dirty documents — server will get our version when uploaded
-                val existing = documentDao.getDocumentById(dto.id)
-                if (existing != null && existing.isDirty) {
-                    AppLog.w(TAG, "Skipping server upsert for dirty document: ${dto.id}")
-                    return@forEach
-                }
+        AppLog.i(TAG, "Sync documents: ${documents.size} upsert, ${deletedIds?.size ?: 0} delete")
 
-                val entity = documentMapper.toEntity(dto)
-                documentDao.upsertDocument(entity)
+        // Remove all local documents NOT in the server response (except dirty ones).
+        // The server sends exactly the documents this user should see — anything
+        // else is stale/orphaned and must be cleaned up.
+        documentDao.deleteDocumentsNotIn(receivedIds.toList())
 
-                // Save lines if present
-                dto.lines?.forEach { lineDto ->
-                    val lineEntity = documentMapper.toLineEntity(lineDto)
-                    documentLineDao.upsertLine(lineEntity)
-                }
+        documents.forEach { dto ->
+            // Skip overwriting locally dirty documents — server will get our version when uploaded
+            val existing = documentDao.getDocumentById(dto.id)
+            if (existing != null && existing.isDirty) {
+                AppLog.w(TAG, "Skipping server upsert for dirty document: ${dto.id}")
+                return@forEach
+            }
 
-                // Recalculate totalPlanned from lines
-                val totalPlanned = documentLineDao.getTotalPlannedQuantity(dto.id) ?: 0.0
-                if (totalPlanned != entity.totalPlanned) {
-                    documentDao.updateTotalPlanned(dto.id, totalPlanned, System.currentTimeMillis())
-                }
+            val entity = documentMapper.toEntity(dto)
+            documentDao.upsertDocument(entity)
+
+            // Replace lines — server sends the complete set
+            if (dto.lines != null) {
+                documentLineDao.deleteLinesByDocumentId(dto.id)
+                val lineEntities = dto.lines.map { documentMapper.toLineEntity(it) }
+                documentLineDao.insertLines(lineEntities)
+            }
+
+            // Recalculate totalPlanned from lines
+            val totalPlanned = documentLineDao.getTotalPlannedQuantity(dto.id) ?: 0.0
+            if (totalPlanned != entity.totalPlanned) {
+                documentDao.updateTotalPlanned(dto.id, totalPlanned, System.currentTimeMillis())
             }
         }
 
