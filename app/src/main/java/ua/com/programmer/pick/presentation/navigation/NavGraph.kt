@@ -40,7 +40,6 @@ import ua.com.programmer.pick.presentation.home.HomeScreen
 import ua.com.programmer.pick.presentation.home.HomeViewModel
 import ua.com.programmer.pick.presentation.profile.ProfileScreen
 import ua.com.programmer.pick.presentation.collector.BoxScanningScreen
-import ua.com.programmer.pick.presentation.collector.CollectorQueueScreen
 import ua.com.programmer.pick.presentation.courier.CourierScreen
 import ua.com.programmer.pick.presentation.settings.ScannerSettingsScreen
 import ua.com.programmer.pick.presentation.settings.ScannerTestScreen
@@ -146,9 +145,6 @@ fun PickNavGraph(
                             restoreState = true
                         }
                     },
-                    onCollectorQueueClick = {
-                        navController.navigate(Screen.CollectorQueue.route)
-                    },
                     onCourierClick = {
                         navController.navigate(Screen.Courier.route)
                     }
@@ -172,13 +168,6 @@ fun PickNavGraph(
                 DocumentDetailScreen(
                     documentId = documentId,
                     onNavigateBack = { navController.popBackStack() }
-                )
-            }
-
-            composable(route = Screen.CollectorQueue.route) {
-                CollectorQueueScreen(
-                    onNavigateBack = { navController.popBackStack() },
-                    onNavigate = { target -> navController.navigate(target) }
                 )
             }
 

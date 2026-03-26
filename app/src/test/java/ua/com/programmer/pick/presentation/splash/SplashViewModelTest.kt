@@ -19,8 +19,6 @@ class FakeUserRepository(private val user: User?) : UserRepository {
     override suspend fun logout() {}
 
     override suspend fun getUserById(id: String) = null
-
-    override suspend fun syncUsers() = Result.Error(Exception("Not implemented"))
 }
 
 class SplashViewModelTest {

@@ -270,15 +270,4 @@ class UserRepositoryImpl @Inject constructor(
         }
     }
 
-    /**
-     * @deprecated User sync is now handled by SyncOrchestrator via WebSocket
-     */
-    @Deprecated(
-        "User sync is now handled by SyncOrchestrator via WebSocket",
-        ReplaceWith("SyncOrchestrator.requestDeltaSync()")
-    )
-    override suspend fun syncUsers(): Result<Unit> = withContext(ioDispatcher) {
-        // Sync is now handled by SyncOrchestrator via WebSocket
-        Result.Success(Unit)
-    }
 }

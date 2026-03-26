@@ -59,14 +59,7 @@ class DocumentsViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isRefreshing = true) }
 
-            // For COLLECTOR: request next document from queue instead of full list refresh.
-            // The server controls which documents the collector sees.
-            val role = syncOrchestrator.syncState.value.authenticatedUserRole?.uppercase()
-            if (role == "COLLECTOR" || role == "WAREHOUSE_WORKER") {
-                syncOrchestrator.requestNextDocumentForCollector()
-            } else {
-                syncOrchestrator.requestDocumentListRefresh()
-            }
+            syncOrchestrator.requestDocumentListRefresh()
 
             _uiState.update { it.copy(isRefreshing = false) }
         }

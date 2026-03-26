@@ -13,9 +13,9 @@ enum class DocumentState {
     companion object {
         fun fromString(value: String): DocumentState = when (value.uppercase()) {
             "LOADED" -> LOADED
-            "COLLECTING", "IN_PROGRESS" -> COLLECTING
+            "COLLECTING" -> COLLECTING
             "PACKAGING" -> PACKAGING
-            "COLLECTED", "COMPLETED" -> COLLECTED
+            "COLLECTED" -> COLLECTED
             "DELIVERING" -> DELIVERING
             "DELIVERED" -> DELIVERED
             "SENT" -> SENT

@@ -138,17 +138,7 @@ class OutgoingOperationRepositoryImpl @Inject constructor(
     private fun OutgoingOperationEntity.toDomain(): OutgoingOperation {
         return OutgoingOperation(
             id = id,
-            operationType = try {
-                OperationType.valueOf(operationType)
-            } catch (e: IllegalArgumentException) {
-                // Fallback for legacy operation types
-                when (operationType) {
-                    "TAKE_INTO_WORK" -> OperationType.DOCUMENT_LOCK
-                    "UPDATE_LINE", "UPDATE_DOCUMENT" -> OperationType.DOCUMENT_UPDATE
-                    "COMPLETE_DOCUMENT" -> OperationType.DOCUMENT_COMPLETE
-                    else -> OperationType.DOCUMENT_UPDATE
-                }
-            },
+            operationType = OperationType.valueOf(operationType),
             entityType = try {
                 EntityType.valueOf(entityType)
             } catch (e: IllegalArgumentException) {

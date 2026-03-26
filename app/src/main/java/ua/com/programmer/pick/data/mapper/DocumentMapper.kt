@@ -47,9 +47,9 @@ class DocumentMapper @Inject constructor() {
             documentId = dto.documentId,
             lineNumber = dto.lineNumber,
             productId = dto.productId,
-            productCode = dto.productCode,
-            productName = dto.productName,
-            unit = dto.unit,
+            productCode = dto.productCode ?: "",
+            productName = dto.productName ?: "",
+            unit = dto.unit ?: "",
             plannedQuantity = dto.plannedQuantity,
             actualQuantity = dto.actualQuantity,
             batchNumber = dto.batchNumber,
@@ -63,7 +63,7 @@ class DocumentMapper @Inject constructor() {
     }
 }
 
-// Extension functions for domain mapping (keeping backward compatibility)
+// Extension functions for domain mapping
 fun DocumentEntity.toDomain(): Document {
     return Document(
         id = id,

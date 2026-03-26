@@ -22,7 +22,7 @@ class ClientMapper @Inject constructor() {
     }
 }
 
-// Extension functions for domain mapping (keeping backward compatibility)
+// Extension functions for domain mapping
 fun ClientEntity.toDomain(): Client {
     return Client(
         id = id,

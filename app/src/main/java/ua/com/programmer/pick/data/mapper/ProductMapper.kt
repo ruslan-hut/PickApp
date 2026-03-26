@@ -50,7 +50,7 @@ class ProductMapper @Inject constructor() {
     }
 }
 
-// Extension functions for domain mapping (keeping backward compatibility)
+// Extension functions for domain mapping
 fun ProductEntity.toDomain(barcodes: List<ProductBarcodeEntity> = emptyList()): Product {
     return Product(
         id = id,

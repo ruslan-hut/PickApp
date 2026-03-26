@@ -35,7 +35,7 @@ class WarehouseMapper @Inject constructor() {
     }
 }
 
-// Extension functions for domain mapping (keeping backward compatibility)
+// Extension functions for domain mapping
 fun WarehouseEntity.toDomain(locations: List<WarehouseLocationEntity> = emptyList()): Warehouse {
     return Warehouse(
         id = id,

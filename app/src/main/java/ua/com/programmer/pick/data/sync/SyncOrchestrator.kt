@@ -212,16 +212,8 @@ class SyncOrchestrator @Inject constructor(
                         requestDeltaSync()
                         processPendingOperations()
 
-                        // For COLLECTOR role: automatically request next document from queue
-                        // This replaces manual "Request Next Document" — the server decides
-                        // which document to assign based on warehouse queue order
-                        if (authState.role.uppercase() == "COLLECTOR" || authState.role.uppercase() == "WAREHOUSE_WORKER") {
-                            scope.launch {
-                                // Small delay to let delta sync start first
-                                delay(1500)
-                                requestNextDocumentForCollector()
-                            }
-                        }
+                        // Documents are loaded via delta sync for all roles.
+                        // Locking is an explicit user action (not automatic).
                     }
                     is UserAuthState.AuthFailed -> {
                         _syncState.value = _syncState.value.copy(
@@ -368,19 +360,10 @@ class SyncOrchestrator @Inject constructor(
         // Get cursors from database
         val cursors = syncStateDao.getCursorsMap()
 
-        // COLLECTOR role: skip DOCUMENTS in delta sync — document delivery is managed
-        // by the server queue via NEXT_DOCUMENT_REQUEST
-        val role = _syncState.value.authenticatedUserRole?.uppercase()
-        val entityTypes = if (role == "COLLECTOR" || role == "WAREHOUSE_WORKER") {
-            Constants.SyncEntity.COLLECTOR_SYNC
-        } else {
-            Constants.SyncEntity.ALL
-        }
-
         val message = SyncMessage.SyncRequest(
             id = messageParser.generateMessageId(),
             timestamp = messageParser.getCurrentTimestamp(),
-            entityTypes = entityTypes,
+            entityTypes = Constants.SyncEntity.ALL,
             cursors = cursors.ifEmpty { null }
         )
 
@@ -391,7 +374,7 @@ class SyncOrchestrator @Inject constructor(
         }
 
         // Update entity statuses
-        entityTypes.forEach { entityType ->
+        Constants.SyncEntity.ALL.forEach { entityType ->
             updateEntitySyncStatus(entityType, SyncStatus.SYNCING)
         }
 
@@ -550,14 +533,10 @@ class SyncOrchestrator @Inject constructor(
         AppLog.d(TAG, "Locking document: $documentId")
 
         if (!webSocketManager.isConnected()) {
-            AppLog.d(TAG, "WebSocket not connected, queueing lock operation for document: $documentId")
-            outgoingOperationRepository.queueOperation(
-                operationType = OperationType.DOCUMENT_LOCK,
-                entityType = EntityType.DOCUMENT,
-                entityId = documentId,
-                payload = gson.toJson(mapOf("document_id" to documentId))
-            )
-            return Result.Error(Exception("WebSocket not connected, operation queued"))
+            return Result.Error(Exception("Not connected to server"))
+        }
+        if (!webSocketManager.isUserAuthenticated()) {
+            return Result.Error(Exception("User not authenticated"))
         }
 
         val message = SyncMessage.DocumentLock(
@@ -712,105 +691,12 @@ class SyncOrchestrator @Inject constructor(
                     documentDao.updateDocumentVersion(documentId, version.toInt())
                 }
 
-                // For COLLECTOR role: automatically request next document after completing one
-                val role = _syncState.value.authenticatedUserRole?.uppercase()
-                if (role == "COLLECTOR" || role == "WAREHOUSE_WORKER") {
-                    scope.launch {
-                        delay(500) // Brief delay for UI to settle
-                        requestNextDocumentForCollector()
-                    }
-                }
+                // After completion, the document list will refresh via delta sync
             }
 
             Result.Success(result)
         } else {
             Result.Error(Exception("Complete request timeout"))
-        }
-    }
-
-    // ============================================
-    // Collector Queue — Auto Document Assignment
-    // ============================================
-
-    /**
-     * Request the next document from the server queue for the COLLECTOR role.
-     * Called automatically:
-     * - After user authentication (if role is COLLECTOR)
-     * - After completing a document (if role is COLLECTOR)
-     *
-     * The server determines which document to assign based on:
-     * - Worker's assigned warehouse
-     * - Document queue order (by date, earliest first)
-     * - Optional ERP pre-assignment (assigned_worker_id)
-     *
-     * The received document is saved to Room DB, which automatically
-     * updates the document list UI via Flow observation.
-     */
-    suspend fun requestNextDocumentForCollector(): Result<Unit> {
-        AppLog.d(TAG, "Requesting next document for collector from queue")
-
-        if (!webSocketManager.isConnected() || !webSocketManager.isUserAuthenticated()) {
-            AppLog.d(TAG, "Not connected/authenticated, skipping next document request")
-            return Result.Error(Exception("Not connected"))
-        }
-
-        val message = SyncMessage.NextDocumentRequest(
-            id = messageParser.generateMessageId(),
-            timestamp = messageParser.getCurrentTimestamp()
-        )
-
-        val response = webSocketManager.sendAndAwait(
-            message,
-            SyncMessage.NextDocumentResult::class.java
-        )
-
-        if (response == null) {
-            AppLog.w(TAG, "Next document request timed out")
-            return Result.Error(Exception("Request timeout"))
-        }
-
-        if (response.success && response.document != null) {
-            try {
-                val dto: DocumentDto = gson.fromJson(response.document, DocumentDto::class.java)
-                val entity = documentMapper.toEntity(dto)
-
-                // Clear old documents — collector should only see the server-assigned document.
-                // deleteAllNonDirty preserves any locally modified document (safety net).
-                documentLineDao.deleteAllNonDirtyDocumentLines()
-                documentDao.deleteAllNonDirtyDocuments()
-
-                // Save the assigned document to Room — this triggers UI update via Flow
-                documentDao.upsertDocument(entity)
-
-                // Save lines if present
-                dto.lines?.let { lines ->
-                    val lineEntities = lines.map { documentMapper.toLineEntity(it) }
-                    documentLineDao.deleteLinesByDocumentId(entity.id)
-                    documentLineDao.insertLines(lineEntities)
-                }
-
-                AppLog.i(TAG, "Next document received and saved: ${dto.id} (${dto.number})")
-                return Result.Success(Unit)
-            } catch (e: Exception) {
-                AppLog.e(TAG, "Failed to save next document: ${e.message}", e)
-                return Result.Error(e)
-            }
-        } else {
-            val isQueueEmpty = response.error?.contains("empty", ignoreCase = true) == true
-            val alreadyHasDocument = response.error?.contains("already has", ignoreCase = true) == true
-
-            if (isQueueEmpty) {
-                AppLog.i(TAG, "Document queue is empty — clearing stale documents")
-                // Queue empty: clear old documents so the list shows empty
-                documentLineDao.deleteAllNonDirtyDocumentLines()
-                documentDao.deleteAllNonDirtyDocuments()
-            } else if (alreadyHasDocument) {
-                // Worker already has an active document — this is fine, keep it
-                AppLog.d(TAG, "Collector already has an active document")
-            } else {
-                AppLog.w(TAG, "Next document request failed: ${response.error}")
-            }
-            return Result.Error(Exception(response.error ?: "No document available"))
         }
     }
 

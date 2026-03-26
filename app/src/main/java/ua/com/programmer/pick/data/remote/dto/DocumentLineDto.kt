@@ -19,13 +19,13 @@ data class DocumentLineDto(
     val productId: String,
 
     @SerializedName("product_code")
-    val productCode: String,
+    val productCode: String? = null,
 
     @SerializedName("product_name")
-    val productName: String,
+    val productName: String? = null,
 
     @SerializedName("unit")
-    val unit: String,
+    val unit: String? = null,
 
     @SerializedName("planned_quantity")
     val plannedQuantity: Double,

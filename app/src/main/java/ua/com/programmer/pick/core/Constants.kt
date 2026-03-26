@@ -15,10 +15,6 @@ object Constants {
         const val DOCUMENT_BOXES = "document_boxes"
 
         val ALL = listOf(USERS, PRODUCTS, CLIENTS, WAREHOUSES, DOCUMENTS, BOXES, DOCUMENT_BOXES)
-
-        // For COLLECTOR role: exclude DOCUMENTS from delta sync — the server queue
-        // controls document delivery via NEXT_DOCUMENT_REQUEST
-        val COLLECTOR_SYNC = listOf(USERS, PRODUCTS, CLIENTS, WAREHOUSES, BOXES, DOCUMENT_BOXES)
     }
 
     // Database

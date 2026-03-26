@@ -382,35 +382,42 @@ class DocumentDetailViewModel @Inject constructor(
             _uiState.update { it.copy(isProcessingAction = true) }
 
             try {
-                val user = userRepository.getCurrentUser().first()
-                val userId = user?.id ?: return@launch
+                // Ask server to lock first — only update local state on confirmation
+                val lockResult = syncOrchestrator.lockDocument(documentId)
 
-                when (val result = documentRepository.takeIntoWork(documentId, userId)) {
+                when (lockResult) {
                     is Result.Success -> {
-                        _uiState.update {
-                            it.copy(
-                                document = result.data,
-                                isProcessingAction = false
-                            )
-                        }
-                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_TAKEN_INTO_WORK))
+                        // Server confirmed lock — now update local DB
+                        val user = userRepository.getCurrentUser().first()
+                        val userId = user?.id ?: return@launch
 
-                        // Notify server (fire-and-forget, offline queue handles disconnected state)
-                        viewModelScope.launch(ioDispatcher) {
-                            try {
-                                syncOrchestrator.lockDocument(documentId)
-                            } catch (e: Exception) {
-                                AppLog.w("DocumentDetailViewModel", "Failed to sync lock: ${e.message}")
+                        when (val localResult = documentRepository.takeIntoWork(documentId, userId)) {
+                            is Result.Success -> {
+                                _uiState.update {
+                                    it.copy(
+                                        document = localResult.data,
+                                        isProcessingAction = false
+                                    )
+                                }
+                                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_TAKEN_INTO_WORK))
                             }
+                            is Result.Error -> {
+                                _uiState.update { it.copy(isProcessingAction = false) }
+                                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_TAKE_INTO_WORK))
+                            }
+                            else -> _uiState.update { it.copy(isProcessingAction = false) }
                         }
                     }
                     is Result.Error -> {
                         _uiState.update { it.copy(isProcessingAction = false) }
-                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_TAKE_INTO_WORK))
+                        val errorMsg = lockResult.message ?: ""
+                        if (errorMsg.contains("locked", ignoreCase = true) || errorMsg.contains("taken", ignoreCase = true)) {
+                            _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_TAKEN_BY_OTHER))
+                        } else {
+                            _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_TAKE_INTO_WORK))
+                        }
                     }
-                    else -> {
-                        _uiState.update { it.copy(isProcessingAction = false) }
-                    }
+                    else -> _uiState.update { it.copy(isProcessingAction = false) }
                 }
             } catch (e: Exception) {
                 AppLog.e("DocumentDetailViewModel", "takeIntoWork failed", e)

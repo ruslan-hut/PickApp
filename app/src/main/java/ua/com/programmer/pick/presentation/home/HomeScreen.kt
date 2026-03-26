@@ -44,7 +44,6 @@ fun HomeScreen(
     uiState: HomeUiState,
     onLogoutClick: () -> Unit,
     onDocumentTypeClick: (OperatingMode) -> Unit,
-    onCollectorQueueClick: () -> Unit = {},
     onCourierClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {

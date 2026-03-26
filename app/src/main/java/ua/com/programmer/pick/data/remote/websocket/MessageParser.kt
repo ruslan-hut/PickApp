@@ -68,7 +68,6 @@ class MessageParser @Inject constructor(
         private const val FIELD_ENTITY_ID = "entity_id"
         private const val FIELD_WEIGHT = "weight"
         private const val FIELD_BOX_ID = "box_id"
-        private const val FIELD_DOCUMENT = "document"
         private const val FIELD_OFFLINE_SEQ = "offline_seq"
         private const val FIELD_CLIENT_TS = "client_ts"
         private const val FIELD_WAS_NOOP = "was_noop"
@@ -108,7 +107,6 @@ class MessageParser @Inject constructor(
                 MessageType.DOCUMENT_LOCK_RESULT.name -> parseDocumentLockResult(id, timestamp, payload)
                 MessageType.DOCUMENT_COMPLETE_RESULT.name -> parseDocumentCompleteResult(id, timestamp, payload)
                 MessageType.PRODUCT_LOOKUP_RESULT.name -> parseProductLookupResult(id, timestamp, payload)
-                MessageType.NEXT_DOCUMENT_RESULT.name -> parseNextDocumentResult(id, timestamp, payload)
                 MessageType.BOX_SCAN_RESULT.name -> parseBoxScanResult(id, timestamp, payload)
                 MessageType.BOX_PICKUP_CONFIRM_RESULT.name -> parseBoxPickupConfirmResult(id, timestamp, payload)
                 MessageType.BOX_DELIVERY_CONFIRM_RESULT.name -> parseBoxDeliveryConfirmResult(id, timestamp, payload)
@@ -215,12 +213,6 @@ class MessageParser @Inject constructor(
                 message.metadata?.let { add(FIELD_METADATA, gson.toJsonTree(it)) }
             }
 
-            is SyncMessage.NextDocumentRequest -> JsonObject()
-
-            is SyncMessage.CollectionComplete -> JsonObject().apply {
-                addProperty(FIELD_DOCUMENT_ID, message.documentId)
-            }
-
             is SyncMessage.BoxScan -> JsonObject().apply {
                 addProperty(FIELD_DOCUMENT_ID, message.documentId)
                 addProperty(FIELD_BARCODE, message.barcode)
@@ -247,7 +239,6 @@ class MessageParser @Inject constructor(
             is SyncMessage.DocumentLockResult,
             is SyncMessage.DocumentCompleteResult,
             is SyncMessage.ProductLookupResult,
-            is SyncMessage.NextDocumentResult,
             is SyncMessage.BoxScanResult,
             is SyncMessage.BoxPickupConfirmResult,
             is SyncMessage.BoxDeliveryConfirmResult,
@@ -370,16 +361,6 @@ class MessageParser @Inject constructor(
             entityType = payload.get(FIELD_ENTITY_TYPE)?.asString,
             entityId = payload.get(FIELD_ENTITY_ID)?.asString,
             data = payload.get(FIELD_DATA)
-        )
-    }
-
-    private fun parseNextDocumentResult(id: String, timestamp: String, payload: JsonObject?): SyncMessage.NextDocumentResult {
-        return SyncMessage.NextDocumentResult(
-            id = id,
-            timestamp = timestamp,
-            success = payload?.get(FIELD_SUCCESS)?.asBoolean ?: false,
-            document = payload?.get(FIELD_DOCUMENT),
-            error = payload?.get(FIELD_ERROR)?.asString
         )
     }
 

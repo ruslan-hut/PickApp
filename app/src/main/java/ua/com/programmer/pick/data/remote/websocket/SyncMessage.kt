@@ -29,11 +29,6 @@ enum class MessageType {
     DOCUMENT_LOCK_RESULT,
     DOCUMENT_COMPLETE_RESULT,
 
-    // Queue-based collector flow
-    NEXT_DOCUMENT_REQUEST,
-    NEXT_DOCUMENT_RESULT,
-    COLLECTION_COMPLETE,
-
     // Box scanning
     BOX_SCAN,
     BOX_SCAN_RESULT,
@@ -335,44 +330,6 @@ sealed class SyncMessage {
         val error: String? = null
     ) : SyncMessage() {
         override val type = MessageType.PRODUCT_LOOKUP_RESULT
-    }
-
-    // ============================================
-    // Queue-Based Collector Messages
-    // ============================================
-
-    /**
-     * Client request for next document from the queue
-     */
-    data class NextDocumentRequest(
-        override val id: String,
-        override val timestamp: String
-    ) : SyncMessage() {
-        override val type = MessageType.NEXT_DOCUMENT_REQUEST
-    }
-
-    /**
-     * Server response with next document or queue empty
-     */
-    data class NextDocumentResult(
-        override val id: String,
-        override val timestamp: String,
-        val success: Boolean,
-        val document: JsonElement? = null,
-        val error: String? = null
-    ) : SyncMessage() {
-        override val type = MessageType.NEXT_DOCUMENT_RESULT
-    }
-
-    /**
-     * Client signals collection is complete for a document
-     */
-    data class CollectionComplete(
-        override val id: String,
-        override val timestamp: String,
-        val documentId: String
-    ) : SyncMessage() {
-        override val type = MessageType.COLLECTION_COMPLETE
     }
 
     // ============================================

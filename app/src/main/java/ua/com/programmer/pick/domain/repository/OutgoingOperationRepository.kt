@@ -58,21 +58,11 @@ enum class OperationType {
     DOCUMENT_UNLOCK,
     DOCUMENT_UPDATE,
     DOCUMENT_COMPLETE,
-    COLLECTION_COMPLETE,
     BOX_SCAN,
     BOX_PICKUP_CONFIRM,
     BOX_DELIVERY_CONFIRM,
     SYNC_REQUEST,
-    PRODUCT_LOOKUP;
-
-    companion object {
-        // Backward compatibility mapping
-        @Deprecated("Use DOCUMENT_LOCK instead", ReplaceWith("DOCUMENT_LOCK"))
-        val TAKE_INTO_WORK = DOCUMENT_LOCK
-
-        @Deprecated("Use DOCUMENT_UPDATE instead", ReplaceWith("DOCUMENT_UPDATE"))
-        val UPDATE_LINE = DOCUMENT_UPDATE
-    }
+    PRODUCT_LOOKUP
 }
 
 enum class EntityType {
