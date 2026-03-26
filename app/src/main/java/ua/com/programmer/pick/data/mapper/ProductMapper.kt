@@ -30,10 +30,10 @@ class ProductMapper @Inject constructor() {
     fun toBarcodeEntityList(dto: ProductDto): List<ProductBarcodeEntity> {
         return dto.barcodes?.map { barcodeDto ->
             ProductBarcodeEntity(
-                id = barcodeDto.id,
+                id = "${dto.id}_${barcodeDto.barcode}",
                 productId = dto.id,
                 barcode = barcodeDto.barcode,
-                type = barcodeDto.type,
+                type = barcodeDto.type ?: "UNKNOWN",
                 isPrimary = barcodeDto.isPrimary
             )
         } ?: emptyList()

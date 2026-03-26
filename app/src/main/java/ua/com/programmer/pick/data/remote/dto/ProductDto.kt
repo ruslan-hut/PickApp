@@ -35,17 +35,18 @@ data class ProductDto(
 )
 
 /**
- * DTO for product barcode
+ * DTO for product barcode.
+ * Server may send barcodes as objects with optional fields.
  */
 data class BarcodeDto(
     @SerializedName("id")
-    val id: String,
+    val id: String? = null,
 
     @SerializedName("barcode")
     val barcode: String,
 
     @SerializedName("type")
-    val type: String,
+    val type: String? = null,
 
     @SerializedName("is_primary")
     val isPrimary: Boolean = false

@@ -3,9 +3,13 @@ package ua.com.programmer.pick.presentation.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ua.com.programmer.pick.core.util.NetworkMonitor
@@ -26,10 +30,14 @@ class HomeViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
+    private val _navigateToLogin = MutableSharedFlow<Unit>()
+    val navigateToLogin = _navigateToLogin.asSharedFlow()
+
     init {
         observeNetworkState()
         loadCurrentUser()
         restoreSelectedMode()
+        observeAuthState()
     }
 
     private fun observeNetworkState() {
@@ -80,6 +88,26 @@ class HomeViewModel @Inject constructor(
                     _uiState.update { it.copy(selectedMode = mode) }
                 }
             }
+        }
+    }
+
+    /**
+     * Observe WebSocket auth state. If the user was authenticated and then
+     * becomes unauthenticated (session expired, server kicked), navigate
+     * back to the login screen so they can re-authenticate.
+     */
+    private fun observeAuthState() {
+        viewModelScope.launch {
+            var wasAuthenticated = false
+            syncOrchestrator.syncState
+                .map { it.isUserAuthenticated }
+                .distinctUntilChanged()
+                .collect { isAuthenticated ->
+                    if (wasAuthenticated && !isAuthenticated) {
+                        _navigateToLogin.emit(Unit)
+                    }
+                    wasAuthenticated = isAuthenticated
+                }
         }
     }
 

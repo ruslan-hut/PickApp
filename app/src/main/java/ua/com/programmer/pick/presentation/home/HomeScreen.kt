@@ -104,31 +104,10 @@ fun HomeScreen(
                 }
 
                 // Role-specific actions
+                // COLLECTOR: documents are auto-assigned from the server queue
+                // after login and after each completion — no manual action needed.
+                // The document list shows the assigned document automatically.
                 val userRole = uiState.currentUser?.role
-                if (userRole == UserRole.COLLECTOR) {
-                    item {
-                        SectionHeader(
-                            title = stringResource(R.string.collector_queue),
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                    }
-                    item {
-                        OutlinedCard(
-                            onClick = onCollectorQueueClick,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                            colors = CardDefaults.outlinedCardColors(
-                                containerColor = MaterialTheme.colorScheme.surface
-                            ),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                        ) {
-                            Text(
-                                text = stringResource(R.string.request_next_document),
-                                modifier = Modifier.padding(16.dp),
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                        }
-                    }
-                }
 
                 if (userRole == UserRole.COURIER) {
                     item {

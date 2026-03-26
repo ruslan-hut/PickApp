@@ -9,14 +9,17 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import ua.com.programmer.pick.core.Constants
 import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.util.NetworkMonitor
 import ua.com.programmer.pick.core.util.Result
 import ua.com.programmer.pick.data.local.database.dao.BoxDao
+import ua.com.programmer.pick.data.local.database.entity.ProductBarcodeEntity
 import ua.com.programmer.pick.data.local.database.dao.ClientDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentBoxDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentDao
@@ -136,6 +139,7 @@ class SyncOrchestrator @Inject constructor(
         private const val TAG = "SyncOrchestrator"
         private const val SYNC_TIMEOUT_MS = 60_000L
         private const val MAX_QUEUE_RETRIES = 5
+        private const val DOCUMENT_PRODUCTS_TIMEOUT_MS = 10_000L
     }
 
     private val scope = CoroutineScope(ioDispatcher)
@@ -207,6 +211,17 @@ class SyncOrchestrator @Inject constructor(
                         // Now that user is authenticated, request sync and process pending operations
                         requestDeltaSync()
                         processPendingOperations()
+
+                        // For COLLECTOR role: automatically request next document from queue
+                        // This replaces manual "Request Next Document" — the server decides
+                        // which document to assign based on warehouse queue order
+                        if (authState.role.uppercase() == "COLLECTOR" || authState.role.uppercase() == "WAREHOUSE_WORKER") {
+                            scope.launch {
+                                // Small delay to let delta sync start first
+                                delay(1500)
+                                requestNextDocumentForCollector()
+                            }
+                        }
                     }
                     is UserAuthState.AuthFailed -> {
                         _syncState.value = _syncState.value.copy(
@@ -353,10 +368,19 @@ class SyncOrchestrator @Inject constructor(
         // Get cursors from database
         val cursors = syncStateDao.getCursorsMap()
 
+        // COLLECTOR role: skip DOCUMENTS in delta sync — document delivery is managed
+        // by the server queue via NEXT_DOCUMENT_REQUEST
+        val role = _syncState.value.authenticatedUserRole?.uppercase()
+        val entityTypes = if (role == "COLLECTOR" || role == "WAREHOUSE_WORKER") {
+            Constants.SyncEntity.COLLECTOR_SYNC
+        } else {
+            Constants.SyncEntity.ALL
+        }
+
         val message = SyncMessage.SyncRequest(
             id = messageParser.generateMessageId(),
             timestamp = messageParser.getCurrentTimestamp(),
-            entityTypes = Constants.SyncEntity.ALL,
+            entityTypes = entityTypes,
             cursors = cursors.ifEmpty { null }
         )
 
@@ -367,7 +391,7 @@ class SyncOrchestrator @Inject constructor(
         }
 
         // Update entity statuses
-        Constants.SyncEntity.ALL.forEach { entityType ->
+        entityTypes.forEach { entityType ->
             updateEntitySyncStatus(entityType, SyncStatus.SYNCING)
         }
 
@@ -469,8 +493,9 @@ class SyncOrchestrator @Inject constructor(
     }
 
     /**
-     * Request products for a specific document's lines.
-     * Server sends only products referenced by the document.
+     * Request products for a specific document's lines and wait for
+     * the server to deliver them via SYNC_DATA. This ensures product
+     * barcodes are available in the local DB before the user starts scanning.
      */
     suspend fun requestDocumentProducts(documentId: String): Result<Unit> {
         AppLog.d(TAG, "Requesting products for document: $documentId")
@@ -491,6 +516,24 @@ class SyncOrchestrator @Inject constructor(
         val sent = webSocketManager.sendMessage(message)
         if (!sent) {
             return Result.Error(Exception("Failed to send document products request"))
+        }
+
+        // Wait for the products SYNC_DATA response to arrive and be processed.
+        // The server responds with SYNC_DATA(entity_type="products") which triggers
+        // handleSyncData → applyProductSync. We wait for that message to arrive,
+        // then yield briefly so the handler coroutine can apply the data.
+        val received = withTimeoutOrNull(DOCUMENT_PRODUCTS_TIMEOUT_MS) {
+            webSocketManager.incomingMessages.first { msg ->
+                (msg is SyncMessage.SyncData && msg.entityType == Constants.SyncEntity.PRODUCTS) ||
+                        msg is SyncMessage.SyncComplete
+            }
+        }
+
+        if (received != null) {
+            // Give the handler coroutine time to apply sync data to the database
+            delay(200)
+        } else {
+            AppLog.w(TAG, "Timeout waiting for document products response")
         }
 
         return Result.Success(Unit)
@@ -668,11 +711,106 @@ class SyncOrchestrator @Inject constructor(
                 response.version?.let { version ->
                     documentDao.updateDocumentVersion(documentId, version.toInt())
                 }
+
+                // For COLLECTOR role: automatically request next document after completing one
+                val role = _syncState.value.authenticatedUserRole?.uppercase()
+                if (role == "COLLECTOR" || role == "WAREHOUSE_WORKER") {
+                    scope.launch {
+                        delay(500) // Brief delay for UI to settle
+                        requestNextDocumentForCollector()
+                    }
+                }
             }
 
             Result.Success(result)
         } else {
             Result.Error(Exception("Complete request timeout"))
+        }
+    }
+
+    // ============================================
+    // Collector Queue — Auto Document Assignment
+    // ============================================
+
+    /**
+     * Request the next document from the server queue for the COLLECTOR role.
+     * Called automatically:
+     * - After user authentication (if role is COLLECTOR)
+     * - After completing a document (if role is COLLECTOR)
+     *
+     * The server determines which document to assign based on:
+     * - Worker's assigned warehouse
+     * - Document queue order (by date, earliest first)
+     * - Optional ERP pre-assignment (assigned_worker_id)
+     *
+     * The received document is saved to Room DB, which automatically
+     * updates the document list UI via Flow observation.
+     */
+    suspend fun requestNextDocumentForCollector(): Result<Unit> {
+        AppLog.d(TAG, "Requesting next document for collector from queue")
+
+        if (!webSocketManager.isConnected() || !webSocketManager.isUserAuthenticated()) {
+            AppLog.d(TAG, "Not connected/authenticated, skipping next document request")
+            return Result.Error(Exception("Not connected"))
+        }
+
+        val message = SyncMessage.NextDocumentRequest(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp()
+        )
+
+        val response = webSocketManager.sendAndAwait(
+            message,
+            SyncMessage.NextDocumentResult::class.java
+        )
+
+        if (response == null) {
+            AppLog.w(TAG, "Next document request timed out")
+            return Result.Error(Exception("Request timeout"))
+        }
+
+        if (response.success && response.document != null) {
+            try {
+                val dto: DocumentDto = gson.fromJson(response.document, DocumentDto::class.java)
+                val entity = documentMapper.toEntity(dto)
+
+                // Clear old documents — collector should only see the server-assigned document.
+                // deleteAllNonDirty preserves any locally modified document (safety net).
+                documentLineDao.deleteAllNonDirtyDocumentLines()
+                documentDao.deleteAllNonDirtyDocuments()
+
+                // Save the assigned document to Room — this triggers UI update via Flow
+                documentDao.upsertDocument(entity)
+
+                // Save lines if present
+                dto.lines?.let { lines ->
+                    val lineEntities = lines.map { documentMapper.toLineEntity(it) }
+                    documentLineDao.deleteLinesByDocumentId(entity.id)
+                    documentLineDao.insertLines(lineEntities)
+                }
+
+                AppLog.i(TAG, "Next document received and saved: ${dto.id} (${dto.number})")
+                return Result.Success(Unit)
+            } catch (e: Exception) {
+                AppLog.e(TAG, "Failed to save next document: ${e.message}", e)
+                return Result.Error(e)
+            }
+        } else {
+            val isQueueEmpty = response.error?.contains("empty", ignoreCase = true) == true
+            val alreadyHasDocument = response.error?.contains("already has", ignoreCase = true) == true
+
+            if (isQueueEmpty) {
+                AppLog.i(TAG, "Document queue is empty — clearing stale documents")
+                // Queue empty: clear old documents so the list shows empty
+                documentLineDao.deleteAllNonDirtyDocumentLines()
+                documentDao.deleteAllNonDirtyDocuments()
+            } else if (alreadyHasDocument) {
+                // Worker already has an active document — this is fine, keep it
+                AppLog.d(TAG, "Collector already has an active document")
+            } else {
+                AppLog.w(TAG, "Next document request failed: ${response.error}")
+            }
+            return Result.Error(Exception(response.error ?: "No document available"))
         }
     }
 
@@ -1007,16 +1145,57 @@ class SyncOrchestrator @Inject constructor(
             val products: List<ProductDto> = gson.fromJson(data, type)
 
             AppLog.i(TAG, "Sync products: ${products.size} upsert, ${deletedIds?.size ?: 0} delete")
-            products.forEach { dto ->
+
+            // Log raw JSON of first product to debug barcode format
+            if (data.asJsonArray.size() > 0) {
+                val firstRaw = data.asJsonArray[0]
+                AppLog.d(TAG, "Product sync sample raw JSON: $firstRaw")
+            }
+
+            val rawArray = data.asJsonArray
+
+            products.forEachIndexed { index, dto ->
                 val entity = productMapper.toEntity(dto)
                 productDao.upsertProduct(entity)
 
-                // Save barcodes only if the server included them in this sync payload.
-                // A delta update may omit barcodes — don't wipe existing ones.
-                if (dto.barcodes != null) {
-                    val barcodes = productMapper.toBarcodeEntityList(dto)
+                // Extract barcodes — handle both object array and string array formats.
+                // The server may send: [{barcode:"...", ...}] or ["barcode1","barcode2"]
+                val rawProduct = rawArray[index].asJsonObject
+                val rawBarcodes = rawProduct.get("barcodes")
+
+                val barcodeEntities: List<ProductBarcodeEntity>? = when {
+                    dto.barcodes != null -> {
+                        // Gson parsed successfully as List<BarcodeDto>
+                        productMapper.toBarcodeEntityList(dto)
+                    }
+                    rawBarcodes != null && rawBarcodes.isJsonArray -> {
+                        // Gson couldn't parse — try manual extraction (string array format)
+                        val arr = rawBarcodes.asJsonArray
+                        arr.mapIndexedNotNull { i, element ->
+                            val barcodeValue = when {
+                                element.isJsonPrimitive -> element.asString
+                                element.isJsonObject -> element.asJsonObject.get("barcode")?.asString
+                                else -> null
+                            }
+                            barcodeValue?.let { bc ->
+                                ProductBarcodeEntity(
+                                    id = "${dto.id}_$bc",
+                                    productId = dto.id,
+                                    barcode = bc,
+                                    type = "UNKNOWN",
+                                    isPrimary = i == 0
+                                )
+                            }
+                        }
+                    }
+                    else -> null // No barcodes in this payload — preserve existing
+                }
+
+                AppLog.d(TAG, "Product ${dto.code}: barcodes=${barcodeEntities?.size ?: "null (preserved)"}")
+
+                if (barcodeEntities != null) {
                     productDao.deleteBarcodesForProduct(dto.id)
-                    barcodes.forEach { barcode ->
+                    barcodeEntities.forEach { barcode ->
                         productDao.insertBarcode(barcode)
                     }
                 }
