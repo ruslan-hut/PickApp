@@ -31,6 +31,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.domain.model.OperatingMode
+import ua.com.programmer.pick.domain.model.UserRole
 import ua.com.programmer.pick.presentation.common.OfflineBanner
 import ua.com.programmer.pick.presentation.common.PickAppBar
 import ua.com.programmer.pick.presentation.common.PickElevatedCard
@@ -43,6 +44,8 @@ fun HomeScreen(
     uiState: HomeUiState,
     onLogoutClick: () -> Unit,
     onDocumentTypeClick: (OperatingMode) -> Unit,
+    onCollectorQueueClick: () -> Unit = {},
+    onCourierClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
@@ -98,6 +101,58 @@ fun HomeScreen(
                         isSelected = mode == uiState.selectedMode,
                         onClick = { onDocumentTypeClick(mode) }
                     )
+                }
+
+                // Role-specific actions
+                val userRole = uiState.currentUser?.role
+                if (userRole == UserRole.COLLECTOR) {
+                    item {
+                        SectionHeader(
+                            title = stringResource(R.string.collector_queue),
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                    item {
+                        OutlinedCard(
+                            onClick = onCollectorQueueClick,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            colors = CardDefaults.outlinedCardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.request_next_document),
+                                modifier = Modifier.padding(16.dp),
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
+                    }
+                }
+
+                if (userRole == UserRole.COURIER) {
+                    item {
+                        SectionHeader(
+                            title = stringResource(R.string.courier_pickup),
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                    item {
+                        OutlinedCard(
+                            onClick = onCourierClick,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            colors = CardDefaults.outlinedCardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.courier_pickup) + " / " + stringResource(R.string.courier_delivery),
+                                modifier = Modifier.padding(16.dp),
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
+                    }
                 }
 
                 item {

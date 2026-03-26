@@ -38,6 +38,9 @@ import ua.com.programmer.pick.presentation.documents.DocumentsScreen
 import ua.com.programmer.pick.presentation.home.HomeScreen
 import ua.com.programmer.pick.presentation.home.HomeViewModel
 import ua.com.programmer.pick.presentation.profile.ProfileScreen
+import ua.com.programmer.pick.presentation.collector.BoxScanningScreen
+import ua.com.programmer.pick.presentation.collector.CollectorQueueScreen
+import ua.com.programmer.pick.presentation.courier.CourierScreen
 import ua.com.programmer.pick.presentation.settings.ScannerSettingsScreen
 import ua.com.programmer.pick.presentation.settings.ScannerTestScreen
 import ua.com.programmer.pick.presentation.settings.SettingsScreen
@@ -133,6 +136,12 @@ fun PickNavGraph(
                             launchSingleTop = true
                             restoreState = true
                         }
+                    },
+                    onCollectorQueueClick = {
+                        navController.navigate(Screen.CollectorQueue.route)
+                    },
+                    onCourierClick = {
+                        navController.navigate(Screen.Courier.route)
                     }
                 )
             }
@@ -153,6 +162,30 @@ fun PickNavGraph(
                 val documentId = backStackEntry.arguments?.getString(Screen.DOCUMENT_ID_ARG) ?: ""
                 DocumentDetailScreen(
                     documentId = documentId,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(route = Screen.CollectorQueue.route) {
+                CollectorQueueScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigate = { target -> navController.navigate(target) }
+                )
+            }
+
+            composable(
+                route = Screen.BoxScanning.route,
+                arguments = listOf(navArgument(Screen.DOCUMENT_ID_ARG) { defaultValue = "" })
+            ) { backStackEntry ->
+                val documentId = backStackEntry.arguments?.getString(Screen.DOCUMENT_ID_ARG) ?: ""
+                BoxScanningScreen(
+                    documentId = documentId,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(route = Screen.Courier.route) {
+                CourierScreen(
                     onNavigateBack = { navController.popBackStack() }
                 )
             }

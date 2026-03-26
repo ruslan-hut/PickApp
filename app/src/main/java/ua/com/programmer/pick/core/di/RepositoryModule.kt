@@ -4,12 +4,14 @@ import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import ua.com.programmer.pick.data.repository.BoxRepositoryImpl
 import ua.com.programmer.pick.data.repository.ClientRepositoryImpl
 import ua.com.programmer.pick.data.repository.DocumentRepositoryImpl
 import ua.com.programmer.pick.data.repository.OutgoingOperationRepositoryImpl
 import ua.com.programmer.pick.data.repository.ProductRepositoryImpl
 import ua.com.programmer.pick.data.repository.UserRepositoryImpl
 import ua.com.programmer.pick.data.repository.WarehouseRepositoryImpl
+import ua.com.programmer.pick.domain.repository.BoxRepository
 import ua.com.programmer.pick.domain.repository.ClientRepository
 import ua.com.programmer.pick.domain.repository.DocumentRepository
 import ua.com.programmer.pick.domain.repository.OutgoingOperationRepository
@@ -57,4 +59,10 @@ abstract class RepositoryModule {
     abstract fun bindOutgoingOperationRepository(
         outgoingOperationRepositoryImpl: OutgoingOperationRepositoryImpl
     ): OutgoingOperationRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindBoxRepository(
+        boxRepositoryImpl: BoxRepositoryImpl
+    ): BoxRepository
 }

@@ -176,4 +176,43 @@
     <string name="scanner_diag_copied">Diagnostics copied to clipboard</string>
     <string name="scanner_diag_no_data">No diagnostic data recorded</string>
 
+    <!-- Collector Queue -->
+    <string name="collector_queue">Collection Queue</string>
+    <string name="request_next_document">Request Next Document</string>
+    <string name="requesting_document">Requesting…</string>
+    <string name="queue_empty">Queue is empty</string>
+    <string name="queue_empty_description">No documents waiting for collection. Pull to refresh.</string>
+    <string name="collection_complete">Collection Complete</string>
+    <string name="error_requesting_document">Failed to request document</string>
+    <string name="current_document">Current Document</string>
+
+    <!-- Box Scanning -->
+    <string name="box_scanning">Box Scanning</string>
+    <string name="scan_box_barcode">Scan box barcode</string>
+    <string name="enter_weight">Enter weight (g)</string>
+    <string name="add_box">Add Box</string>
+    <string name="linked_boxes">Linked Boxes</string>
+    <string name="box_added">Box added</string>
+    <string name="box_not_found">Box not found in catalog</string>
+    <string name="box_scan_error">Box scan failed</string>
+    <string name="boxes_count_fmt">%1$d boxes</string>
+    <string name="box_weight_fmt">%1$dg</string>
+    <string name="complete_collection">Complete Collection</string>
+
+    <!-- Courier -->
+    <string name="courier_pickup">Pickup</string>
+    <string name="courier_delivery">Delivery</string>
+    <string name="scan_to_pickup">Scan box to confirm pickup</string>
+    <string name="scan_to_deliver">Scan box to confirm delivery</string>
+    <string name="pickup_progress_fmt">Picked up %1$d of %2$d boxes</string>
+    <string name="delivery_progress_fmt">Delivered %1$d of %2$d boxes</string>
+    <string name="box_picked_up">Box picked up</string>
+    <string name="box_delivered">Box delivered</string>
+    <string name="all_boxes_picked_up">All boxes picked up</string>
+    <string name="all_boxes_delivered">All boxes delivered</string>
+    <string name="pickup_confirm_error">Pickup confirmation failed</string>
+    <string name="delivery_confirm_error">Delivery confirmation failed</string>
+    <string name="no_boxes_for_pickup">No boxes available for pickup</string>
+    <string name="no_boxes_for_delivery">No boxes available for delivery</string>
+
 </resources>

@@ -176,4 +176,43 @@
     <string name="scanner_diag_copied">Диагностика скопирована</string>
     <string name="scanner_diag_no_data">Нет диагностических данных</string>
 
+    <!-- Collector Queue -->
+    <string name="collector_queue">Очередь сборки</string>
+    <string name="request_next_document">Запросить следующий документ</string>
+    <string name="requesting_document">Запрос…</string>
+    <string name="queue_empty">Очередь пуста</string>
+    <string name="queue_empty_description">Нет документов для сборки. Потяните для обновления.</string>
+    <string name="collection_complete">Сборка завершена</string>
+    <string name="error_requesting_document">Ошибка запроса документа</string>
+    <string name="current_document">Текущий документ</string>
+
+    <!-- Box Scanning -->
+    <string name="box_scanning">Сканирование коробок</string>
+    <string name="scan_box_barcode">Сканируйте штрих-код коробки</string>
+    <string name="enter_weight">Введите вес (г)</string>
+    <string name="add_box">Добавить коробку</string>
+    <string name="linked_boxes">Привязанные коробки</string>
+    <string name="box_added">Коробка добавлена</string>
+    <string name="box_not_found">Коробка не найдена в каталоге</string>
+    <string name="box_scan_error">Ошибка сканирования коробки</string>
+    <string name="boxes_count_fmt">%1$d коробок</string>
+    <string name="box_weight_fmt">%1$dг</string>
+    <string name="complete_collection">Завершить сборку</string>
+
+    <!-- Courier -->
+    <string name="courier_pickup">Забор</string>
+    <string name="courier_delivery">Доставка</string>
+    <string name="scan_to_pickup">Сканируйте коробку для подтверждения забора</string>
+    <string name="scan_to_deliver">Сканируйте коробку для подтверждения доставки</string>
+    <string name="pickup_progress_fmt">Забрано %1$d из %2$d коробок</string>
+    <string name="delivery_progress_fmt">Доставлено %1$d из %2$d коробок</string>
+    <string name="box_picked_up">Коробка забрана</string>
+    <string name="box_delivered">Коробка доставлена</string>
+    <string name="all_boxes_picked_up">Все коробки забраны</string>
+    <string name="all_boxes_delivered">Все коробки доставлены</string>
+    <string name="pickup_confirm_error">Ошибка подтверждения забора</string>
+    <string name="delivery_confirm_error">Ошибка подтверждения доставки</string>
+    <string name="no_boxes_for_pickup">Нет коробок для забора</string>
+    <string name="no_boxes_for_delivery">Нет коробок для доставки</string>
+
 </resources>
