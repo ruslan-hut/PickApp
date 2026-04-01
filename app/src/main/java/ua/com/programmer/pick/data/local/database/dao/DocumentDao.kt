@@ -89,6 +89,6 @@ interface DocumentDao {
     @Query("DELETE FROM documents WHERE is_dirty = 0")
     suspend fun deleteAllNonDirtyDocuments()
 
-    @Query("DELETE FROM documents WHERE id NOT IN (:keepIds)")
-    suspend fun deleteDocumentsNotIn(keepIds: List<String>)
+    @Query("DELETE FROM documents WHERE id NOT IN (:keepIds) AND is_dirty = 0")
+    suspend fun deleteNonDirtyDocumentsNotIn(keepIds: List<String>)
 }
