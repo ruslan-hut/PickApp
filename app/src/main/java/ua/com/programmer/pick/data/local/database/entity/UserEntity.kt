@@ -28,6 +28,8 @@ data class UserEntity(
     @ColumnInfo(name = "last_login_at")
     val lastLoginAt: Long? = null,
 
+    // TODO(legacy): remove column after all clients migrate to server-driven document types.
+    //  Kept for Room schema compatibility — not read or written by current code.
     @ColumnInfo(name = "operating_mode", defaultValue = "RECEIPT")
     val operatingMode: String = "RECEIPT",
 

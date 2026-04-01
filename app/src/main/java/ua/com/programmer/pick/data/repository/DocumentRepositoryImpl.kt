@@ -15,7 +15,6 @@ import ua.com.programmer.pick.data.mapper.toLineDomainList
 import ua.com.programmer.pick.domain.model.Document
 import ua.com.programmer.pick.domain.model.DocumentLine
 import ua.com.programmer.pick.domain.model.DocumentState
-import ua.com.programmer.pick.domain.model.DocumentType
 import ua.com.programmer.pick.domain.repository.DocumentRepository
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -31,16 +30,16 @@ class DocumentRepositoryImpl @Inject constructor(
         return documentDao.getAllDocuments().map { it.toDomainList() }
     }
 
-    override fun getDocumentsByType(type: DocumentType): Flow<List<Document>> {
-        return documentDao.getDocumentsByType(type.name).map { it.toDomainList() }
+    override fun getDocumentsByType(type: String): Flow<List<Document>> {
+        return documentDao.getDocumentsByType(type).map { it.toDomainList() }
     }
 
     override fun getDocumentsByState(state: DocumentState): Flow<List<Document>> {
         return documentDao.getDocumentsByState(state.name).map { it.toDomainList() }
     }
 
-    override fun getDocumentsByTypeAndState(type: DocumentType, state: DocumentState): Flow<List<Document>> {
-        return documentDao.getDocumentsByTypeAndState(type.name, state.name).map { it.toDomainList() }
+    override fun getDocumentsByTypeAndState(type: String, state: DocumentState): Flow<List<Document>> {
+        return documentDao.getDocumentsByTypeAndState(type, state.name).map { it.toDomainList() }
     }
 
     override fun getDocumentsByAssignedUser(userId: String): Flow<List<Document>> {
@@ -51,12 +50,12 @@ class DocumentRepositoryImpl @Inject constructor(
         return documentDao.observeDocumentById(documentId).map { it?.toDomain() }
     }
 
-    override fun getDocumentCountByType(type: DocumentType): Flow<Int> {
-        return documentDao.getDocumentCountByType(type.name)
+    override fun getDocumentCountByType(type: String): Flow<Int> {
+        return documentDao.getDocumentCountByType(type)
     }
 
-    override fun getDocumentCountByTypeAndState(type: DocumentType, state: DocumentState): Flow<Int> {
-        return documentDao.getDocumentCountByTypeAndState(type.name, state.name)
+    override fun getDocumentCountByTypeAndState(type: String, state: DocumentState): Flow<Int> {
+        return documentDao.getDocumentCountByTypeAndState(type, state.name)
     }
 
     override suspend fun getDocumentById(documentId: String): Document? = withContext(ioDispatcher) {

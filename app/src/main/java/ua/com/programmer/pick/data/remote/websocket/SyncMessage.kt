@@ -116,6 +116,7 @@ sealed class SyncMessage {
         val role: String? = null,
         val offlineHash: String? = null,
         val tenantId: String? = null,
+        val availableDocumentTypes: List<AvailableDocumentTypeDto>? = null,
         val errorMessage: String? = null
     ) : SyncMessage() {
         override val type = MessageType.USER_LOGIN_RESULT
@@ -199,7 +200,8 @@ sealed class SyncMessage {
      */
     data class DocumentListRefresh(
         override val id: String,
-        override val timestamp: String
+        override val timestamp: String,
+        val documentType: String? = null
     ) : SyncMessage() {
         override val type = MessageType.DOCUMENT_LIST_REFRESH
     }
@@ -475,4 +477,9 @@ data class DocumentLineUpdate(
     val actualQuantity: Double,
     val batchNumber: String? = null,
     val isCompleted: Boolean = false
+)
+
+data class AvailableDocumentTypeDto(
+    val code: String,
+    val description: String
 )

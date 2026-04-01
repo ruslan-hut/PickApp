@@ -7,8 +7,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.domain.repository.DocumentRepository
 import ua.com.programmer.pick.presentation.navigation.Screen
@@ -17,7 +19,8 @@ import javax.inject.Inject
 @HiltViewModel
 class DocumentsViewModel @Inject constructor(
     private val documentRepository: DocumentRepository,
-    private val syncOrchestrator: SyncOrchestrator
+    private val syncOrchestrator: SyncOrchestrator,
+    private val appPreferences: AppPreferences
 ) : ViewModel() {
 
     companion object {
@@ -49,7 +52,8 @@ class DocumentsViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isRefreshing = true) }
 
-            syncOrchestrator.requestDocumentListRefresh()
+            val documentType = appPreferences.selectedDocumentType.first()
+            syncOrchestrator.requestDocumentListRefresh(documentType)
 
             _uiState.update { it.copy(isRefreshing = false) }
         }

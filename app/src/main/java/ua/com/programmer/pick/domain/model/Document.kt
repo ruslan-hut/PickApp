@@ -3,7 +3,7 @@ package ua.com.programmer.pick.domain.model
 data class Document(
     val id: String,
     val externalId: String?,
-    val type: DocumentType,
+    val type: String,
     val number: String,
     val date: Long,
     val state: DocumentState,

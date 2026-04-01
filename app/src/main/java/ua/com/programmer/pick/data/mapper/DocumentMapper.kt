@@ -7,7 +7,6 @@ import ua.com.programmer.pick.data.remote.dto.DocumentLineDto
 import ua.com.programmer.pick.domain.model.Document
 import ua.com.programmer.pick.domain.model.DocumentLine
 import ua.com.programmer.pick.domain.model.DocumentState
-import ua.com.programmer.pick.domain.model.DocumentType
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -68,11 +67,7 @@ fun DocumentEntity.toDomain(): Document {
     return Document(
         id = id,
         externalId = externalId,
-        type = try {
-            DocumentType.valueOf(type)
-        } catch (e: IllegalArgumentException) {
-            DocumentType.INCOMING_RECEIPT
-        },
+        type = type,
         number = number,
         date = date,
         state = DocumentState.fromString(state),
@@ -99,7 +94,7 @@ fun Document.toEntity(): DocumentEntity {
     return DocumentEntity(
         id = id,
         externalId = externalId,
-        type = type.name,
+        type = type,
         number = number,
         date = date,
         state = state.name,

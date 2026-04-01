@@ -1,12 +1,13 @@
 package ua.com.programmer.pick.presentation.home
 
-import ua.com.programmer.pick.domain.model.OperatingMode
+import ua.com.programmer.pick.domain.model.AvailableDocumentType
 import ua.com.programmer.pick.domain.model.SyncState
 import ua.com.programmer.pick.domain.model.User
 
 data class HomeUiState(
     val currentUser: User? = null,
-    val selectedMode: OperatingMode = OperatingMode.RECEIPT,
+    val availableDocumentTypes: List<AvailableDocumentType> = emptyList(),
+    val selectedDocumentTypeCode: String? = null,
     val syncStates: List<SyncState> = emptyList(),
     val isOnline: Boolean = true,
     val lastSyncTime: Long? = null,

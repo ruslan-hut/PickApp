@@ -34,7 +34,10 @@ class AppPreferences @Inject constructor(
         private val SERVER_URL = stringPreferencesKey("server_url")
         private val OFFLINE_HASH = stringPreferencesKey("offline_hash")
         private val DEVICE_ID = stringPreferencesKey("device_id")
+        // TODO(legacy): remove after all clients migrate to server-driven document types
         private val SELECTED_OPERATING_MODE = stringPreferencesKey("selected_operating_mode")
+        private val AVAILABLE_DOCUMENT_TYPES = stringPreferencesKey("available_document_types")
+        private val SELECTED_DOCUMENT_TYPE = stringPreferencesKey("selected_document_type")
         private val TENANT_ID = stringPreferencesKey("tenant_id")
         // Plaintext keys kept for migration only
         private val USER_LOGIN = stringPreferencesKey("user_login")
@@ -106,13 +109,35 @@ class AppPreferences @Inject constructor(
         preferences[DEVICE_ID] ?: generateAndStoreDeviceId()
     }
 
+    // TODO(legacy): remove after all clients migrate to server-driven document types
     val selectedOperatingMode: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[SELECTED_OPERATING_MODE]
     }
 
+    // TODO(legacy): remove after all clients migrate to server-driven document types
     suspend fun setSelectedOperatingMode(mode: String) {
         context.dataStore.edit { preferences ->
             preferences[SELECTED_OPERATING_MODE] = mode
+        }
+    }
+
+    val availableDocumentTypes: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[AVAILABLE_DOCUMENT_TYPES]
+    }
+
+    suspend fun setAvailableDocumentTypes(json: String) {
+        context.dataStore.edit { preferences ->
+            preferences[AVAILABLE_DOCUMENT_TYPES] = json
+        }
+    }
+
+    val selectedDocumentType: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[SELECTED_DOCUMENT_TYPE]
+    }
+
+    suspend fun setSelectedDocumentType(code: String) {
+        context.dataStore.edit { preferences ->
+            preferences[SELECTED_DOCUMENT_TYPE] = code
         }
     }
 

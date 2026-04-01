@@ -81,6 +81,9 @@ class MessageParser @Inject constructor(
         private const val FIELD_OFFLINE_HASH = "offline_hash"
         private const val FIELD_TENANT_ID = "tenant_id"
         private const val FIELD_ERROR_MESSAGE = "error_message"
+        private const val FIELD_AVAILABLE_DOCUMENT_TYPES = "available_document_types"
+        private const val FIELD_DESCRIPTION = "description"
+        private const val FIELD_DOCUMENT_TYPE = "document_type"
 
         private val ISO_8601_FORMATTER = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
@@ -163,7 +166,9 @@ class MessageParser @Inject constructor(
                 add(FIELD_ENTITY_TYPES, gson.toJsonTree(message.entityTypes))
             }
 
-            is SyncMessage.DocumentListRefresh -> null  // No payload needed
+            is SyncMessage.DocumentListRefresh -> message.documentType?.let {
+                JsonObject().apply { addProperty(FIELD_DOCUMENT_TYPE, it) }
+            }
 
             is SyncMessage.DocumentProducts -> JsonObject().apply {
                 addProperty(FIELD_DOCUMENT_ID, message.documentId)
@@ -256,6 +261,14 @@ class MessageParser @Inject constructor(
     }
 
     private fun parseUserLoginResult(id: String, timestamp: String, payload: JsonObject?): SyncMessage.UserLoginResult {
+        val availableTypes = payload?.getAsJsonArray(FIELD_AVAILABLE_DOCUMENT_TYPES)?.map { element ->
+            val obj = element.asJsonObject
+            AvailableDocumentTypeDto(
+                code = obj.get(FIELD_CODE)?.asString ?: "",
+                description = obj.get(FIELD_DESCRIPTION)?.asString ?: ""
+            )
+        }
+
         return SyncMessage.UserLoginResult(
             id = id,
             timestamp = timestamp,
@@ -265,6 +278,7 @@ class MessageParser @Inject constructor(
             role = payload?.get(FIELD_ROLE)?.asString,
             offlineHash = payload?.get(FIELD_OFFLINE_HASH)?.asString,
             tenantId = payload?.get(FIELD_TENANT_ID)?.asString,
+            availableDocumentTypes = availableTypes,
             errorMessage = payload?.get(FIELD_ERROR_MESSAGE)?.asString
         )
     }

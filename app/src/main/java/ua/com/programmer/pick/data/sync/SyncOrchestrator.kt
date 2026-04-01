@@ -213,6 +213,12 @@ class SyncOrchestrator @Inject constructor(
                             authenticatedUserRole = authState.role
                         )
 
+                        // Save available document types from server
+                        authState.availableDocumentTypes?.let { types ->
+                            val json = gson.toJson(types)
+                            appPreferences.setAvailableDocumentTypes(json)
+                        }
+
                         // Now that user is authenticated, request sync and process pending operations
                         requestDeltaSync()
                         processPendingOperations()
@@ -458,8 +464,8 @@ class SyncOrchestrator @Inject constructor(
      * Request document list with related warehouses and clients.
      * Server sends only documents + referenced warehouses/clients (no products).
      */
-    suspend fun requestDocumentListRefresh(): Result<Unit> {
-        AppLog.d(TAG, "Requesting document list refresh")
+    suspend fun requestDocumentListRefresh(documentType: String? = null): Result<Unit> {
+        AppLog.d(TAG, "Requesting document list refresh (type=$documentType)")
 
         if (!webSocketManager.isConnected()) {
             return Result.Error(Exception("WebSocket not connected"))
@@ -472,7 +478,8 @@ class SyncOrchestrator @Inject constructor(
 
         val message = SyncMessage.DocumentListRefresh(
             id = messageParser.generateMessageId(),
-            timestamp = messageParser.getCurrentTimestamp()
+            timestamp = messageParser.getCurrentTimestamp(),
+            documentType = documentType
         )
 
         val sent = webSocketManager.sendMessage(message)
@@ -977,7 +984,7 @@ class SyncOrchestrator @Inject constructor(
             users.forEach { dto ->
                 // Preserve existing passwordHash if user already exists locally
                 val existingUser = userDao.getUserById(dto.id)
-                val entity = dto.toEntityForSync(existingUser?.passwordHash, existingUser?.operatingMode)
+                val entity = dto.toEntityForSync(existingUser?.passwordHash)
                 userDao.insertUser(entity)
             }
         }

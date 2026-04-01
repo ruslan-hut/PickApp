@@ -135,8 +135,8 @@ fun PickNavGraph(
                             popUpTo(Screen.Home.route) { inclusive = true }
                         }
                     },
-                    onDocumentTypeClick = { mode ->
-                        viewModel.setOperatingMode(mode)
+                    onDocumentTypeClick = { docType ->
+                        viewModel.setSelectedDocumentType(docType.code)
                         navController.navigate(Screen.Documents.route) {
                             popUpTo(navController.graph.findStartDestination().id) {
                                 saveState = true

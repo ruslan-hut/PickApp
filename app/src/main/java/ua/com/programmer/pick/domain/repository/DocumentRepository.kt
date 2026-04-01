@@ -5,25 +5,24 @@ import ua.com.programmer.pick.core.util.Result
 import ua.com.programmer.pick.domain.model.Document
 import ua.com.programmer.pick.domain.model.DocumentLine
 import ua.com.programmer.pick.domain.model.DocumentState
-import ua.com.programmer.pick.domain.model.DocumentType
 
 interface DocumentRepository {
 
     fun getAllDocuments(): Flow<List<Document>>
 
-    fun getDocumentsByType(type: DocumentType): Flow<List<Document>>
+    fun getDocumentsByType(type: String): Flow<List<Document>>
 
     fun getDocumentsByState(state: DocumentState): Flow<List<Document>>
 
-    fun getDocumentsByTypeAndState(type: DocumentType, state: DocumentState): Flow<List<Document>>
+    fun getDocumentsByTypeAndState(type: String, state: DocumentState): Flow<List<Document>>
 
     fun getDocumentsByAssignedUser(userId: String): Flow<List<Document>>
 
     fun observeDocument(documentId: String): Flow<Document?>
 
-    fun getDocumentCountByType(type: DocumentType): Flow<Int>
+    fun getDocumentCountByType(type: String): Flow<Int>
 
-    fun getDocumentCountByTypeAndState(type: DocumentType, state: DocumentState): Flow<Int>
+    fun getDocumentCountByTypeAndState(type: String, state: DocumentState): Flow<Int>
 
     suspend fun getDocumentById(documentId: String): Document?
 

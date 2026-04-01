@@ -2,6 +2,8 @@ package ua.com.programmer.pick.presentation.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,8 +16,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ua.com.programmer.pick.core.util.NetworkMonitor
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
+import ua.com.programmer.pick.data.remote.websocket.AvailableDocumentTypeDto
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
-import ua.com.programmer.pick.domain.model.OperatingMode
+import ua.com.programmer.pick.domain.model.AvailableDocumentType
 import ua.com.programmer.pick.domain.repository.UserRepository
 import javax.inject.Inject
 
@@ -24,7 +27,8 @@ class HomeViewModel @Inject constructor(
     private val userRepository: UserRepository,
     private val networkMonitor: NetworkMonitor,
     private val syncOrchestrator: SyncOrchestrator,
-    private val appPreferences: AppPreferences
+    private val appPreferences: AppPreferences,
+    private val gson: Gson
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -36,7 +40,7 @@ class HomeViewModel @Inject constructor(
     init {
         observeNetworkState()
         loadCurrentUser()
-        restoreSelectedMode()
+        loadAvailableDocumentTypes()
         observeAuthState()
     }
 
@@ -76,17 +80,26 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private fun restoreSelectedMode() {
+    private fun loadAvailableDocumentTypes() {
         viewModelScope.launch {
-            appPreferences.selectedOperatingMode.collect { savedMode ->
-                if (savedMode != null) {
-                    val mode = try {
-                        OperatingMode.valueOf(savedMode)
-                    } catch (e: IllegalArgumentException) {
-                        OperatingMode.RECEIPT
+            appPreferences.availableDocumentTypes.collect { json ->
+                val types = if (json != null) {
+                    try {
+                        val listType = object : TypeToken<List<AvailableDocumentTypeDto>>() {}.type
+                        val dtos: List<AvailableDocumentTypeDto> = gson.fromJson(json, listType)
+                        dtos.map { AvailableDocumentType(code = it.code, description = it.description) }
+                    } catch (_: Exception) {
+                        emptyList()
                     }
-                    _uiState.update { it.copy(selectedMode = mode) }
+                } else {
+                    emptyList()
                 }
+                _uiState.update { it.copy(availableDocumentTypes = types) }
+            }
+        }
+        viewModelScope.launch {
+            appPreferences.selectedDocumentType.collect { code ->
+                _uiState.update { it.copy(selectedDocumentTypeCode = code) }
             }
         }
     }
@@ -111,13 +124,10 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun setOperatingMode(mode: OperatingMode) {
+    fun setSelectedDocumentType(code: String) {
         viewModelScope.launch {
-            _uiState.update { it.copy(selectedMode = mode) }
-            appPreferences.setSelectedOperatingMode(mode.name)
-            val currentUser = _uiState.value.currentUser ?: return@launch
-            val updatedUser = currentUser.copy(operatingMode = mode)
-            userRepository.updateUser(updatedUser)
+            _uiState.update { it.copy(selectedDocumentTypeCode = code) }
+            appPreferences.setSelectedDocumentType(code)
         }
     }
 }

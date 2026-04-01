@@ -7,6 +7,5 @@ data class User(
     val role: UserRole,
     val isActive: Boolean,
     val lastLoginAt: Long? = null,
-    val operatingMode: OperatingMode = OperatingMode.RECEIPT,
     val warehouseId: String? = null
 )

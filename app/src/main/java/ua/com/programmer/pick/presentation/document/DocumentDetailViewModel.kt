@@ -27,7 +27,6 @@ import ua.com.programmer.pick.data.remote.websocket.DocumentLineUpdate
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.domain.model.DocumentLine
 import ua.com.programmer.pick.domain.model.DocumentState
-import ua.com.programmer.pick.domain.model.DocumentType
 import ua.com.programmer.pick.domain.model.ProductImage
 import ua.com.programmer.pick.domain.repository.DocumentRepository
 import ua.com.programmer.pick.domain.repository.ProductRepository
@@ -48,6 +47,9 @@ class DocumentDetailViewModel @Inject constructor(
 
     companion object {
         const val ERROR_LOADING_DOCUMENT = "ERROR_LOADING_DOCUMENT"
+        // TODO(legacy): hardcoded type check — should be replaced with a server-driven
+        //  behavior flag (e.g. "allows_new_lines") once document type metadata is available.
+        private const val DOCUMENT_TYPE_INVENTORY = "INVENTORY"
     }
 
     private val _uiState = MutableStateFlow(DocumentDetailUiState())
@@ -174,71 +176,7 @@ class DocumentDetailViewModel @Inject constructor(
         val identifier = scanned.productId ?: scanned.productCode ?: scanned.gs1Data?.getProductBarcode() ?: scanned.rawValue
 
         when (doc.type) {
-            DocumentType.INCOMING_RECEIPT,
-            DocumentType.OUTGOING_SHIPMENT -> {
-                // Search line by productId first, then by productCode
-                var line: DocumentLine? = null
-                if (scanned.productId != null) {
-                    try {
-                        line = documentRepository.getLineByProductId(docId, scanned.productId)
-                    } catch (_: Exception) {
-                    }
-                }
-
-                if (line == null) {
-                    try {
-                        line = documentRepository.getLineByProductCode(docId, identifier)
-                    } catch (_: Exception) {
-                    }
-                }
-
-                AppLog.d("DocumentDetailViewModel", "handleScannedBarcode: line=$line")
-
-                if (line != null) {
-                    // Check if already fully collected
-                    if (line.plannedQuantity > 0 && line.actualQuantity >= line.plannedQuantity) {
-                        // Highlight the line but do not increment
-                        _uiState.update { current -> current.copy(selectedLineId = line.id) }
-                        _uiEvents.emit(DocumentDetailUiEvent.ShowBarcodeAlert(BarcodeAlertType.PRODUCT_ALREADY_COMPLETED))
-                        return
-                    }
-
-                    // Cap at planned quantity
-                    val newQty = if (line.plannedQuantity > 0) {
-                        (line.actualQuantity + 1.0).coerceAtMost(line.plannedQuantity)
-                    } else {
-                        line.actualQuantity + 1.0
-                    }
-
-                    // Update UI immediately: select line and update quantity
-                    _uiState.update { current ->
-                        val updated = current.lines.map { if (it.id == line.id) it.copy(actualQuantity = newQty) else it }
-                        val newTotalActual = updated.sumOf { it.actualQuantity }
-                        val updatedDocument = current.document?.copy(totalActual = newTotalActual)
-                        current.copy(document = updatedDocument, lines = updated, selectedLineId = line.id)
-                    }
-
-                    // Persist change
-                    val delta = newQty - line.actualQuantity
-                    try {
-                        documentRepository.incrementLineQuantity(line.id, delta)
-                        notifyDocumentLinesChanged()
-                    } catch (_: Exception) {
-                        // Fallback to updateLine
-                        try {
-                            documentRepository.updateLine(line.id, newQty, null)
-                            notifyDocumentLinesChanged()
-                        } catch (_: Exception) {
-                            _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
-                        }
-                    }
-                } else {
-                    AppLog.d("DocumentDetailViewModel", "handleScannedBarcode: line not found")
-                    _uiEvents.emit(DocumentDetailUiEvent.ShowBarcodeAlert(BarcodeAlertType.PRODUCT_NOT_IN_DOCUMENT))
-                }
-            }
-
-            DocumentType.INVENTORY -> {
+            DOCUMENT_TYPE_INVENTORY -> {
                 // For inventory: first try to find existing line, then increment or add new
 
                 // Resolve product info
@@ -329,6 +267,67 @@ class DocumentDetailViewModel @Inject constructor(
                     } catch (_: Exception) {
                         _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
                     }
+                }
+            }
+
+            else -> {
+                // Default: search line by productId first, then by productCode
+                var line: DocumentLine? = null
+                if (scanned.productId != null) {
+                    try {
+                        line = documentRepository.getLineByProductId(docId, scanned.productId)
+                    } catch (_: Exception) {
+                    }
+                }
+
+                if (line == null) {
+                    try {
+                        line = documentRepository.getLineByProductCode(docId, identifier)
+                    } catch (_: Exception) {
+                    }
+                }
+
+                AppLog.d("DocumentDetailViewModel", "handleScannedBarcode: line=$line")
+
+                if (line != null) {
+                    // Check if already fully collected
+                    if (line.plannedQuantity > 0 && line.actualQuantity >= line.plannedQuantity) {
+                        _uiState.update { current -> current.copy(selectedLineId = line.id) }
+                        _uiEvents.emit(DocumentDetailUiEvent.ShowBarcodeAlert(BarcodeAlertType.PRODUCT_ALREADY_COMPLETED))
+                        return
+                    }
+
+                    // Cap at planned quantity
+                    val newQty = if (line.plannedQuantity > 0) {
+                        (line.actualQuantity + 1.0).coerceAtMost(line.plannedQuantity)
+                    } else {
+                        line.actualQuantity + 1.0
+                    }
+
+                    // Update UI immediately
+                    _uiState.update { current ->
+                        val updated = current.lines.map { if (it.id == line.id) it.copy(actualQuantity = newQty) else it }
+                        val newTotalActual = updated.sumOf { it.actualQuantity }
+                        val updatedDocument = current.document?.copy(totalActual = newTotalActual)
+                        current.copy(document = updatedDocument, lines = updated, selectedLineId = line.id)
+                    }
+
+                    // Persist change
+                    val delta = newQty - line.actualQuantity
+                    try {
+                        documentRepository.incrementLineQuantity(line.id, delta)
+                        notifyDocumentLinesChanged()
+                    } catch (_: Exception) {
+                        try {
+                            documentRepository.updateLine(line.id, newQty, null)
+                            notifyDocumentLinesChanged()
+                        } catch (_: Exception) {
+                            _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
+                        }
+                    }
+                } else {
+                    AppLog.d("DocumentDetailViewModel", "handleScannedBarcode: line not found")
+                    _uiEvents.emit(DocumentDetailUiEvent.ShowBarcodeAlert(BarcodeAlertType.PRODUCT_NOT_IN_DOCUMENT))
                 }
             }
         }

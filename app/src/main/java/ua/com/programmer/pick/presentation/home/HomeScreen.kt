@@ -30,7 +30,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import ua.com.programmer.pick.R
-import ua.com.programmer.pick.domain.model.OperatingMode
+import ua.com.programmer.pick.domain.model.AvailableDocumentType
 import ua.com.programmer.pick.domain.model.UserRole
 import ua.com.programmer.pick.presentation.common.OfflineBanner
 import ua.com.programmer.pick.presentation.common.PickAppBar
@@ -43,7 +43,7 @@ import ua.com.programmer.pick.presentation.common.StatusIndicator
 fun HomeScreen(
     uiState: HomeUiState,
     onLogoutClick: () -> Unit,
-    onDocumentTypeClick: (OperatingMode) -> Unit,
+    onDocumentTypeClick: (AvailableDocumentType) -> Unit,
     onCourierClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -87,19 +87,21 @@ fun HomeScreen(
                 }
 
                 // Document type selector
-                item {
-                    SectionHeader(
-                        title = stringResource(R.string.operating_mode),
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                }
+                if (uiState.availableDocumentTypes.isNotEmpty()) {
+                    item {
+                        SectionHeader(
+                            title = stringResource(R.string.operating_mode),
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
 
-                items(OperatingMode.entries.toList()) { mode ->
-                    DocumentTypeButton(
-                        mode = mode,
-                        isSelected = mode == uiState.selectedMode,
-                        onClick = { onDocumentTypeClick(mode) }
-                    )
+                    items(uiState.availableDocumentTypes) { docType ->
+                        DocumentTypeButton(
+                            description = docType.description,
+                            isSelected = docType.code == uiState.selectedDocumentTypeCode,
+                            onClick = { onDocumentTypeClick(docType) }
+                        )
+                    }
                 }
 
                 // Role-specific actions
@@ -180,7 +182,7 @@ private fun WelcomeCard(
 
 @Composable
 private fun DocumentTypeButton(
-    mode: OperatingMode,
+    description: String,
     isSelected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -205,11 +207,7 @@ private fun DocumentTypeButton(
         )
     ) {
         Text(
-            text = when (mode) {
-                OperatingMode.RECEIPT -> stringResource(R.string.mode_receipt)
-                OperatingMode.SHIPMENT -> stringResource(R.string.mode_shipment)
-                OperatingMode.INVENTORY -> stringResource(R.string.mode_inventory)
-            },
+            text = description,
             style = MaterialTheme.typography.titleMedium,
             color = if (isSelected) {
                 MaterialTheme.colorScheme.onPrimaryContainer

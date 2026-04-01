@@ -51,7 +51,8 @@ sealed class UserAuthState {
         val userId: String,
         val userName: String,
         val role: String,
-        val offlineHash: String?
+        val offlineHash: String?,
+        val availableDocumentTypes: List<AvailableDocumentTypeDto>? = null
     ) : UserAuthState()
     data class AuthFailed(val error: String) : UserAuthState()
 }
@@ -66,6 +67,7 @@ data class UserLoginResult(
     val role: String? = null,
     val offlineHash: String? = null,
     val tenantId: String? = null,
+    val availableDocumentTypes: List<AvailableDocumentTypeDto>? = null,
     val errorMessage: String? = null
 )
 
@@ -184,7 +186,8 @@ class WebSocketManager @Inject constructor(
                 userId = response.userId ?: "",
                 userName = response.userName ?: "",
                 role = response.role ?: "",
-                offlineHash = response.offlineHash
+                offlineHash = response.offlineHash,
+                availableDocumentTypes = response.availableDocumentTypes
             )
             AppLog.d(TAG, "User authenticated: ${response.userName} (${response.role})")
             UserLoginResult(
@@ -193,7 +196,8 @@ class WebSocketManager @Inject constructor(
                 userName = response.userName,
                 role = response.role,
                 offlineHash = response.offlineHash,
-                tenantId = response.tenantId
+                tenantId = response.tenantId,
+                availableDocumentTypes = response.availableDocumentTypes
             )
         } else {
             val error = response?.errorMessage ?: "Login failed"

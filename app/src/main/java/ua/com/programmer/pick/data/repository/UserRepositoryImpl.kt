@@ -263,8 +263,7 @@ class UserRepositoryImpl @Inject constructor(
         val existingEntity = userDao.getUserById(user.id)
         if (existingEntity != null) {
             val updatedEntity = existingEntity.copy(
-                name = user.name,
-                operatingMode = user.operatingMode.name
+                name = user.name
             )
             userDao.updateUser(updatedEntity)
         }
