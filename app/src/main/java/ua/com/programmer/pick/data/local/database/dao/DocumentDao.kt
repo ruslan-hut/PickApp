@@ -17,6 +17,9 @@ interface DocumentDao {
     @Query("SELECT * FROM documents WHERE id = :id")
     fun observeDocumentById(id: String): Flow<DocumentEntity?>
 
+    @Query("SELECT * FROM documents ORDER BY date DESC")
+    fun getAllDocuments(): Flow<List<DocumentEntity>>
+
     @Query("SELECT * FROM documents WHERE type = :type ORDER BY date DESC")
     fun getDocumentsByType(type: String): Flow<List<DocumentEntity>>
 

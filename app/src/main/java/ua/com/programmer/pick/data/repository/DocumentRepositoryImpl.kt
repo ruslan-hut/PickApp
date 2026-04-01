@@ -27,6 +27,10 @@ class DocumentRepositoryImpl @Inject constructor(
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : DocumentRepository {
 
+    override fun getAllDocuments(): Flow<List<Document>> {
+        return documentDao.getAllDocuments().map { it.toDomainList() }
+    }
+
     override fun getDocumentsByType(type: DocumentType): Flow<List<Document>> {
         return documentDao.getDocumentsByType(type.name).map { it.toDomainList() }
     }

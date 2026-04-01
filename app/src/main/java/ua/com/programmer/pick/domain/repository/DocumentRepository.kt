@@ -9,6 +9,8 @@ import ua.com.programmer.pick.domain.model.DocumentType
 
 interface DocumentRepository {
 
+    fun getAllDocuments(): Flow<List<Document>>
+
     fun getDocumentsByType(type: DocumentType): Flow<List<Document>>
 
     fun getDocumentsByState(state: DocumentState): Flow<List<Document>>

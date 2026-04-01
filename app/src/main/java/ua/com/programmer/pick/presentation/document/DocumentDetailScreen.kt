@@ -1,6 +1,9 @@
 package ua.com.programmer.pick.presentation.document
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -157,6 +161,13 @@ fun DocumentDetailScreen(
         }
     }
 
+    // Show pinned progress bar when header card scrolls out of view
+    val isHeaderScrolledAway by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 0
+        }
+    }
+
     Scaffold(
         modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
@@ -213,43 +224,65 @@ fun DocumentDetailScreen(
             }
         }
     ) { paddingValues ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            when {
-                uiState.isLoading -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .align(Alignment.Center)
+            // Pinned progress bar — appears when header card scrolls out of view
+            if (uiState.document != null) {
+                AnimatedVisibility(
+                    visible = isHeaderScrolledAway,
+                    enter = expandVertically(),
+                    exit = shrinkVertically()
+                ) {
+                    PinnedProgressBar(
+                        totalPlanned = uiState.document?.totalPlanned ?: 0.0,
+                        totalActual = uiState.document?.totalActual ?: 0.0,
+                        linesTotal = uiState.lines.size,
+                        linesCompleted = uiState.lines.count {
+                            it.actualQuantity >= it.plannedQuantity
+                        }
                     )
                 }
+            }
 
-                uiState.errorMessage != null -> {
-                    val errKey = uiState.errorMessage
-                    val errText = if (errKey == DocumentDetailViewModel.ERROR_LOADING_DOCUMENT) {
-                        stringResource(R.string.error_loading_document)
-                    } else {
-                        errKey ?: ""
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+            ) {
+                when {
+                    uiState.isLoading -> {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .align(Alignment.Center)
+                        )
                     }
-                    Text(
-                        text = errText,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .padding(16.dp)
-                    )
-                }
 
-                uiState.document != null -> {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(vertical = 8.dp)
-                    ) {
+                    uiState.errorMessage != null -> {
+                        val errKey = uiState.errorMessage
+                        val errText = if (errKey == DocumentDetailViewModel.ERROR_LOADING_DOCUMENT) {
+                            stringResource(R.string.error_loading_document)
+                        } else {
+                            errKey ?: ""
+                        }
+                        Text(
+                            text = errText,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(16.dp)
+                        )
+                    }
+
+                    uiState.document != null -> {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(vertical = 8.dp)
+                        ) {
                         // Document header card
                         item {
                             DocumentHeaderCard(
@@ -302,6 +335,67 @@ fun DocumentDetailScreen(
                     }
                 }
             }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PinnedProgressBar(
+    totalPlanned: Double,
+    totalActual: Double,
+    linesTotal: Int,
+    linesCompleted: Int,
+    modifier: Modifier = Modifier
+) {
+    val progress = if (totalPlanned > 0) {
+        (totalActual / totalPlanned).toFloat().coerceIn(0f, 1f)
+    } else 0f
+
+    val isComplete = linesCompleted >= linesTotal
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shadowElevation = 2.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.actual, totalActual),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = stringResource(R.string.lines_progress_fmt, linesCompleted, linesTotal),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(CardShape),
+                color = if (isComplete) {
+                    MaterialTheme.colorScheme.secondary
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
         }
     }
 }
