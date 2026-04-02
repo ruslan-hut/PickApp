@@ -32,13 +32,19 @@ class LoginViewModel @Inject constructor(
 
     init {
         observeNetworkState()
-        loadDeviceId()
+        loadInitialState()
     }
 
-    private fun loadDeviceId() {
+    private fun loadInitialState() {
         viewModelScope.launch {
             val fullId = appPreferences.deviceId.first()
-            _uiState.update { it.copy(deviceId = fullId.take(8)) }
+            val lastLogin = appPreferences.lastLogin.first() ?: ""
+            _uiState.update {
+                it.copy(
+                    deviceId = fullId.take(8),
+                    lastLogin = lastLogin
+                )
+            }
         }
     }
 

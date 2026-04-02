@@ -8,5 +8,6 @@ data class ProfileUiState(
     val isSaving: Boolean = false,
     val errorMessage: String? = null,
     val successMessage: String? = null,
-    val deviceId: String = ""
+    val deviceId: String = "",
+    val appVersion: String = ""
 )

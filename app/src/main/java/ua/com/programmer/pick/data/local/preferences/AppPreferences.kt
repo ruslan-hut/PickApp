@@ -39,6 +39,7 @@ class AppPreferences @Inject constructor(
         private val AVAILABLE_DOCUMENT_TYPES = stringPreferencesKey("available_document_types")
         private val SELECTED_DOCUMENT_TYPE = stringPreferencesKey("selected_document_type")
         private val TENANT_ID = stringPreferencesKey("tenant_id")
+        private val LAST_LOGIN = stringPreferencesKey("last_login")
         // Plaintext keys kept for migration only
         private val USER_LOGIN = stringPreferencesKey("user_login")
         private val USER_PASSWORD = stringPreferencesKey("user_password")
@@ -240,6 +241,12 @@ class AppPreferences @Inject constructor(
             }
         }
         return context.dataStore.data.first()[DEVICE_ID] ?: newId
+    }
+
+    val lastLogin: Flow<String?> = context.dataStore.data.map { it[LAST_LOGIN] }
+
+    suspend fun setLastLogin(login: String) {
+        context.dataStore.edit { it[LAST_LOGIN] = login }
     }
 
     /**

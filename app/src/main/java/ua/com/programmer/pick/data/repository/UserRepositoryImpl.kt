@@ -163,6 +163,7 @@ class UserRepositoryImpl @Inject constructor(
 
             // Store credentials for WebSocket auto-login on reconnect
             appPreferences.setUserCredentials(login, password)
+            appPreferences.setLastLogin(login)
 
             val user = userEntity.toDomain()
             Result.Success(user)
@@ -236,6 +237,7 @@ class UserRepositoryImpl @Inject constructor(
 
                 // Store credentials for WebSocket auto-login on reconnect
                 appPreferences.setUserCredentials(login, password)
+                appPreferences.setLastLogin(login)
 
                 AppLog.d(TAG, "Offline login successful for user: $login")
                 val user = userEntity.toDomain().copy(lastLoginAt = currentTime)

@@ -407,14 +407,16 @@ Mark document as completed.
 
 ## 6. Sync Mechanism
 
-### Delta Sync Flow
+### Sync Flow
 
-1. Client requests `GET /sync/delta?entity=products&since=<lastSyncTime>`
-2. Server returns all records with `last_modified > since`
-3. Server includes `deleted_ids` for soft-deleted records
-4. Client applies changes locally
-5. Client sends `POST /sync/ack` to confirm
-6. Client updates local `lastSyncTime` to response `timestamp`
+The server always returns the **complete document set** for the current user/filter. The client treats every `SYNC_DATA` response for documents as the full set and purges any local documents not present in the response (except dirty/locally-modified documents).
+
+1. Client sends `SYNC_REQUEST` or `DOCUMENT_LIST_REFRESH` via WebSocket
+2. Server returns `SYNC_DATA` messages per entity type (always includes documents, even if empty)
+3. Server may include `deleted_ids` for explicitly removed documents
+4. Client applies changes locally and purges stale documents
+5. Client sends `ACK` to confirm
+6. Client updates local sync cursors
 
 ### Conflict Resolution
 

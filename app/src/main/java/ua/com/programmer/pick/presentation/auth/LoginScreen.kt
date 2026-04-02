@@ -52,8 +52,15 @@ fun LoginScreen(
     onClearError: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var login by remember { mutableStateOf("") }
+    var login by remember { mutableStateOf(uiState.lastLogin) }
     var password by remember { mutableStateOf("") }
+
+    // Update login field when lastLogin loads from preferences
+    LaunchedEffect(uiState.lastLogin) {
+        if (uiState.lastLogin.isNotBlank() && login.isBlank()) {
+            login = uiState.lastLogin
+        }
+    }
     var passwordVisible by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
 

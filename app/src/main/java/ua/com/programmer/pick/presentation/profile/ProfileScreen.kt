@@ -263,7 +263,20 @@ fun ProfileScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(32.dp))
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    // App version
+                    if (uiState.appVersion.isNotBlank()) {
+                        Text(
+                            text = stringResource(R.string.app_version_fmt, uiState.appVersion),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 16.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 } else {
                     Box(
                         modifier = Modifier

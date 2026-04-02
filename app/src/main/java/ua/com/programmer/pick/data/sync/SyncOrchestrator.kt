@@ -153,11 +153,6 @@ class SyncOrchestrator @Inject constructor(
     private var syncTimeoutJob: Job? = null
     private val syncReceivedCounts = mutableMapOf<String, Int>()
 
-    // When true, the server sent the complete document set — safe to purge
-    // local documents not in the response. Set by full sync and document list refresh;
-    // cleared after sync completes. Delta sync (with cursors) only sends changes,
-    // so purging would incorrectly delete unchanged documents.
-    private var isCompleteDocumentSet = false
 
     private var isInitialized = false
 
@@ -371,10 +366,6 @@ class SyncOrchestrator @Inject constructor(
         // Get cursors from database
         val cursors = syncStateDao.getCursorsMap()
 
-        // First sync (no cursors) is effectively a full sync — server sends everything.
-        // Subsequent syncs with cursors are delta — only changed entities.
-        isCompleteDocumentSet = cursors.isEmpty()
-
         val message = SyncMessage.SyncRequest(
             id = messageParser.generateMessageId(),
             timestamp = messageParser.getCurrentTimestamp(),
@@ -433,7 +424,6 @@ class SyncOrchestrator @Inject constructor(
         }
 
         syncReceivedCounts.clear()
-        isCompleteDocumentSet = true
         _syncState.value = _syncState.value.copy(isSyncing = true)
 
         val message = SyncMessage.FullSyncRequest(
@@ -473,8 +463,6 @@ class SyncOrchestrator @Inject constructor(
         if (!webSocketManager.isUserAuthenticated()) {
             return Result.Error(Exception("User not authenticated"))
         }
-
-        isCompleteDocumentSet = true
 
         val message = SyncMessage.DocumentListRefresh(
             id = messageParser.generateMessageId(),
@@ -853,7 +841,6 @@ class SyncOrchestrator @Inject constructor(
     private suspend fun handleSyncComplete(message: SyncMessage.SyncComplete) {
         AppLog.i(TAG, "Sync complete: syncId=${message.syncId} received=$syncReceivedCounts cursors=${message.cursors}")
         syncReceivedCounts.clear()
-        isCompleteDocumentSet = false
 
         syncTimeoutJob?.cancel()
         syncTimeoutJob = null
@@ -1004,19 +991,13 @@ class SyncOrchestrator @Inject constructor(
         val documents: List<DocumentDto> = gson.fromJson(data, type)
         val receivedIds = documents.map { it.id }.toSet()
 
-        AppLog.i(TAG, "Sync documents: ${documents.size} upsert, ${deletedIds?.size ?: 0} delete, completeSet=$isCompleteDocumentSet")
+        AppLog.i(TAG, "Sync documents: ${documents.size} upsert, ${deletedIds?.size ?: 0} delete")
 
-        // Only purge local documents when the server sent a complete set
-        // (full sync or document list refresh). Delta sync only sends changes,
-        // so missing documents are simply unchanged — not deleted.
-        if (isCompleteDocumentSet) {
-            if (receivedIds.isEmpty()) {
-                // Server queue is empty — delete all non-dirty local documents.
-                // Room's NOT IN () with an empty list is invalid SQL, so use a dedicated method.
-                documentDao.deleteAllNonDirtyDocuments()
-            } else {
-                documentDao.deleteNonDirtyDocumentsNotIn(receivedIds.toList())
-            }
+        // Server always sends the complete document set — purge anything not in it.
+        if (receivedIds.isEmpty()) {
+            documentDao.deleteAllNonDirtyDocuments()
+        } else {
+            documentDao.deleteNonDirtyDocumentsNotIn(receivedIds.toList())
         }
 
         documents.forEach { dto ->

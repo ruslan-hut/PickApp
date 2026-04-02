@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import ua.com.programmer.pick.BuildConfig
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.domain.repository.UserRepository
 import javax.inject.Inject
@@ -25,7 +26,12 @@ class ProfileViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             val fullId = appPreferences.deviceId.first()
-            _uiState.update { it.copy(deviceId = fullId.take(8)) }
+            _uiState.update {
+                it.copy(
+                    deviceId = fullId.take(8),
+                    appVersion = BuildConfig.VERSION_NAME
+                )
+            }
         }
         loadProfile()
     }
