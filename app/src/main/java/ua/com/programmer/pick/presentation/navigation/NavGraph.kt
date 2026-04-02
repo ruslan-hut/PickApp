@@ -22,7 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -33,6 +33,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import sealed.BottomNavItem
 import ua.com.programmer.pick.presentation.auth.LoginScreen
+import ua.com.programmer.pick.presentation.auth.ScanLoginScreen
 import ua.com.programmer.pick.presentation.auth.LoginViewModel
 import ua.com.programmer.pick.presentation.document.DocumentDetailScreen
 import ua.com.programmer.pick.presentation.documents.DocumentsScreen
@@ -72,10 +73,7 @@ fun PickNavGraph(
                 enter = slideInVertically(initialOffsetY = { it }),
                 exit = slideOutVertically(targetOffsetY = { it })
             ) {
-                PickBottomNavigationBar(
-                    navController = navController,
-                    currentRoute = currentRoute
-                )
+                PickBottomNavigationBar(navController = navController)
             }
         }
     ) { paddingValues ->
@@ -111,7 +109,25 @@ fun PickNavGraph(
                             popUpTo(Screen.Login.route) { inclusive = true }
                         }
                     },
-                    onClearError = viewModel::clearError
+                    onClearError = viewModel::clearError,
+                    onScanLogin = {
+                        navController.navigate(Screen.ScanLogin.route)
+                    }
+                )
+            }
+
+            composable(route = Screen.ScanLogin.route) {
+                val viewModel: LoginViewModel = hiltViewModel()
+                val uiState by viewModel.uiState.collectAsState()
+
+                ScanLoginScreen(
+                    uiState = uiState,
+                    onNavigateBack = { navController.popBackStack() },
+                    onLoginSuccess = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Login.route) { inclusive = true }
+                        }
+                    }
                 )
             }
 
@@ -226,8 +242,7 @@ fun PickNavGraph(
 
 @Composable
 private fun PickBottomNavigationBar(
-    navController: NavHostController,
-    currentRoute: String?
+    navController: NavHostController
 ) {
     NavigationBar(
         containerColor = MaterialTheme.colorScheme.surface,

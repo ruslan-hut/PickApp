@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -50,7 +51,8 @@ fun LoginScreen(
     onLoginClick: (String, String) -> Unit,
     onLoginSuccess: () -> Unit,
     onClearError: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onScanLogin: () -> Unit = {}
 ) {
     var login by remember { mutableStateOf(uiState.lastLogin) }
     var password by remember { mutableStateOf("") }
@@ -199,6 +201,22 @@ fun LoginScreen(
                     isLoading = uiState.isLoading,
                     enabled = login.isNotBlank() && password.isNotBlank()
                 )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedButton(
+                    onClick = onScanLogin,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !uiState.isLoading,
+                    shape = ButtonShape
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.baseline_qr_code_scanner_24),
+                        contentDescription = null,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                    Text(stringResource(R.string.scan_to_login))
+                }
 
                 if (mappedErrorText != null) {
                     Spacer(modifier = Modifier.height(12.dp))

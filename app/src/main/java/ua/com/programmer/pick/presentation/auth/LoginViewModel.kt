@@ -1,5 +1,6 @@
 package ua.com.programmer.pick.presentation.auth
 
+import android.util.Base64
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -7,8 +8,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import ua.com.programmer.pick.core.scanner.BarcodeService
+import ua.com.programmer.pick.core.util.AppLog
 import ua.com.programmer.pick.core.util.NetworkMonitor
 import ua.com.programmer.pick.core.util.Result
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
@@ -19,10 +24,13 @@ import javax.inject.Inject
 class LoginViewModel @Inject constructor(
     private val userRepository: UserRepository,
     private val networkMonitor: NetworkMonitor,
-    private val appPreferences: AppPreferences
+    private val appPreferences: AppPreferences,
+    private val barcodeService: BarcodeService
 ) : ViewModel() {
 
     companion object {
+        private const val TAG = "LoginViewModel"
+        private const val QR_LOGIN_PREFIX = "USR:"
         const val ERROR_EMPTY_CREDENTIALS = "ERROR_EMPTY_CREDENTIALS"
         const val ERROR_LOGIN_FAILED = "ERROR_LOGIN_FAILED"
     }
@@ -33,6 +41,7 @@ class LoginViewModel @Inject constructor(
     init {
         observeNetworkState()
         loadInitialState()
+        subscribeToQRLogin()
     }
 
     private fun loadInitialState() {
@@ -94,5 +103,31 @@ class LoginViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    private fun subscribeToQRLogin() {
+        barcodeService.scannedBarcodes
+            .onEach { scanned ->
+                val credentials = parseLoginQR(scanned.rawValue) ?: return@onEach
+                login(credentials.first, credentials.second)
+            }
+            .launchIn(viewModelScope)
+    }
+
+    private fun parseLoginQR(rawValue: String): Pair<String, String>? {
+        if (!rawValue.startsWith(QR_LOGIN_PREFIX)) return null
+        return try {
+            val encoded = rawValue.removePrefix(QR_LOGIN_PREFIX)
+            val decoded = String(Base64.decode(encoded, Base64.DEFAULT), Charsets.UTF_8)
+            val colonIndex = decoded.indexOf(':')
+            if (colonIndex <= 0) return null
+            val login = decoded.substring(0, colonIndex)
+            val password = decoded.substring(colonIndex + 1)
+            if (password.isEmpty()) return null
+            Pair(login, password)
+        } catch (e: Exception) {
+            AppLog.w(TAG, "Failed to parse QR login: ${e.message}")
+            null
+        }
     }
 }

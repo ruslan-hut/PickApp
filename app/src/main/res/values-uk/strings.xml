@@ -45,6 +45,10 @@
     <string name="toggle_password_visibility_cd">Показати/сховати пароль</string>
     <string name="offline_mode">Офлайн режим</string>
     <string name="login_button">Увійти</string>
+    <string name="scan_to_login">Сканувати QR для входу</string>
+    <string name="scan_login_title">Сканування QR коду</string>
+    <string name="scan_login_hint">Наведіть сканер на QR код</string>
+    <string name="logging_in">Вхід…</string>
     <string name="error_empty_credentials">Введіть логін та пароль</string>
     <string name="error_login_failed">Помилка входу</string>
 

@@ -45,6 +45,10 @@
     <string name="toggle_password_visibility_cd">Toggle password visibility</string>
     <string name="offline_mode">Offline Mode</string>
     <string name="login_button">Login</string>
+    <string name="scan_to_login">Scan QR to login</string>
+    <string name="scan_login_title">Scan Login QR Code</string>
+    <string name="scan_login_hint">Point the scanner at the QR code</string>
+    <string name="logging_in">Logging in…</string>
     <string name="error_empty_credentials">Please enter login and password</string>
     <string name="error_login_failed">Login failed</string>
 
