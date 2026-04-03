@@ -2,17 +2,23 @@ package ua.com.programmer.pick.presentation.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -44,6 +50,7 @@ fun ScannerTestScreen(
     viewModel: ScannerSettingsViewModel = hiltViewModel()
 ) {
     val testState by viewModel.testState.collectAsState()
+    val dwStatus by viewModel.dataWedgeStatus.collectAsState()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
 
     // Start/stop test mode with screen lifecycle
@@ -213,7 +220,161 @@ fun ScannerTestScreen(
                 Text(stringResource(R.string.scanner_test_clear))
             }
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // DataWedge diagnostics
+            SectionHeader(title = stringResource(R.string.dw_diag_title))
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = stringResource(R.string.dw_diag_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (dwStatus.activeProfile != null || dwStatus.errorMessage != null) {
+                        DataWedgeStatusCard(dwStatus)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = viewModel::queryDataWedge,
+                            enabled = !dwStatus.isQuerying,
+                            modifier = Modifier.weight(1f),
+                            shape = ButtonShape
+                        ) {
+                            if (dwStatus.isQuerying) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Text(stringResource(R.string.dw_diag_query))
+                        }
+
+                        OutlinedButton(
+                            onClick = viewModel::copyDataWedgeReport,
+                            enabled = dwStatus.activeProfile != null,
+                            modifier = Modifier.weight(1f),
+                            shape = ButtonShape
+                        ) {
+                            Text(stringResource(R.string.dw_diag_copy))
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+@Composable
+private fun DataWedgeStatusCard(status: ua.com.programmer.pick.core.scanner.DataWedgeStatus) {
+    // Error-only state (e.g. non-Zebra device)
+    if (status.activeProfile == null) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Text(
+                text = status.errorMessage ?: stringResource(R.string.dw_diag_no_response),
+                modifier = Modifier.padding(12.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
+
+    val lines = buildList {
+        add("Profile" to (status.activeProfile))
+        add("Profile enabled" to (status.profileEnabled?.toString() ?: "—"))
+        add("Scanner input" to (status.scannerEnabled?.toString() ?: "—"))
+        add("Intent output" to (status.intentOutputEnabled?.toString() ?: "—"))
+        add("Intent action" to (status.intentAction ?: "—"))
+        add("Intent delivery" to (status.intentDelivery ?: "—"))
+        add("Keystroke output" to (status.keystrokeOutputEnabled?.toString() ?: "—"))
+        if (status.datawedgeVersion != null) {
+            add("DataWedge version" to status.datawedgeVersion)
+        }
+    }
+
+    val hasIssue = status.intentOutputEnabled != true ||
+            status.intentAction != "ua.com.programmer.pick.SCAN" ||
+            status.intentDelivery?.lowercase()?.contains("broadcast") != true
+
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = if (hasIssue) {
+                MaterialTheme.colorScheme.errorContainer
+            } else {
+                MaterialTheme.colorScheme.primaryContainer
+            }
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            lines.forEach { (label, value) ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (hasIssue) {
+                            MaterialTheme.colorScheme.onErrorContainer
+                        } else {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        }
+                    )
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = if (hasIssue) {
+                            MaterialTheme.colorScheme.onErrorContainer
+                        } else {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        }
+                    )
+                }
+            }
+
+            if (hasIssue) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = when {
+                        status.intentOutputEnabled != true ->
+                            stringResource(R.string.dw_diag_hint_enable_intent)
+                        status.intentAction != "ua.com.programmer.pick.SCAN" ->
+                            stringResource(R.string.dw_diag_hint_wrong_action)
+                        else ->
+                            stringResource(R.string.dw_diag_hint_broadcast)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
         }
     }
 }

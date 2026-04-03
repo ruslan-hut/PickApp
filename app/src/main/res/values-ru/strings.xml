@@ -181,6 +181,16 @@
     <string name="scanner_diag_copied">Диагностика скопирована</string>
     <string name="scanner_diag_no_data">Нет диагностических данных</string>
 
+    <!-- DataWedge Diagnostics -->
+    <string name="dw_diag_title">DataWedge (Zebra)</string>
+    <string name="dw_diag_description">Проверка настроек DataWedge для диагностики сканирования на устройствах Zebra. Скопируйте отчёт и отправьте в поддержку.</string>
+    <string name="dw_diag_query">Проверить</string>
+    <string name="dw_diag_copy">Копировать отчёт</string>
+    <string name="dw_diag_hint_enable_intent">Intent Output должен быть включён в профиле DataWedge</string>
+    <string name="dw_diag_hint_wrong_action">Intent action должен быть: ua.com.programmer.pick.SCAN</string>
+    <string name="dw_diag_hint_broadcast">Intent delivery должен быть \"Broadcast intent\"</string>
+    <string name="dw_diag_no_response">DataWedge не ответил. Это не устройство Zebra или DataWedge не установлен.</string>
+
     <!-- Collector Queue -->
     <string name="collector_queue">Очередь сборки</string>
     <string name="request_next_document">Запросить следующий документ</string>

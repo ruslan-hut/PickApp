@@ -12,7 +12,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import ua.com.programmer.pick.core.scanner.BarcodeService
-import ua.com.programmer.pick.core.scanner.ScannerDiagnostics
+import ua.com.programmer.pick.core.scanner.DataWedgeDiagnostics
+import ua.com.programmer.pick.core.scanner.DataWedgeStatus
 import ua.com.programmer.pick.core.scanner.ScannerSettings
 import javax.inject.Inject
 
@@ -40,6 +41,7 @@ data class ScannerTestUiState(
 @HiltViewModel
 class ScannerSettingsViewModel @Inject constructor(
     private val barcodeService: BarcodeService,
+    private val dataWedgeDiagnostics: DataWedgeDiagnostics,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -51,6 +53,19 @@ class ScannerSettingsViewModel @Inject constructor(
 
     private val _testState = MutableStateFlow(ScannerTestUiState())
     val testState: StateFlow<ScannerTestUiState> = _testState.asStateFlow()
+
+    val dataWedgeStatus: StateFlow<DataWedgeStatus> = dataWedgeDiagnostics.status
+
+    fun queryDataWedge() {
+        dataWedgeDiagnostics.queryDataWedge()
+    }
+
+    fun copyDataWedgeReport() {
+        val text = dataWedgeDiagnostics.exportAsText()
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("DataWedge Diagnostics", text))
+        _settingsState.update { it.copy(snackbarMessage = COPIED) }
+    }
 
     // Test mode internals
     private val testBuffer = StringBuilder()

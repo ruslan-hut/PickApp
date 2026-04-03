@@ -181,6 +181,16 @@
     <string name="scanner_diag_copied">Diagnostics copied to clipboard</string>
     <string name="scanner_diag_no_data">No diagnostic data recorded</string>
 
+    <!-- DataWedge Diagnostics -->
+    <string name="dw_diag_title">DataWedge (Zebra)</string>
+    <string name="dw_diag_description">Query DataWedge profile settings to diagnose scanning issues on Zebra devices. Copy the report and send it to support.</string>
+    <string name="dw_diag_query">Check Settings</string>
+    <string name="dw_diag_copy">Copy Report</string>
+    <string name="dw_diag_hint_enable_intent">Intent Output must be enabled in DataWedge profile</string>
+    <string name="dw_diag_hint_wrong_action">Intent action must be: ua.com.programmer.pick.SCAN</string>
+    <string name="dw_diag_hint_broadcast">Intent delivery must be set to \"Broadcast intent\"</string>
+    <string name="dw_diag_no_response">DataWedge did not respond. Not a Zebra device or DataWedge is not installed.</string>
+
     <!-- Collector Queue -->
     <string name="collector_queue">Collection Queue</string>
     <string name="request_next_document">Request Next Document</string>

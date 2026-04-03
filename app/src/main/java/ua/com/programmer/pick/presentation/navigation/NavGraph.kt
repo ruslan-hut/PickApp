@@ -233,6 +233,9 @@ fun PickNavGraph(
                     onNavigateBack = { navController.popBackStack() },
                     onSettingsClick = {
                         navController.navigate(Screen.Settings.route)
+                    },
+                    onScannerSettingsClick = {
+                        navController.navigate(Screen.ScannerSettings.route)
                     }
                 )
             }

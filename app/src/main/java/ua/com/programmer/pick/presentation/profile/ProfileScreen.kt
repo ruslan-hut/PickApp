@@ -16,7 +16,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -55,6 +54,7 @@ import ua.com.programmer.pick.presentation.common.SectionHeader
 fun ProfileScreen(
     onNavigateBack: () -> Unit,
     onSettingsClick: () -> Unit = {},
+    onScannerSettingsClick: () -> Unit = {},
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -232,7 +232,7 @@ fun ProfileScreen(
 
                     PickElevatedCard(
                         onClick = onSettingsClick,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                         elevation = 1.dp
                     ) {
                         Row(
@@ -256,6 +256,39 @@ fun ProfileScreen(
                                 )
                                 Text(
                                     text = stringResource(R.string.settings_description),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    PickElevatedCard(
+                        onClick = onScannerSettingsClick,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        elevation = 1.dp
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = ImageVector.vectorResource(R.drawable.baseline_qr_code_scanner_24),
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.scanner_settings),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = stringResource(R.string.scanner_settings_description),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
