@@ -41,10 +41,11 @@ class HardwareScannerManager @Inject constructor(
         private const val HONEYWELL_TYPE = "com.honeywell.aidc.extra.BARCODE_TYPE"
 
         // Zebra/Symbol DataWedge intents
-        private const val ZEBRA_ACTION = "com.symbol.datawedge.api.RESULT_ACTION"
+        // Configure DataWedge Intent Output action to match ZEBRA_INTENT_ACTION
+        private const val ZEBRA_INTENT_ACTION = "ua.com.programmer.pick.SCAN"
         private const val ZEBRA_DATA = "com.symbol.datawedge.data_string"
         private const val ZEBRA_TYPE = "com.symbol.datawedge.label_type"
-        private const val ZEBRA_INTENT_ACTION = "ua.com.programmer.pick.SCAN"
+        private const val ZEBRA_PACKAGE = "com.symbol.datawedge"
 
         // Generic scanner intent (used by many Chinese TSD devices)
         private const val GENERIC_ACTION = "device.scanner.BARCODE_READ"
@@ -126,7 +127,7 @@ class HardwareScannerManager @Inject constructor(
             try {
                 packageManager.getPackageInfo(pkg, 0)
                 true
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 false
             }
         }
@@ -143,8 +144,7 @@ class HardwareScannerManager @Inject constructor(
         val filter = IntentFilter().apply {
             // Honeywell
             addAction(HONEYWELL_ACTION)
-            // Zebra/Symbol
-            addAction(ZEBRA_ACTION)
+            // Zebra/Symbol DataWedge
             addAction(ZEBRA_INTENT_ACTION)
             // Generic
             addAction(GENERIC_ACTION)
@@ -204,8 +204,6 @@ class HardwareScannerManager @Inject constructor(
                     intent.getStringExtra(HONEYWELL_TYPE)
                 )
             }
-            action.contains("symbol", ignoreCase = true) ||
-            action.contains("datawedge", ignoreCase = true) ||
             action == ZEBRA_INTENT_ACTION -> {
                 Pair(
                     intent.getStringExtra(ZEBRA_DATA),
@@ -303,6 +301,7 @@ class HardwareScannerManager @Inject constructor(
         try {
             // Zebra DataWedge enable
             val zebraIntent = Intent("com.symbol.datawedge.api.ACTION")
+            zebraIntent.setPackage(ZEBRA_PACKAGE)
             zebraIntent.putExtra("com.symbol.datawedge.api.SCANNER_INPUT_PLUGIN", "ENABLE_PLUGIN")
             context.sendBroadcast(zebraIntent)
 
@@ -319,6 +318,7 @@ class HardwareScannerManager @Inject constructor(
         try {
             // Zebra DataWedge disable
             val zebraIntent = Intent("com.symbol.datawedge.api.ACTION")
+            zebraIntent.setPackage(ZEBRA_PACKAGE)
             zebraIntent.putExtra("com.symbol.datawedge.api.SCANNER_INPUT_PLUGIN", "DISABLE_PLUGIN")
             context.sendBroadcast(zebraIntent)
 
