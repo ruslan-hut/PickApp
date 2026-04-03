@@ -83,10 +83,13 @@ class HardwareScannerManager @Inject constructor(
             if (intent == null) return
 
             AppLog.d(TAG, "Received intent: ${intent.action}")
+            logIntentExtras(intent)
 
             val (barcode, formatHint) = extractBarcodeData(intent)
             if (barcode != null) {
                 processScan(barcode, formatHint)
+            } else {
+                AppLog.w(TAG, "No barcode data extracted from intent: ${intent.action}")
             }
         }
     }
@@ -153,6 +156,8 @@ class HardwareScannerManager @Inject constructor(
             addAction(UROVO_ACTION)
             // iData
             addAction(IDATA_ACTION)
+
+            addCategory(Intent.CATEGORY_DEFAULT)
         }
 
         ContextCompat.registerReceiver(
@@ -194,6 +199,21 @@ class HardwareScannerManager @Inject constructor(
         stopScanning()
     }
 
+    private fun logIntentExtras(intent: Intent) {
+        val extras = intent.extras ?: return
+        val sb = StringBuilder("Intent extras for ${intent.action}: ")
+        for (key in extras.keySet()) {
+            val value = extras.get(key)
+            val display = when (value) {
+                is ByteArray -> "ByteArray(${value.size})"
+                is String -> "\"${value.take(100)}\""
+                else -> value?.toString()?.take(100)
+            }
+            sb.append("$key=$display, ")
+        }
+        AppLog.d(TAG, sb.toString())
+    }
+
     private fun extractBarcodeData(intent: Intent): Pair<String?, String?> {
         val action = intent.action ?: return Pair(null, null)
 
@@ -205,9 +225,15 @@ class HardwareScannerManager @Inject constructor(
                 )
             }
             action == ZEBRA_INTENT_ACTION -> {
+                // Try standard DataWedge extra, then fallback alternatives
+                val barcode = intent.getStringExtra(ZEBRA_DATA)
+                    ?: intent.getStringExtra("com.symbol.datawedge.decode_data")
+                    ?: intent.getStringExtra("com.motorolasolutions.emdk.datawedge.data_string")
+                    ?: intent.getStringExtra("com.motorolasolutions.emdk.datawedge.decode_data")
                 Pair(
-                    intent.getStringExtra(ZEBRA_DATA),
+                    barcode,
                     intent.getStringExtra(ZEBRA_TYPE)
+                        ?: intent.getStringExtra("com.symbol.datawedge.decode_mode")
                 )
             }
             action == UROVO_ACTION -> {

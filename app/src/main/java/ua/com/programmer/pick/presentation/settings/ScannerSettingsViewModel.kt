@@ -5,11 +5,15 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.view.KeyEvent
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import ua.com.programmer.pick.core.scanner.BarcodeService
 import ua.com.programmer.pick.core.scanner.DataWedgeDiagnostics
@@ -73,6 +77,7 @@ class ScannerSettingsViewModel @Inject constructor(
     private var testScanCount = 0
     private val testLogLines = StringBuilder()
     private var testLogLineCount = 0
+    private var intentScanJob: Job? = null
 
     init {
         loadSettings()
@@ -168,10 +173,28 @@ class ScannerSettingsViewModel @Inject constructor(
         barcodeService.setKeyEventTestListener { event ->
             onTestKeyEvent(event)
         }
+
+        // Also collect intent-based scans (DataWedge, Honeywell, etc.)
+        intentScanJob = barcodeService.scannedBarcodes
+            .onEach { scanned ->
+                testScanCount++
+                val info = "Scan #$testScanCount | Length: ${scanned.rawValue.length} | Format: ${scanned.format}"
+                appendTestLog(">>> INTENT SCAN: \"${scanned.rawValue}\" (${scanned.format})")
+                _testState.update {
+                    it.copy(
+                        lastBarcode = scanned.rawValue,
+                        barcodeInfo = info,
+                        scanCount = testScanCount
+                    )
+                }
+            }
+            .launchIn(viewModelScope)
     }
 
     fun stopTestMode() {
         barcodeService.setKeyEventTestListener(null)
+        intentScanJob?.cancel()
+        intentScanJob = null
     }
 
     fun clearTestLog() {
