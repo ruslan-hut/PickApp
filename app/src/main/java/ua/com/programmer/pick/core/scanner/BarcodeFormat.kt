@@ -51,20 +51,21 @@ enum class BarcodeFormat {
          * Parse format from string (for hardware scanner type hints)
          */
         fun fromString(format: String): BarcodeFormat {
-            return when (format.uppercase()) {
-                "EAN8", "EAN-8", "EAN_8" -> EAN_8
-                "EAN13", "EAN-13", "EAN_13" -> EAN_13
-                "UPCA", "UPC-A", "UPC_A" -> UPC_A
-                "UPCE", "UPC-E", "UPC_E" -> UPC_E
-                "CODE39", "CODE-39", "CODE_39" -> CODE_39
-                "CODE93", "CODE-93", "CODE_93" -> CODE_93
-                "CODE128", "CODE-128", "CODE_128" -> CODE_128
-                "ITF", "ITF-14", "INTERLEAVED" -> ITF
-                "CODABAR" -> CODABAR
-                "QR", "QRCODE", "QR_CODE" -> QR_CODE
-                "DATAMATRIX", "DATA_MATRIX", "DATA-MATRIX", "DM" -> DATA_MATRIX
-                "PDF417", "PDF_417", "PDF-417" -> PDF_417
-                "AZTEC" -> AZTEC
+            val upper = format.uppercase()
+            return when {
+                upper.contains("EAN8") || upper.contains("EAN-8") || upper.contains("EAN_8") -> EAN_8
+                upper.contains("EAN13") || upper.contains("EAN-13") || upper.contains("EAN_13") -> EAN_13
+                upper.contains("UPCA") || upper.contains("UPC-A") || upper.contains("UPC_A") -> UPC_A
+                upper.contains("UPCE") || upper.contains("UPC-E") || upper.contains("UPC_E") -> UPC_E
+                upper.contains("CODE39") || upper.contains("CODE-39") || upper.contains("CODE_39") -> CODE_39
+                upper.contains("CODE93") || upper.contains("CODE-93") || upper.contains("CODE_93") -> CODE_93
+                upper.contains("CODE128") || upper.contains("CODE-128") || upper.contains("CODE_128") -> CODE_128
+                upper.contains("ITF") || upper.contains("INTERLEAVED") || upper.contains("I2OF5") -> ITF
+                upper.contains("CODABAR") -> CODABAR
+                upper.contains("QR") -> QR_CODE
+                upper.contains("DATAMATRIX") || upper.contains("DATA_MATRIX") || upper.contains("DATA-MATRIX") -> DATA_MATRIX
+                upper.contains("PDF417") || upper.contains("PDF_417") -> PDF_417
+                upper.contains("AZTEC") -> AZTEC
                 else -> UNKNOWN
             }
         }
