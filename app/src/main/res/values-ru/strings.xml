@@ -92,6 +92,8 @@
     <string name="document_state_in_progress">В работе</string>
     <string name="document_state_packaging">Упаковка</string>
     <string name="document_state_completed">Завершён</string>
+    <string name="document_state_delivering">Доставляется</string>
+    <string name="document_state_delivered">Доставлен</string>
     <string name="document_state_sent">Отправлен</string>
     <string name="document_state_error">Ошибка</string>
 

@@ -92,6 +92,8 @@
     <string name="document_state_in_progress">In Progress</string>
     <string name="document_state_packaging">Packaging</string>
     <string name="document_state_completed">Completed</string>
+    <string name="document_state_delivering">Delivering</string>
+    <string name="document_state_delivered">Delivered</string>
     <string name="document_state_sent">Sent</string>
     <string name="document_state_error">Error</string>
 
