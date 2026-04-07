@@ -9,7 +9,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ua.com.programmer.pick.core.di.IoDispatcher
@@ -56,7 +55,7 @@ class CourierViewModel @Inject constructor(
     private val outgoingOperationRepository: OutgoingOperationRepository,
     private val barcodeService: BarcodeService,
     private val gson: Gson,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+    @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CourierUiState())
@@ -74,7 +73,7 @@ class CourierViewModel @Inject constructor(
 
     private fun observePickupDocuments() {
         viewModelScope.launch {
-            documentRepository.getDocumentsByState(DocumentState.COLLECTED).collect { docs ->
+            documentRepository.getDocumentsByState(DocumentState.DELIVERY).collect { docs ->
                 if (_uiState.value.mode == CourierMode.PICKUP) {
                     _uiState.update { it.copy(documents = docs) }
                 }
@@ -100,7 +99,7 @@ class CourierViewModel @Inject constructor(
     fun switchMode(mode: CourierMode) {
         _uiState.update { it.copy(mode = mode, selectedDocumentId = null, boxes = emptyList()) }
         viewModelScope.launch {
-            val state = if (mode == CourierMode.PICKUP) DocumentState.COLLECTED else DocumentState.DELIVERING
+            val state = if (mode == CourierMode.PICKUP) DocumentState.DELIVERY else DocumentState.DELIVERING
             documentRepository.getDocumentsByState(state).collect { docs ->
                 _uiState.update { it.copy(documents = docs) }
             }

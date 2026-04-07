@@ -20,7 +20,7 @@ import javax.inject.Singleton
 @Singleton
 class OutgoingOperationRepositoryImpl @Inject constructor(
     private val outgoingOperationDao: OutgoingOperationDao,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+    @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : OutgoingOperationRepository {
 
     override fun observePendingOperations(): Flow<List<OutgoingOperation>> {

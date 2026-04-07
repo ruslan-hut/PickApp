@@ -89,9 +89,12 @@
     <string name="cannot_release_document">Неможливо звільнити документ: сервер відмовив у запиті</string>
     <string name="save_complete_cd">Зберегти та завершити документ</string>
     <string name="document_state_loaded">Новий</string>
-    <string name="document_state_in_progress">В роботі</string>
-    <string name="document_state_packaging">Пакування</string>
-    <string name="document_state_completed">Завершено</string>
+    <string name="document_state_in_progress">Збирання</string>
+    <string name="document_state_completed">Зібрано</string>
+    <string name="document_state_pack">Пакування</string>
+    <string name="document_state_packing">Пакується</string>
+    <string name="document_state_packed">Запаковано</string>
+    <string name="document_state_delivery">Доставка</string>
     <string name="document_state_delivering">Доставляється</string>
     <string name="document_state_delivered">Доставлено</string>
     <string name="document_state_sent">Відправлено</string>

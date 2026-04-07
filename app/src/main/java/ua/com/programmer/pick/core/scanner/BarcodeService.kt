@@ -31,7 +31,7 @@ class BarcodeService @Inject constructor(
     private val gs1Parser: GS1Parser,
     val scannerSettings: ScannerSettings,
     val diagnostics: ScannerDiagnostics,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+    @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) {
     companion object {
         private const val TAG = "BarcodeService"

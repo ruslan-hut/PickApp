@@ -35,7 +35,6 @@ import ua.com.programmer.pick.data.mapper.ProductMapper
 import ua.com.programmer.pick.data.mapper.WarehouseMapper
 import ua.com.programmer.pick.data.mapper.toEntity
 import ua.com.programmer.pick.data.mapper.toEntityForSync
-import ua.com.programmer.pick.data.remote.dto.BarcodeDto
 import ua.com.programmer.pick.data.remote.dto.ClientDto
 import ua.com.programmer.pick.data.remote.dto.DocumentDto
 import ua.com.programmer.pick.data.remote.dto.ProductDto
@@ -87,19 +86,21 @@ data class SyncState(
 /**
  * Result of document lock operation
  */
-data class DocumentLockResult(
+data class StageLockResult(
     val success: Boolean,
     val documentId: String,
+    val stage: String,
     val lockedBy: String? = null,
     val error: String? = null
 )
 
 /**
- * Result of document complete operation
+ * Result of stage complete operation
  */
-data class DocumentCompleteResult(
+data class StageCompleteResult(
     val success: Boolean,
     val documentId: String,
+    val stage: String,
     val state: String? = null,
     val version: Long? = null,
     val error: String? = null
@@ -133,7 +134,7 @@ class SyncOrchestrator @Inject constructor(
     private val clientMapper: ClientMapper,
     private val warehouseMapper: WarehouseMapper,
     private val gson: Gson,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+    @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) {
     companion object {
         private const val TAG = "SyncOrchestrator"
@@ -147,9 +148,6 @@ class SyncOrchestrator @Inject constructor(
     private val _syncState = MutableStateFlow(SyncState())
     val syncState: StateFlow<SyncState> = _syncState.asStateFlow()
 
-    // Track current sync session
-    private var currentSyncId: String? = null
-    private var pendingSyncCursors: Map<String, String>? = null
     private var syncTimeoutJob: Job? = null
     private val syncReceivedCounts = mutableMapOf<String, Int>()
 
@@ -274,71 +272,15 @@ class SyncOrchestrator @Inject constructor(
             .launchIn(scope)
     }
 
-    /**
-     * Start WebSocket connection
-     */
-    fun connectWebSocket() {
+    private fun connectWebSocket() {
         if (networkMonitor.isCurrentlyConnected()) {
             webSocketManager.connect()
         }
     }
 
-    /**
-     * Disconnect WebSocket
-     */
-    fun disconnectWebSocket() {
+    private fun disconnectWebSocket() {
         webSocketManager.disconnect()
     }
-
-    /**
-     * Login user via WebSocket (Stage 2: User Login)
-     * This should be called after WebSocket connection is established.
-     *
-     * @param login User login
-     * @param password User password
-     * @return Result with success/failure
-     */
-    suspend fun loginUser(login: String, password: String): Result<Unit> {
-        if (!webSocketManager.isConnected()) {
-            return Result.Error(Exception("WebSocket not connected"))
-        }
-
-        val result = webSocketManager.loginUser(login, password)
-
-        return if (result.success) {
-            // Store credentials for auto-login on reconnect
-            appPreferences.setUserCredentials(login, password)
-
-            // Store user ID
-            result.userId?.let { userId ->
-                appPreferences.setCurrentUserId(userId)
-            }
-
-            // Store offline hash if provided (for offline authentication)
-            result.offlineHash?.let { hash ->
-                appPreferences.setOfflineHash(hash)
-            }
-
-            Result.Success(Unit)
-        } else {
-            Result.Error(Exception(result.errorMessage ?: "Login failed"))
-        }
-    }
-
-    /**
-     * Logout user - clears credentials and resets auth state
-     */
-    suspend fun logoutUser() {
-        appPreferences.clearUserCredentials()
-        // Disconnect and reconnect to reset the session
-        // (user will need to login again after reconnect)
-        disconnectWebSocket()
-    }
-
-    /**
-     * Check if user is authenticated via WebSocket
-     */
-    fun isUserAuthenticated(): Boolean = webSocketManager.isUserAuthenticated()
 
     // ============================================
     // Sync Operations
@@ -532,8 +474,8 @@ class SyncOrchestrator @Inject constructor(
     /**
      * Lock a document for editing ("Take into work")
      */
-    suspend fun lockDocument(documentId: String): Result<DocumentLockResult> {
-        AppLog.d(TAG, "Locking document: $documentId")
+    suspend fun lockForStage(documentId: String, stage: String): Result<StageLockResult> {
+        AppLog.d(TAG, "Locking document $documentId for stage: $stage")
 
         if (!webSocketManager.isConnected()) {
             return Result.Error(Exception("Not connected to server"))
@@ -542,28 +484,29 @@ class SyncOrchestrator @Inject constructor(
             return Result.Error(Exception("User not authenticated"))
         }
 
-        val message = SyncMessage.DocumentLock(
+        val message = SyncMessage.StageLock(
             id = messageParser.generateMessageId(),
             timestamp = messageParser.getCurrentTimestamp(),
-            documentId = documentId
+            documentId = documentId,
+            stage = stage
         )
 
         val response = webSocketManager.sendAndAwait(
             message,
-            SyncMessage.DocumentLockResult::class.java
+            SyncMessage.StageLockResult::class.java
         )
 
         return if (response != null) {
-            val result = DocumentLockResult(
+            val result = StageLockResult(
                 success = response.success,
                 documentId = response.documentId,
+                stage = response.stage,
                 lockedBy = response.lockedBy,
                 error = response.error
             )
 
             if (response.success) {
-                // Update local document state from server confirmation (don't mark dirty)
-                documentDao.updateDocumentStateFromServer(documentId, "COLLECTING", System.currentTimeMillis())
+                documentDao.updateDocumentStateFromServer(documentId, stageInProcessState(stage), System.currentTimeMillis())
                 response.lockedBy?.let { userId ->
                     documentDao.updateAssignedUser(documentId, userId, System.currentTimeMillis())
                 }
@@ -576,37 +519,51 @@ class SyncOrchestrator @Inject constructor(
     }
 
     /**
-     * Unlock a document
+     * Unlock a document from its current stage
      */
-    suspend fun unlockDocument(documentId: String): Result<Unit> {
-        AppLog.d(TAG, "Unlocking document: $documentId")
+    suspend fun unlockFromStage(documentId: String, stage: String): Result<Unit> {
+        AppLog.d(TAG, "Unlocking document $documentId from stage: $stage")
 
         if (!webSocketManager.isConnected()) {
             AppLog.d(TAG, "WebSocket not connected, queueing unlock operation for document: $documentId")
             outgoingOperationRepository.queueOperation(
-                operationType = OperationType.DOCUMENT_UNLOCK,
+                operationType = OperationType.STAGE_UNLOCK,
                 entityType = EntityType.DOCUMENT,
                 entityId = documentId,
-                payload = gson.toJson(mapOf("document_id" to documentId))
+                payload = gson.toJson(mapOf("document_id" to documentId, "stage" to stage))
             )
             return Result.Success(Unit)
         }
 
-        val message = SyncMessage.DocumentUnlock(
+        val message = SyncMessage.StageUnlock(
             id = messageParser.generateMessageId(),
             timestamp = messageParser.getCurrentTimestamp(),
-            documentId = documentId
+            documentId = documentId,
+            stage = stage
         )
 
         val sent = webSocketManager.sendMessage(message)
         return if (sent) {
-            // Update local document state from server action (don't mark dirty)
-            documentDao.updateDocumentStateFromServer(documentId, "LOADED", System.currentTimeMillis())
+            documentDao.updateDocumentStateFromServer(documentId, stageStartState(stage), System.currentTimeMillis())
             documentDao.clearAssignedUser(documentId)
             Result.Success(Unit)
         } else {
             Result.Error(Exception("Failed to send unlock request"))
         }
+    }
+
+    private fun stageInProcessState(stage: String): String = when (stage) {
+        "collect" -> "COLLECTING"
+        "pack" -> "PACKING"
+        "deliver" -> "DELIVERING"
+        else -> "COLLECTING"
+    }
+
+    private fun stageStartState(stage: String): String = when (stage) {
+        "collect" -> "LOADED"
+        "pack" -> "PACK"
+        "deliver" -> "DELIVERY"
+        else -> "LOADED"
     }
 
     /**
@@ -651,37 +608,39 @@ class SyncOrchestrator @Inject constructor(
     }
 
     /**
-     * Complete document processing
+     * Complete a stage for a document
      */
-    suspend fun completeDocument(documentId: String): Result<DocumentCompleteResult> {
-        AppLog.d(TAG, "Completing document: $documentId")
+    suspend fun completeStage(documentId: String, stage: String): Result<StageCompleteResult> {
+        AppLog.d(TAG, "Completing stage $stage for document: $documentId")
 
         if (!webSocketManager.isConnected()) {
             AppLog.d(TAG, "WebSocket not connected, queueing complete operation for document: $documentId")
             outgoingOperationRepository.queueOperation(
-                operationType = OperationType.DOCUMENT_COMPLETE,
+                operationType = OperationType.STAGE_COMPLETE,
                 entityType = EntityType.DOCUMENT,
                 entityId = documentId,
-                payload = gson.toJson(mapOf("document_id" to documentId))
+                payload = gson.toJson(mapOf("document_id" to documentId, "stage" to stage))
             )
             return Result.Error(Exception("WebSocket not connected, operation queued"))
         }
 
-        val message = SyncMessage.DocumentComplete(
+        val message = SyncMessage.StageComplete(
             id = messageParser.generateMessageId(),
             timestamp = messageParser.getCurrentTimestamp(),
-            documentId = documentId
+            documentId = documentId,
+            stage = stage
         )
 
         val response = webSocketManager.sendAndAwait(
             message,
-            SyncMessage.DocumentCompleteResult::class.java
+            SyncMessage.StageCompleteResult::class.java
         )
 
         return if (response != null) {
-            val result = DocumentCompleteResult(
+            val result = StageCompleteResult(
                 success = response.success,
                 documentId = response.documentId,
+                stage = response.stage,
                 state = response.state,
                 version = response.version,
                 error = response.error
@@ -689,7 +648,7 @@ class SyncOrchestrator @Inject constructor(
 
             if (response.success) {
                 // Remove the completed document locally — the server no longer
-                // includes it in this user's document set.
+                // includes it in this user's document set after stage completion.
                 documentLineDao.deleteLinesByDocumentId(documentId)
                 documentDao.deleteDocument(documentId)
 
@@ -706,87 +665,6 @@ class SyncOrchestrator @Inject constructor(
     }
 
     // ============================================
-    // Product Lookup
-    // ============================================
-
-    /**
-     * Lookup product by barcode via WebSocket
-     * First checks local database, then queries server
-     */
-    suspend fun lookupProductByBarcode(barcode: String): Result<ProductDto?> {
-        AppLog.d(TAG, "Looking up product by barcode: $barcode")
-
-        // First check local database
-        val localBarcodes = productDao.getProductIdByBarcode(barcode)
-        if (localBarcodes.isNotEmpty()) {
-            val productId = localBarcodes.first().productId
-            val entity = productDao.getProductById(productId)
-            if (entity != null) {
-                val barcodes = productDao.getBarcodesByProductId(productId)
-                AppLog.d(TAG, "Product found locally: ${entity.name}")
-                // Convert to DTO for consistency
-                return Result.Success(ProductDto(
-                    id = entity.id,
-                    code = entity.code,
-                    name = entity.name,
-                    description = entity.description,
-                    unit = entity.unit,
-                    supportsBatches = entity.supportsBatches,
-                    isActive = entity.isActive,
-                    barcodes = barcodes.map {
-                        BarcodeDto(
-                            id = it.id,
-                            barcode = it.barcode,
-                            type = it.type,
-                            isPrimary = it.isPrimary
-                        )
-                    }
-                ))
-            }
-        }
-
-        // Not found locally, query server
-        if (!webSocketManager.isConnected()) {
-            return Result.Error(Exception("Product not found locally and WebSocket not connected"))
-        }
-
-        val message = SyncMessage.ProductLookup(
-            id = messageParser.generateMessageId(),
-            timestamp = messageParser.getCurrentTimestamp(),
-            barcode = barcode
-        )
-
-        val response = webSocketManager.sendAndAwait(
-            message,
-            SyncMessage.ProductLookupResult::class.java
-        )
-
-        return if (response != null && response.success && response.product != null) {
-            val productDto = gson.fromJson(response.product, ProductDto::class.java)
-
-            // Cache locally
-            val entity = productMapper.toEntity(productDto)
-            productDao.upsertProduct(entity)
-
-            val barcodeEntities = productMapper.toBarcodeEntityList(productDto)
-            productDao.deleteBarcodesForProduct(productDto.id)
-            barcodeEntities.forEach { productDao.insertBarcode(it) }
-
-            productMapper.toImageEntity(productDto)?.let { imageEntity ->
-                productImageDao.deleteByProductId(productDto.id)
-                productImageDao.insert(imageEntity)
-            }
-
-            AppLog.d(TAG, "Product found on server and cached: ${productDto.name}")
-            Result.Success(productDto)
-        } else {
-            val error = response?.error ?: "Product not found"
-            AppLog.d(TAG, "Product lookup failed: $error")
-            Result.Success(null)
-        }
-    }
-
-    // ============================================
     // Message Handling
     // ============================================
 
@@ -799,11 +677,11 @@ class SyncOrchestrator @Inject constructor(
                 is SyncMessage.SyncComplete -> {
                     handleSyncComplete(message)
                 }
-                is SyncMessage.DocumentLockResult -> {
-                    handleDocumentLockResult(message)
+                is SyncMessage.StageLockResult -> {
+                    handleStageLockResult(message)
                 }
-                is SyncMessage.DocumentCompleteResult -> {
-                    handleDocumentCompleteResult(message)
+                is SyncMessage.StageCompleteResult -> {
+                    handleStageCompleteResult(message)
                 }
                 is SyncMessage.Push -> {
                     handlePush(message)
@@ -844,8 +722,6 @@ class SyncOrchestrator @Inject constructor(
 
         syncTimeoutJob?.cancel()
         syncTimeoutJob = null
-        currentSyncId = message.syncId
-        pendingSyncCursors = message.cursors
 
         // Update all cursors in database
         syncStateDao.updateCursors(message.cursors)
@@ -872,22 +748,23 @@ class SyncOrchestrator @Inject constructor(
         }
     }
 
-    private suspend fun handleDocumentLockResult(message: SyncMessage.DocumentLockResult) {
-        AppLog.d(TAG, "Document lock result: ${message.documentId}, success: ${message.success}")
+    private suspend fun handleStageLockResult(message: SyncMessage.StageLockResult) {
+        AppLog.d(TAG, "Stage lock result: ${message.documentId}, stage: ${message.stage}, success: ${message.success}")
 
         if (message.success) {
-            documentDao.updateDocumentStateFromServer(message.documentId, "COLLECTING", System.currentTimeMillis())
+            documentDao.updateDocumentStateFromServer(message.documentId, stageInProcessState(message.stage), System.currentTimeMillis())
             message.lockedBy?.let { userId ->
                 documentDao.updateAssignedUser(message.documentId, userId, System.currentTimeMillis())
             }
         }
     }
 
-    private suspend fun handleDocumentCompleteResult(message: SyncMessage.DocumentCompleteResult) {
-        AppLog.d(TAG, "Document complete result: ${message.documentId}, success: ${message.success}")
+    private suspend fun handleStageCompleteResult(message: SyncMessage.StageCompleteResult) {
+        AppLog.d(TAG, "Stage complete result: ${message.documentId}, stage: ${message.stage}, success: ${message.success}")
 
         if (message.success) {
-            documentDao.updateDocumentStateFromServer(message.documentId, message.state ?: "COLLECTED", System.currentTimeMillis())
+            val state = message.state ?: return
+            documentDao.updateDocumentStateFromServer(message.documentId, state, System.currentTimeMillis())
             message.version?.let { version ->
                 documentDao.updateDocumentVersion(message.documentId, version.toInt())
             }
@@ -1297,58 +1174,58 @@ class SyncOrchestrator @Inject constructor(
         }
 
         when (operation.operationType) {
-            OperationType.DOCUMENT_LOCK -> {
+            OperationType.STAGE_LOCK -> {
                 val response = webSocketManager.sendAndAwait(
                     message,
-                    SyncMessage.DocumentLockResult::class.java
+                    SyncMessage.StageLockResult::class.java
                 )
                 if (response != null) {
                     if (response.success) {
                         documentDao.updateDocumentStateFromServer(
-                            response.documentId, "COLLECTING", System.currentTimeMillis()
+                            response.documentId, stageInProcessState(response.stage), System.currentTimeMillis()
                         )
                         response.lockedBy?.let { userId ->
                             documentDao.updateAssignedUser(response.documentId, userId, System.currentTimeMillis())
                         }
                         outgoingOperationRepository.markOperationCompleted(operation.id)
-                        AppLog.d(TAG, "Queued DOCUMENT_LOCK succeeded for ${operation.entityId}")
+                        AppLog.d(TAG, "Queued STAGE_LOCK succeeded for ${operation.entityId}")
                     } else {
                         outgoingOperationRepository.markOperationFailed(
                             operation.id, response.error ?: "Server rejected lock"
                         )
-                        AppLog.w(TAG, "Queued DOCUMENT_LOCK rejected for ${operation.entityId}: ${response.error}")
+                        AppLog.w(TAG, "Queued STAGE_LOCK rejected for ${operation.entityId}: ${response.error}")
                     }
                 } else {
                     outgoingOperationRepository.markOperationFailed(operation.id, "Lock request timeout")
-                    AppLog.w(TAG, "Queued DOCUMENT_LOCK timeout for ${operation.entityId}")
+                    AppLog.w(TAG, "Queued STAGE_LOCK timeout for ${operation.entityId}")
                 }
             }
-            OperationType.DOCUMENT_COMPLETE -> {
+            OperationType.STAGE_COMPLETE -> {
                 val response = webSocketManager.sendAndAwait(
                     message,
-                    SyncMessage.DocumentCompleteResult::class.java
+                    SyncMessage.StageCompleteResult::class.java
                 )
                 if (response != null) {
                     if (response.success) {
-                        documentDao.updateDocumentStateFromServer(
-                            response.documentId,
-                            response.state ?: "COLLECTED",
-                            System.currentTimeMillis()
-                        )
+                        response.state?.let { state ->
+                            documentDao.updateDocumentStateFromServer(
+                                response.documentId, state, System.currentTimeMillis()
+                            )
+                        }
                         response.version?.let { version ->
                             documentDao.updateDocumentVersion(response.documentId, version.toInt())
                         }
                         outgoingOperationRepository.markOperationCompleted(operation.id)
-                        AppLog.d(TAG, "Queued DOCUMENT_COMPLETE succeeded for ${operation.entityId}")
+                        AppLog.d(TAG, "Queued STAGE_COMPLETE succeeded for ${operation.entityId}")
                     } else {
                         outgoingOperationRepository.markOperationFailed(
                             operation.id, response.error ?: "Server rejected complete"
                         )
-                        AppLog.w(TAG, "Queued DOCUMENT_COMPLETE rejected for ${operation.entityId}: ${response.error}")
+                        AppLog.w(TAG, "Queued STAGE_COMPLETE rejected for ${operation.entityId}: ${response.error}")
                     }
                 } else {
                     outgoingOperationRepository.markOperationFailed(operation.id, "Complete request timeout")
-                    AppLog.w(TAG, "Queued DOCUMENT_COMPLETE timeout for ${operation.entityId}")
+                    AppLog.w(TAG, "Queued STAGE_COMPLETE timeout for ${operation.entityId}")
                 }
             }
             else -> {
@@ -1372,21 +1249,32 @@ class SyncOrchestrator @Inject constructor(
             val timestamp = messageParser.getCurrentTimestamp()
 
             when (operation.operationType) {
-                OperationType.DOCUMENT_LOCK -> {
+                OperationType.STAGE_LOCK -> {
                     val documentId = payloadJson.get("document_id")?.asString
-                    if (documentId == null) {
-                        AppLog.e(TAG, "Missing document_id in DOCUMENT_LOCK payload")
+                    val stage = payloadJson.get("stage")?.asString
+                    if (documentId == null || stage == null) {
+                        AppLog.e(TAG, "Missing document_id or stage in STAGE_LOCK payload")
                         return null
                     }
-                    SyncMessage.DocumentLock(id = id, timestamp = timestamp, documentId = documentId)
+                    SyncMessage.StageLock(id = id, timestamp = timestamp, documentId = documentId, stage = stage)
                 }
-                OperationType.DOCUMENT_UNLOCK -> {
+                OperationType.STAGE_UNLOCK -> {
                     val documentId = payloadJson.get("document_id")?.asString
-                    if (documentId == null) {
-                        AppLog.e(TAG, "Missing document_id in DOCUMENT_UNLOCK payload")
+                    val stage = payloadJson.get("stage")?.asString
+                    if (documentId == null || stage == null) {
+                        AppLog.e(TAG, "Missing document_id or stage in STAGE_UNLOCK payload")
                         return null
                     }
-                    SyncMessage.DocumentUnlock(id = id, timestamp = timestamp, documentId = documentId)
+                    SyncMessage.StageUnlock(id = id, timestamp = timestamp, documentId = documentId, stage = stage)
+                }
+                OperationType.STAGE_COMPLETE -> {
+                    val documentId = payloadJson.get("document_id")?.asString
+                    val stage = payloadJson.get("stage")?.asString
+                    if (documentId == null || stage == null) {
+                        AppLog.e(TAG, "Missing document_id or stage in STAGE_COMPLETE payload")
+                        return null
+                    }
+                    SyncMessage.StageComplete(id = id, timestamp = timestamp, documentId = documentId, stage = stage)
                 }
                 OperationType.DOCUMENT_UPDATE -> {
                     val documentId = payloadJson.get("document_id")?.asString
@@ -1412,14 +1300,6 @@ class SyncOrchestrator @Inject constructor(
                         state = state,
                         lines = lines
                     )
-                }
-                OperationType.DOCUMENT_COMPLETE -> {
-                    val documentId = payloadJson.get("document_id")?.asString
-                    if (documentId == null) {
-                        AppLog.e(TAG, "Missing document_id in DOCUMENT_COMPLETE payload")
-                        return null
-                    }
-                    SyncMessage.DocumentComplete(id = id, timestamp = timestamp, documentId = documentId)
                 }
                 else -> {
                     AppLog.w(TAG, "Unsupported operation type for offline queue: ${operation.operationType}")

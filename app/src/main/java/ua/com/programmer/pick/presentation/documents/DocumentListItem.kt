@@ -38,6 +38,7 @@ fun DocumentListItem(
     } else 0f
 
     val isComplete = document.state == DocumentState.COLLECTED ||
+        document.state == DocumentState.PACKED ||
         document.state == DocumentState.DELIVERING ||
         document.state == DocumentState.DELIVERED ||
         document.state == DocumentState.SENT
@@ -184,15 +185,30 @@ private fun DocumentStateBadge(
             MaterialTheme.colorScheme.tertiaryContainer,
             MaterialTheme.colorScheme.onTertiaryContainer
         )
-        DocumentState.PACKAGING -> Triple(
-            R.string.document_state_packaging,
-            MaterialTheme.colorScheme.tertiaryContainer,
-            MaterialTheme.colorScheme.onTertiaryContainer
-        )
         DocumentState.COLLECTED -> Triple(
             R.string.document_state_completed,
             MaterialTheme.colorScheme.secondaryContainer,
             MaterialTheme.colorScheme.onSecondaryContainer
+        )
+        DocumentState.PACK -> Triple(
+            R.string.document_state_pack,
+            MaterialTheme.colorScheme.primaryContainer,
+            MaterialTheme.colorScheme.onPrimaryContainer
+        )
+        DocumentState.PACKING -> Triple(
+            R.string.document_state_packing,
+            MaterialTheme.colorScheme.tertiaryContainer,
+            MaterialTheme.colorScheme.onTertiaryContainer
+        )
+        DocumentState.PACKED -> Triple(
+            R.string.document_state_packed,
+            MaterialTheme.colorScheme.secondaryContainer,
+            MaterialTheme.colorScheme.onSecondaryContainer
+        )
+        DocumentState.DELIVERY -> Triple(
+            R.string.document_state_delivery,
+            MaterialTheme.colorScheme.primaryContainer,
+            MaterialTheme.colorScheme.onPrimaryContainer
         )
         DocumentState.DELIVERING -> Triple(
             R.string.document_state_delivering,

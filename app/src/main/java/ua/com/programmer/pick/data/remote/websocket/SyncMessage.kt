@@ -22,12 +22,14 @@ enum class MessageType {
     ACK,
 
     // Document operations
-    DOCUMENT_LOCK,
-    DOCUMENT_UNLOCK,
     DOCUMENT_UPDATE,
-    DOCUMENT_COMPLETE,
-    DOCUMENT_LOCK_RESULT,
-    DOCUMENT_COMPLETE_RESULT,
+
+    // Stage operations (generalized lock/unlock/complete for any stage)
+    STAGE_LOCK,
+    STAGE_UNLOCK,
+    STAGE_COMPLETE,
+    STAGE_LOCK_RESULT,
+    STAGE_COMPLETE_RESULT,
 
     // Box scanning
     BOX_SCAN,
@@ -223,30 +225,6 @@ sealed class SyncMessage {
     // ============================================
 
     /**
-     * Client request to lock document ("Take into work")
-     * Payload: document_id
-     */
-    data class DocumentLock(
-        override val id: String,
-        override val timestamp: String,
-        val documentId: String
-    ) : SyncMessage() {
-        override val type = MessageType.DOCUMENT_LOCK
-    }
-
-    /**
-     * Client request to unlock document
-     * Payload: document_id
-     */
-    data class DocumentUnlock(
-        override val id: String,
-        override val timestamp: String,
-        val documentId: String
-    ) : SyncMessage() {
-        override val type = MessageType.DOCUMENT_UNLOCK
-    }
-
-    /**
      * Client notification about document/line updates
      * Payload: document_id, state, lines
      */
@@ -260,48 +238,81 @@ sealed class SyncMessage {
         override val type = MessageType.DOCUMENT_UPDATE
     }
 
-    /**
-     * Client request to complete document
-     * Payload: document_id
-     */
-    data class DocumentComplete(
-        override val id: String,
-        override val timestamp: String,
-        val documentId: String
-    ) : SyncMessage() {
-        override val type = MessageType.DOCUMENT_COMPLETE
-    }
+    // ============================================
+    // Stage Operation Messages
+    // ============================================
 
     /**
-     * Server response for document lock operation
-     * Payload: document_id, success, locked_by, error
+     * Client request to lock document for a stage
+     * Payload: document_id, stage ("collect"/"pack"/"deliver")
      */
-    data class DocumentLockResult(
+    data class StageLock(
         override val id: String,
         override val timestamp: String,
         val documentId: String,
+        val stage: String
+    ) : SyncMessage() {
+        override val type = MessageType.STAGE_LOCK
+    }
+
+    /**
+     * Client request to unlock document from a stage
+     * Payload: document_id, stage
+     */
+    data class StageUnlock(
+        override val id: String,
+        override val timestamp: String,
+        val documentId: String,
+        val stage: String
+    ) : SyncMessage() {
+        override val type = MessageType.STAGE_UNLOCK
+    }
+
+    /**
+     * Client request to complete current stage
+     * Payload: document_id, stage
+     */
+    data class StageComplete(
+        override val id: String,
+        override val timestamp: String,
+        val documentId: String,
+        val stage: String
+    ) : SyncMessage() {
+        override val type = MessageType.STAGE_COMPLETE
+    }
+
+    /**
+     * Server response for stage lock operation
+     * Payload: document_id, stage, success, locked_by, error
+     */
+    data class StageLockResult(
+        override val id: String,
+        override val timestamp: String,
+        val documentId: String,
+        val stage: String,
         val success: Boolean,
         val lockedBy: String? = null,
         val error: String? = null
     ) : SyncMessage() {
-        override val type = MessageType.DOCUMENT_LOCK_RESULT
+        override val type = MessageType.STAGE_LOCK_RESULT
     }
 
     /**
-     * Server response for document complete operation
-     * Payload: document_id, success, state, completed_at, version, error
+     * Server response for stage complete operation
+     * Payload: document_id, stage, success, state, completed_at, version, error
      */
-    data class DocumentCompleteResult(
+    data class StageCompleteResult(
         override val id: String,
         override val timestamp: String,
         val documentId: String,
+        val stage: String,
         val success: Boolean,
         val state: String? = null,
         val completedAt: String? = null,
         val version: Long? = null,
         val error: String? = null
     ) : SyncMessage() {
-        override val type = MessageType.DOCUMENT_COMPLETE_RESULT
+        override val type = MessageType.STAGE_COMPLETE_RESULT
     }
 
     // ============================================

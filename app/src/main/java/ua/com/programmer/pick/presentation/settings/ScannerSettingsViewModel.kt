@@ -46,7 +46,7 @@ data class ScannerTestUiState(
 class ScannerSettingsViewModel @Inject constructor(
     private val barcodeService: BarcodeService,
     private val dataWedgeDiagnostics: DataWedgeDiagnostics,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val settings = barcodeService.scannerSettings

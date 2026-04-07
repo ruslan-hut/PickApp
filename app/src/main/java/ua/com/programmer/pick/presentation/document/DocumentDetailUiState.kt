@@ -18,64 +18,41 @@ data class DocumentDetailUiState(
 ) {
     /**
      * Check if the current user can edit this document.
-     * Editing is allowed only when the document is COLLECTING and taken by the current user.
+     * Editing is allowed in any in-process state (COLLECTING, PACKING) by the assigned user.
      */
     val canEdit: Boolean
         get() {
             val doc = document ?: return false
             val userId = currentUserId ?: return false
-            return doc.state == DocumentState.COLLECTING &&
+            return DocumentState.isInProcess(doc.state) &&
                    doc.assignedUserId == userId
         }
 
     /**
      * Check if the current user can take this document into work.
-     * Also allows re-locking a COLLECTING document that was unlocked on the server
-     * (e.g., user exited without finishing and the server released the lock).
+     * Allowed when document is in a stage start state (LOADED, PACK).
      */
     val canTakeIntoWork: Boolean
         get() {
             val doc = document ?: return false
-            if (doc.state == DocumentState.LOADED) return true
-            // Allow re-locking if COLLECTING but not currently editable by this user
-            if (doc.state == DocumentState.COLLECTING && !canEdit) return true
+            if (DocumentState.isStageStart(doc.state)) return true
+            // Allow re-locking if in-process but not currently assigned to this user
+            if (DocumentState.isInProcess(doc.state) && !canEdit) return true
             return false
         }
 
     /**
-     * Check if the current user can move this document to PACKAGING.
-     * Only the user who took it into work can package it.
-     */
-    val canPackage: Boolean
-        get() {
-            val doc = document ?: return false
-            val userId = currentUserId ?: return false
-            return doc.state == DocumentState.COLLECTING &&
-                   doc.assignedUserId == userId
-        }
-
-    /**
-     * Check if the current user can complete this document.
-     * Document must be in PACKAGING state and owned by current user.
+     * Check if the current user can complete the current stage.
+     * Allowed in any in-process state (COLLECTING, PACKING) by the assigned user.
      */
     val canComplete: Boolean
-        get() {
-            val doc = document ?: return false
-            val userId = currentUserId ?: return false
-            return doc.state == DocumentState.PACKAGING &&
-                   doc.assignedUserId == userId
-        }
+        get() = canEdit
 
     /**
-     * Check if the current user can release this document from PACKAGING back to IN_PROGRESS.
+     * Check if the current user can release (unlock) this document.
      */
     val canRelease: Boolean
-        get() {
-            val doc = document ?: return false
-            val userId = currentUserId ?: return false
-            return doc.state == DocumentState.PACKAGING &&
-                   doc.assignedUserId == userId
-        }
+        get() = canEdit
 
     /**
      * Check if the document is taken by another user.
@@ -84,7 +61,7 @@ data class DocumentDetailUiState(
         get() {
             val doc = document ?: return false
             val userId = currentUserId ?: return false
-            return (doc.state == DocumentState.COLLECTING || doc.state == DocumentState.PACKAGING) &&
+            return DocumentState.isInProcess(doc.state) &&
                    doc.assignedUserId != null &&
                    doc.assignedUserId != userId
         }

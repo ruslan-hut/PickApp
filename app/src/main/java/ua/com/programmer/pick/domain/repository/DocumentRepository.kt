@@ -26,12 +26,6 @@ interface DocumentRepository {
 
     suspend fun getDocumentById(documentId: String): Document?
 
-    suspend fun takeIntoWork(documentId: String, userId: String): Result<Document>
-
-    suspend fun packageDocument(documentId: String): Result<Document>
-
-    suspend fun completeDocument(documentId: String): Result<Document>
-
     suspend fun updateDocumentState(documentId: String, state: DocumentState): Result<Unit>
 
     suspend fun saveDocument(document: Document): Result<Unit>

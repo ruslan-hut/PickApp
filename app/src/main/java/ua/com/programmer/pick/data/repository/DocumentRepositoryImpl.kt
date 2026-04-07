@@ -23,7 +23,7 @@ import javax.inject.Singleton
 class DocumentRepositoryImpl @Inject constructor(
     private val documentDao: DocumentDao,
     private val documentLineDao: DocumentLineDao,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+    @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : DocumentRepository {
 
     override fun getAllDocuments(): Flow<List<Document>> {
@@ -60,89 +60,6 @@ class DocumentRepositoryImpl @Inject constructor(
 
     override suspend fun getDocumentById(documentId: String): Document? = withContext(ioDispatcher) {
         documentDao.getDocumentById(documentId)?.toDomain()
-    }
-
-    override suspend fun takeIntoWork(documentId: String, userId: String): Result<Document> = withContext(ioDispatcher) {
-        try {
-            val document = documentDao.getDocumentById(documentId)
-                ?: return@withContext Result.Error(Exception("Document not found"), "Document not found")
-
-            if (document.state != DocumentState.LOADED.name && document.state != DocumentState.COLLECTING.name) {
-                return@withContext Result.Error(
-                    Exception("Document cannot be taken into work"),
-                    "Document is already in work or completed"
-                )
-            }
-
-            val currentTime = System.currentTimeMillis()
-            documentDao.takeDocumentIntoWork(
-                documentId = documentId,
-                userId = userId,
-                takenAt = currentTime,
-                state = DocumentState.COLLECTING.name,
-                lastModified = currentTime
-            )
-
-            val updatedDocument = documentDao.getDocumentById(documentId)?.toDomain()
-                ?: return@withContext Result.Error(Exception("Document not found after update"), "Document not found")
-
-            Result.Success(updatedDocument)
-        } catch (e: Exception) {
-            Result.Error(e, e.message ?: "Failed to take document into work")
-        }
-    }
-
-    override suspend fun packageDocument(documentId: String): Result<Document> = withContext(ioDispatcher) {
-        try {
-            val document = documentDao.getDocumentById(documentId)
-                ?: return@withContext Result.Error(Exception("Document not found"), "Document not found")
-
-            if (document.state != DocumentState.COLLECTING.name) {
-                return@withContext Result.Error(
-                    Exception("Document cannot be packaged"),
-                    "Document must be in progress to package"
-                )
-            }
-
-            val currentTime = System.currentTimeMillis()
-            documentDao.updateDocumentState(documentId, DocumentState.PACKAGING.name, currentTime)
-
-            val updatedDocument = documentDao.getDocumentById(documentId)?.toDomain()
-                ?: return@withContext Result.Error(Exception("Document not found after update"), "Document not found")
-
-            Result.Success(updatedDocument)
-        } catch (e: Exception) {
-            Result.Error(e, e.message ?: "Failed to package document")
-        }
-    }
-
-    override suspend fun completeDocument(documentId: String): Result<Document> = withContext(ioDispatcher) {
-        try {
-            val document = documentDao.getDocumentById(documentId)
-                ?: return@withContext Result.Error(Exception("Document not found"), "Document not found")
-
-            if (document.state != DocumentState.PACKAGING.name) {
-                return@withContext Result.Error(
-                    Exception("Document cannot be completed"),
-                    "Document must be in packaging state to complete"
-                )
-            }
-
-            val currentTime = System.currentTimeMillis()
-            documentDao.completeDocument(
-                documentId = documentId,
-                completedAt = currentTime,
-                state = DocumentState.COLLECTED.name,
-                lastModified = currentTime
-            )
-
-            val updatedDocument = documentDao.getDocumentById(documentId)?.toDomain()
-                ?: return@withContext Result.Error(Exception("Document not found after update"), "Document not found")
-
-            Result.Success(updatedDocument)
-        } catch (e: Exception) {
-            Result.Error(e, e.message ?: "Failed to complete document")
-        }
     }
 
     override suspend fun updateDocumentState(documentId: String, state: DocumentState): Result<Unit> = withContext(ioDispatcher) {

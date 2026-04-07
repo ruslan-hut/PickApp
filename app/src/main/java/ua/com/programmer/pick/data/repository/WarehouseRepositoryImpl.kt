@@ -8,7 +8,6 @@ import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.util.Result
 import ua.com.programmer.pick.data.local.database.dao.WarehouseDao
 import ua.com.programmer.pick.data.mapper.toDomain
-import ua.com.programmer.pick.data.mapper.toDomainList
 import ua.com.programmer.pick.data.mapper.toEntity
 import ua.com.programmer.pick.data.mapper.toLocationDomainList
 import ua.com.programmer.pick.data.mapper.toLocationEntityList
@@ -21,7 +20,7 @@ import javax.inject.Singleton
 @Singleton
 class WarehouseRepositoryImpl @Inject constructor(
     private val warehouseDao: WarehouseDao,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+    @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : WarehouseRepository {
 
     override fun getAllActiveWarehouses(): Flow<List<Warehouse>> {

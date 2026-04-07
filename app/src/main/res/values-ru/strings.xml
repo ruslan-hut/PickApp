@@ -89,9 +89,12 @@
     <string name="cannot_release_document">Невозможно освободить документ: сервер отклонил запрос</string>
     <string name="save_complete_cd">Сохранить и завершить документ</string>
     <string name="document_state_loaded">Новый</string>
-    <string name="document_state_in_progress">В работе</string>
-    <string name="document_state_packaging">Упаковка</string>
-    <string name="document_state_completed">Завершён</string>
+    <string name="document_state_in_progress">Сборка</string>
+    <string name="document_state_completed">Собран</string>
+    <string name="document_state_pack">Упаковка</string>
+    <string name="document_state_packing">Упаковывается</string>
+    <string name="document_state_packed">Упакован</string>
+    <string name="document_state_delivery">Доставка</string>
     <string name="document_state_delivering">Доставляется</string>
     <string name="document_state_delivered">Доставлен</string>
     <string name="document_state_sent">Отправлен</string>

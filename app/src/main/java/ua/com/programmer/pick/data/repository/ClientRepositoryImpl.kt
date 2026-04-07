@@ -18,7 +18,7 @@ import javax.inject.Singleton
 @Singleton
 class ClientRepositoryImpl @Inject constructor(
     private val clientDao: ClientDao,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+    @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ClientRepository {
 
     override fun getAllActiveClients(): Flow<List<Client>> {

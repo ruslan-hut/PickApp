@@ -41,9 +41,9 @@ import javax.inject.Singleton
  */
 @Singleton
 class CameraScannerManager @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val gs1Parser: GS1Parser,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+    @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ScannerManager {
 
     companion object {

@@ -20,7 +20,7 @@ import javax.inject.Singleton
 class BoxRepositoryImpl @Inject constructor(
     private val boxDao: BoxDao,
     private val documentBoxDao: DocumentBoxDao,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+    @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : BoxRepository {
 
     override fun getAllActiveBoxes(): Flow<List<Box>> {

@@ -9,7 +9,6 @@ import ua.com.programmer.pick.core.util.Result
 import ua.com.programmer.pick.data.local.database.dao.ProductDao
 import ua.com.programmer.pick.data.mapper.toBarcodeEntityList
 import ua.com.programmer.pick.data.mapper.toDomain
-import ua.com.programmer.pick.data.mapper.toDomainList
 import ua.com.programmer.pick.data.mapper.toEntity
 import ua.com.programmer.pick.domain.model.Product
 import ua.com.programmer.pick.domain.repository.ProductRepository
@@ -19,7 +18,7 @@ import javax.inject.Singleton
 @Singleton
 class ProductRepositoryImpl @Inject constructor(
     private val productDao: ProductDao,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+    @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ProductRepository {
 
     override fun getAllActiveProducts(): Flow<List<Product>> {

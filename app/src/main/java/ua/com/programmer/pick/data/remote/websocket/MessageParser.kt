@@ -71,6 +71,7 @@ class MessageParser @Inject constructor(
         private const val FIELD_OFFLINE_SEQ = "offline_seq"
         private const val FIELD_CLIENT_TS = "client_ts"
         private const val FIELD_WAS_NOOP = "was_noop"
+        private const val FIELD_STAGE = "stage"
 
         // User login fields
         private const val FIELD_LOGIN = "login"
@@ -107,8 +108,8 @@ class MessageParser @Inject constructor(
                 MessageType.USER_LOGIN_RESULT.name -> parseUserLoginResult(id, timestamp, payload)
                 MessageType.SYNC_DATA.name -> parseSyncData(id, timestamp, payload)
                 MessageType.SYNC_COMPLETE.name -> parseSyncComplete(id, timestamp, payload)
-                MessageType.DOCUMENT_LOCK_RESULT.name -> parseDocumentLockResult(id, timestamp, payload)
-                MessageType.DOCUMENT_COMPLETE_RESULT.name -> parseDocumentCompleteResult(id, timestamp, payload)
+                MessageType.STAGE_LOCK_RESULT.name -> parseStageLockResult(id, timestamp, payload)
+                MessageType.STAGE_COMPLETE_RESULT.name -> parseStageCompleteResult(id, timestamp, payload)
                 MessageType.PRODUCT_LOOKUP_RESULT.name -> parseProductLookupResult(id, timestamp, payload)
                 MessageType.BOX_SCAN_RESULT.name -> parseBoxScanResult(id, timestamp, payload)
                 MessageType.BOX_PICKUP_CONFIRM_RESULT.name -> parseBoxPickupConfirmResult(id, timestamp, payload)
@@ -179,12 +180,19 @@ class MessageParser @Inject constructor(
                 add(FIELD_CURSORS, gson.toJsonTree(message.cursors))
             }
 
-            is SyncMessage.DocumentLock -> JsonObject().apply {
+            is SyncMessage.StageLock -> JsonObject().apply {
                 addProperty(FIELD_DOCUMENT_ID, message.documentId)
+                addProperty(FIELD_STAGE, message.stage)
             }
 
-            is SyncMessage.DocumentUnlock -> JsonObject().apply {
+            is SyncMessage.StageUnlock -> JsonObject().apply {
                 addProperty(FIELD_DOCUMENT_ID, message.documentId)
+                addProperty(FIELD_STAGE, message.stage)
+            }
+
+            is SyncMessage.StageComplete -> JsonObject().apply {
+                addProperty(FIELD_DOCUMENT_ID, message.documentId)
+                addProperty(FIELD_STAGE, message.stage)
             }
 
             is SyncMessage.DocumentUpdate -> JsonObject().apply {
@@ -201,10 +209,6 @@ class MessageParser @Inject constructor(
                     linesArray.add(lineObj)
                 }
                 add(FIELD_LINES, linesArray)
-            }
-
-            is SyncMessage.DocumentComplete -> JsonObject().apply {
-                addProperty(FIELD_DOCUMENT_ID, message.documentId)
             }
 
             is SyncMessage.ProductLookup -> JsonObject().apply {
@@ -241,8 +245,8 @@ class MessageParser @Inject constructor(
             is SyncMessage.UserLoginResult,
             is SyncMessage.SyncData,
             is SyncMessage.SyncComplete,
-            is SyncMessage.DocumentLockResult,
-            is SyncMessage.DocumentCompleteResult,
+            is SyncMessage.StageLockResult,
+            is SyncMessage.StageCompleteResult,
             is SyncMessage.ProductLookupResult,
             is SyncMessage.BoxScanResult,
             is SyncMessage.BoxPickupConfirmResult,
@@ -319,24 +323,26 @@ class MessageParser @Inject constructor(
         )
     }
 
-    private fun parseDocumentLockResult(id: String, timestamp: String, payload: JsonObject?): SyncMessage.DocumentLockResult? {
+    private fun parseStageLockResult(id: String, timestamp: String, payload: JsonObject?): SyncMessage.StageLockResult? {
         if (payload == null) return null
-        return SyncMessage.DocumentLockResult(
+        return SyncMessage.StageLockResult(
             id = id,
             timestamp = timestamp,
             documentId = payload.get(FIELD_DOCUMENT_ID)?.asString ?: return null,
+            stage = payload.get(FIELD_STAGE)?.asString ?: return null,
             success = payload.get(FIELD_SUCCESS)?.asBoolean ?: false,
             lockedBy = payload.get(FIELD_LOCKED_BY)?.asString,
             error = payload.get(FIELD_ERROR)?.asString
         )
     }
 
-    private fun parseDocumentCompleteResult(id: String, timestamp: String, payload: JsonObject?): SyncMessage.DocumentCompleteResult? {
+    private fun parseStageCompleteResult(id: String, timestamp: String, payload: JsonObject?): SyncMessage.StageCompleteResult? {
         if (payload == null) return null
-        return SyncMessage.DocumentCompleteResult(
+        return SyncMessage.StageCompleteResult(
             id = id,
             timestamp = timestamp,
             documentId = payload.get(FIELD_DOCUMENT_ID)?.asString ?: return null,
+            stage = payload.get(FIELD_STAGE)?.asString ?: return null,
             success = payload.get(FIELD_SUCCESS)?.asBoolean ?: false,
             state = payload.get(FIELD_STATE)?.asString,
             completedAt = payload.get(FIELD_COMPLETED_AT)?.asString,

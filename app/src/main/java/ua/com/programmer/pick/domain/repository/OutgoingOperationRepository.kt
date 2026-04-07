@@ -54,10 +54,10 @@ data class OutgoingOperation(
 )
 
 enum class OperationType {
-    DOCUMENT_LOCK,
-    DOCUMENT_UNLOCK,
+    STAGE_LOCK,
+    STAGE_UNLOCK,
+    STAGE_COMPLETE,
     DOCUMENT_UPDATE,
-    DOCUMENT_COMPLETE,
     BOX_SCAN,
     BOX_PICKUP_CONFIRM,
     BOX_DELIVERY_CONFIRM,

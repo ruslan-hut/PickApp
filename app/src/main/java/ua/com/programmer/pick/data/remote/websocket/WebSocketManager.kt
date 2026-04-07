@@ -306,8 +306,8 @@ class WebSocketManager @Inject constructor(
      */
     private fun extractOutgoingCorrelationId(message: SyncMessage): String? {
         return when (message) {
-            is SyncMessage.DocumentLock -> message.documentId
-            is SyncMessage.DocumentComplete -> message.documentId
+            is SyncMessage.StageLock -> message.documentId
+            is SyncMessage.StageComplete -> message.documentId
             is SyncMessage.ProductLookup -> message.barcode
             is SyncMessage.UserLogin -> message.login
             else -> null
@@ -487,8 +487,8 @@ class WebSocketManager @Inject constructor(
      */
     private fun extractIncomingCorrelationId(message: SyncMessage): String? {
         return when (message) {
-            is SyncMessage.DocumentLockResult -> message.documentId
-            is SyncMessage.DocumentCompleteResult -> message.documentId
+            is SyncMessage.StageLockResult -> message.documentId
+            is SyncMessage.StageCompleteResult -> message.documentId
             is SyncMessage.ProductLookupResult -> null  // no document-level correlation
             is SyncMessage.UserLoginResult -> null  // single login at a time
             is SyncMessage.SyncComplete -> null  // single sync at a time
