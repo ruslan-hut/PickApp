@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -189,6 +190,17 @@ class WebSocketManager @Inject constructor(
                 offlineHash = response.offlineHash,
                 availableDocumentTypes = response.availableDocumentTypes
             )
+            // Reconcile the persisted current user ID with what the server
+            // authoritatively reports. If the user's MongoDB _id changes
+            // server-side (e.g. account recreated), auto-login would otherwise
+            // leave a stale hex in preferences and break lock-owner comparisons.
+            response.userId?.let { serverUserId ->
+                val storedUserId = appPreferences.currentUserId.first()
+                if (storedUserId != serverUserId) {
+                    AppLog.w(TAG, "Current user ID drift detected: stored=$storedUserId server=$serverUserId — updating preferences")
+                    appPreferences.setCurrentUserId(serverUserId)
+                }
+            }
             AppLog.d(TAG, "User authenticated: ${response.userName} (${response.role})")
             UserLoginResult(
                 success = true,
