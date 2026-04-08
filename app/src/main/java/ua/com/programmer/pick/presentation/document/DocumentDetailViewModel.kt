@@ -366,6 +366,10 @@ class DocumentDetailViewModel @Inject constructor(
     }
 
     fun takeIntoWork() {
+        // Guard against re-entry from rapid double-clicks: if a lock request
+        // is already in flight, ignore this invocation.
+        if (_uiState.value.isProcessingAction) return
+
         val documentId = currentDocumentId ?: return
         val currentState = _uiState.value.document?.state ?: return
 
@@ -377,20 +381,38 @@ class DocumentDetailViewModel @Inject constructor(
             return
         }
 
-        viewModelScope.launch {
-            _uiState.update { it.copy(isProcessingAction = true) }
+        _uiState.update { it.copy(isProcessingAction = true) }
 
+        viewModelScope.launch {
             try {
                 val lockResult = syncOrchestrator.lockForStage(documentId, stage)
 
                 when (lockResult) {
                     is Result.Success -> {
-                        // Reload document from local DB (server updated state via lock result)
+                        val data = lockResult.data
+                        val currentUserId = _uiState.value.currentUserId
+                        val lockedBySelf = data.lockedBy != null && data.lockedBy == currentUserId
+
+                        // Reload document from local DB (lockForStage persists
+                        // the assigned user even on success=false, so canEdit
+                        // will correctly reflect lockedBySelf).
                         val updatedDoc = documentRepository.getDocumentById(documentId)
                         _uiState.update {
                             it.copy(document = updatedDoc, isProcessingAction = false)
                         }
-                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_TAKEN_INTO_WORK))
+
+                        when {
+                            data.success || lockedBySelf -> {
+                                // Either freshly locked for us, or already ours — treat as success.
+                                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_TAKEN_INTO_WORK))
+                            }
+                            data.lockedBy != null -> {
+                                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_TAKEN_BY_OTHER))
+                            }
+                            else -> {
+                                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_TAKE_INTO_WORK))
+                            }
+                        }
                     }
                     is Result.Error -> {
                         _uiState.update { it.copy(isProcessingAction = false) }

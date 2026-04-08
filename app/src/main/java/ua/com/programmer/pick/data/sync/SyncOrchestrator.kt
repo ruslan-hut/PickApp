@@ -505,11 +505,14 @@ class SyncOrchestrator @Inject constructor(
                 error = response.error
             )
 
+            // Always reflect the server-reported lock owner locally — even on
+            // success=false (e.g. "already locked"), so the UI can correctly
+            // recognize when the lock belongs to the current user.
             if (response.success) {
                 documentDao.updateDocumentStateFromServer(documentId, stageInProcessState(stage), System.currentTimeMillis())
-                response.lockedBy?.let { userId ->
-                    documentDao.updateAssignedUser(documentId, userId, System.currentTimeMillis())
-                }
+            }
+            response.lockedBy?.let { userId ->
+                documentDao.updateAssignedUser(documentId, userId, System.currentTimeMillis())
             }
 
             Result.Success(result)
