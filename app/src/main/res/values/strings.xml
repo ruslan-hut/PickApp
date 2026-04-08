@@ -123,6 +123,12 @@
     <string name="force_sync_description">Sync all data with the server</string>
     <string name="clear_cache">Clear Cache</string>
     <string name="clear_cache_description">Delete all locally cached data</string>
+    <string name="diagnostics">Diagnostics</string>
+    <string name="share_logs">Share Logs</string>
+    <string name="share_logs_description">Export the app log file and send it for troubleshooting</string>
+    <string name="share_logs_chooser">Share logs via</string>
+    <string name="share_logs_subject">Pick app logs</string>
+    <string name="error_exporting_logs">No logs to export</string>
     <string name="app_info">App Info</string>
     <string name="app_version_fmt">Version: %1$s</string>
     <string name="error_loading_settings">Error loading settings</string>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Exposes cacheDir/log_export for sharing exported log bundles via Intent.ACTION_SEND. -->
+    <cache-path name="log_export" path="log_export/" />
+</paths>

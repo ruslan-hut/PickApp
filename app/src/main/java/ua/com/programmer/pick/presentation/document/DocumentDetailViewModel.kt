@@ -164,6 +164,11 @@ class DocumentDetailViewModel @Inject constructor(
 
         // Check if current user can edit the document
         if (!_uiState.value.canEdit) {
+            val state = _uiState.value
+            AppLog.w(
+                "DocumentDetailViewModel",
+                "LOCK_TRACE scan-rejected: docId=$docId docState=${doc.state} assignedUserId=${doc.assignedUserId} currentUserId=${state.currentUserId} isInProcess=${DocumentState.isInProcess(doc.state)} isTakenByOther=${state.isTakenByOtherUser}"
+            )
             if (_uiState.value.isTakenByOtherUser) {
                 _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_TAKEN_BY_OTHER))
             } else {
@@ -397,6 +402,10 @@ class DocumentDetailViewModel @Inject constructor(
                         // the assigned user even on success=false, so canEdit
                         // will correctly reflect lockedBySelf).
                         val updatedDoc = documentRepository.getDocumentById(documentId)
+                        AppLog.i(
+                            "DocumentDetailViewModel",
+                            "LOCK_TRACE vm-result: docId=$documentId success=${data.success} respLockedBy=${data.lockedBy} currentUserId=$currentUserId lockedBySelf=$lockedBySelf reloadedState=${updatedDoc?.state} reloadedAssignedUserId=${updatedDoc?.assignedUserId} idsEqual=${updatedDoc?.assignedUserId == currentUserId}"
+                        )
                         _uiState.update {
                             it.copy(document = updatedDoc, isProcessingAction = false)
                         }

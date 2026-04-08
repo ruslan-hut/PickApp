@@ -123,6 +123,12 @@
     <string name="force_sync_description">Синхронізувати всі дані з сервером</string>
     <string name="clear_cache">Очистити кеш</string>
     <string name="clear_cache_description">Видалити всі локально збережені дані</string>
+    <string name="diagnostics">Діагностика</string>
+    <string name="share_logs">Надіслати логи</string>
+    <string name="share_logs_description">Експортувати файл логів і надіслати в підтримку</string>
+    <string name="share_logs_chooser">Поділитися логами через</string>
+    <string name="share_logs_subject">Логи додатка Pick</string>
+    <string name="error_exporting_logs">Немає логів для експорту</string>
     <string name="app_info">Про додаток</string>
     <string name="app_version_fmt">Версія: %1$s</string>
     <string name="error_loading_settings">Помилка завантаження налаштувань</string>

@@ -1,15 +1,21 @@
 package ua.com.programmer.pick.presentation.settings
 
+import android.content.Context
+import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import ua.com.programmer.pick.BuildConfig
+import ua.com.programmer.pick.core.util.FileLogger
 import ua.com.programmer.pick.data.local.database.dao.SyncStateDao
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
@@ -17,6 +23,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val appPreferences: AppPreferences,
     private val syncStateDao: SyncStateDao,
     private val syncOrchestrator: SyncOrchestrator
@@ -124,6 +131,31 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Export the current log bundle and emit a content URI that the UI can
+     * hand to Intent.ACTION_SEND. Runs on IO to avoid blocking the main thread.
+     */
+    fun exportLogs(onReady: (android.net.Uri?) -> Unit) {
+        viewModelScope.launch {
+            val uri = withContext(Dispatchers.IO) {
+                val file = FileLogger.exportToShareableFile(context) ?: return@withContext null
+                try {
+                    FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        file
+                    )
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            if (uri == null) {
+                _uiState.update { it.copy(errorMessage = ERROR_EXPORTING_LOGS) }
+            }
+            onReady(uri)
+        }
+    }
+
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }
     }
@@ -137,6 +169,7 @@ class SettingsViewModel @Inject constructor(
         const val ERROR_SAVING_SETTINGS = "ERROR_SAVING_SETTINGS"
         const val ERROR_CLEARING_CACHE = "ERROR_CLEARING_CACHE"
         const val ERROR_SYNC_FAILED = "ERROR_SYNC_FAILED"
+        const val ERROR_EXPORTING_LOGS = "ERROR_EXPORTING_LOGS"
         const val SUCCESS_SETTINGS_SAVED = "SUCCESS_SETTINGS_SAVED"
         const val SUCCESS_CACHE_CLEARED = "SUCCESS_CACHE_CLEARED"
         const val SUCCESS_SYNC_STARTED = "SUCCESS_SYNC_STARTED"

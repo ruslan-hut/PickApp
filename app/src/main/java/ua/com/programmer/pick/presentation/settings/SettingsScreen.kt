@@ -27,6 +27,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
+import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -36,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
@@ -58,6 +60,10 @@ fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
 
+    val context = LocalContext.current
+    val shareChooserTitle = stringResource(R.string.share_logs_chooser)
+    val shareSubject = stringResource(R.string.share_logs_subject)
+
     // Handle error messages
     val errorMessage = uiState.errorMessage
     val errorText = when (errorMessage) {
@@ -65,6 +71,7 @@ fun SettingsScreen(
         SettingsViewModel.ERROR_SAVING_SETTINGS -> stringResource(R.string.error_saving_settings)
         SettingsViewModel.ERROR_CLEARING_CACHE -> stringResource(R.string.error_clearing_cache)
         SettingsViewModel.ERROR_SYNC_FAILED -> stringResource(R.string.error_sync_failed)
+        SettingsViewModel.ERROR_EXPORTING_LOGS -> stringResource(R.string.error_exporting_logs)
         else -> null
     }
 
@@ -182,6 +189,36 @@ fun SettingsScreen(
                     title = stringResource(R.string.scanner_settings),
                     subtitle = stringResource(R.string.scanner_settings_description),
                     onClick = onScannerSettingsClick
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                // Diagnostics Section
+                SectionHeader(
+                    title = stringResource(R.string.diagnostics),
+                    icon = R.drawable.outline_info_24
+                )
+
+                SettingsItem(
+                    icon = R.drawable.outline_info_24,
+                    title = stringResource(R.string.share_logs),
+                    subtitle = stringResource(R.string.share_logs_description),
+                    onClick = {
+                        viewModel.exportLogs { uri ->
+                            if (uri != null) {
+                                val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    putExtra(Intent.EXTRA_SUBJECT, shareSubject)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                val chooser = Intent.createChooser(sendIntent, shareChooserTitle)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(chooser)
+                            }
+                        }
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))

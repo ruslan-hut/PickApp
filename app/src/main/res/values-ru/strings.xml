@@ -123,6 +123,12 @@
     <string name="force_sync_description">Синхронизировать все данные с сервером</string>
     <string name="clear_cache">Очистить кэш</string>
     <string name="clear_cache_description">Удалить все локально сохранённые данные</string>
+    <string name="diagnostics">Диагностика</string>
+    <string name="share_logs">Отправить логи</string>
+    <string name="share_logs_description">Экспортировать файл логов и отправить в поддержку</string>
+    <string name="share_logs_chooser">Поделиться логами через</string>
+    <string name="share_logs_subject">Логи приложения Pick</string>
+    <string name="error_exporting_logs">Нет логов для экспорта</string>
     <string name="app_info">О приложении</string>
     <string name="app_version_fmt">Версия: %1$s</string>
     <string name="error_loading_settings">Ошибка загрузки настроек</string>

@@ -5,6 +5,7 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import dagger.hilt.android.HiltAndroidApp
 import ua.com.programmer.pick.core.scanner.BarcodeService
+import ua.com.programmer.pick.core.util.FileLogger
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.data.sync.SyncScheduler
 import javax.inject.Inject
@@ -31,6 +32,9 @@ class PickApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+
+        // Initialize file logger as early as possible so subsequent init is captured
+        FileLogger.initialize(this)
 
         // Initialize sync orchestrator
         syncOrchestrator.initialize()

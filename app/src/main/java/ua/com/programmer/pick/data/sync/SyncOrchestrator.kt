@@ -505,6 +505,8 @@ class SyncOrchestrator @Inject constructor(
                 error = response.error
             )
 
+            AppLog.i(TAG, "LOCK_TRACE response: reqDocId=$documentId respDocId=${response.documentId} success=${response.success} lockedBy=${response.lockedBy} error=${response.error}")
+
             // Always reflect the server-reported lock owner locally — even on
             // success=false (e.g. "already locked"), so the UI can correctly
             // recognize when the lock belongs to the current user.
@@ -514,6 +516,11 @@ class SyncOrchestrator @Inject constructor(
             response.lockedBy?.let { userId ->
                 documentDao.updateAssignedUser(documentId, userId, System.currentTimeMillis())
             }
+
+            // Read back from DB to verify what was actually persisted. If this
+            // mismatches response.lockedBy, the bug is in the DB write path.
+            val persisted = documentDao.getDocumentById(documentId)
+            AppLog.i(TAG, "LOCK_TRACE persisted: docId=$documentId state=${persisted?.state} assignedUserId=${persisted?.assignedUserId}")
 
             Result.Success(result)
         } else {
