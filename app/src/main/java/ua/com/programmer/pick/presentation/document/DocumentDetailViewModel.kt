@@ -6,8 +6,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,7 +21,6 @@ import ua.com.programmer.pick.core.scanner.BarcodeService
 import ua.com.programmer.pick.core.scanner.ScannedBarcode
 import ua.com.programmer.pick.data.local.database.dao.ProductImageDao
 import ua.com.programmer.pick.core.util.Result
-import ua.com.programmer.pick.data.remote.websocket.DocumentLineUpdate
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.domain.model.DocumentLine
 import ua.com.programmer.pick.domain.model.DocumentState
@@ -59,7 +56,6 @@ class DocumentDetailViewModel @Inject constructor(
     val uiEvents = _uiEvents.asSharedFlow()
 
     private var currentDocumentId: String? = null
-    private var syncDebounceJob: Job? = null
 
     init {
         // Subscribe to barcode scans once when ViewModel is created
@@ -510,28 +506,12 @@ class DocumentDetailViewModel @Inject constructor(
     }
 
     /**
-     * Debounced push of document line changes to server.
-     * Batches rapid scans into a single update after 500ms of inactivity.
+     * Schedule document sync via SyncOrchestrator (application scope).
+     * Debounce and actual send happen in SyncOrchestrator, so the sync
+     * survives ViewModel destruction (e.g., user navigates back quickly).
      */
     private fun notifyDocumentLinesChanged() {
-        syncDebounceJob?.cancel()
-        syncDebounceJob = viewModelScope.launch(ioDispatcher) {
-            delay(500L)
-            val state = _uiState.value
-            val doc = state.document ?: return@launch
-            val lines = state.lines.map { line ->
-                DocumentLineUpdate(
-                    lineNumber = line.lineNumber,
-                    actualQuantity = line.actualQuantity,
-                    batchNumber = line.batchNumber,
-                    isCompleted = line.isCompleted
-                )
-            }
-            try {
-                syncOrchestrator.updateDocument(doc.id, doc.state.name, lines)
-            } catch (e: Exception) {
-                AppLog.w("DocumentDetailViewModel", "Failed to sync lines: ${e.message}")
-            }
-        }
+        val docId = currentDocumentId ?: return
+        syncOrchestrator.scheduleDocumentSync(docId)
     }
 }

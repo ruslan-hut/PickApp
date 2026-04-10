@@ -150,6 +150,7 @@ class SyncOrchestrator @Inject constructor(
 
     private var syncTimeoutJob: Job? = null
     private val syncReceivedCounts = mutableMapOf<String, Int>()
+    private val documentSyncJobs = mutableMapOf<String, Job>()
 
 
     private var isInitialized = false
@@ -577,6 +578,38 @@ class SyncOrchestrator @Inject constructor(
     }
 
     /**
+     * Schedule a debounced document sync in application scope.
+     * Reads dirty lines from Room DB and sends them to the server.
+     * Safe to call from any scope — survives ViewModel destruction.
+     */
+    fun scheduleDocumentSync(documentId: String) {
+        documentSyncJobs[documentId]?.cancel()
+        documentSyncJobs[documentId] = scope.launch {
+            delay(500L)
+            documentSyncJobs.remove(documentId)
+
+            val doc = documentDao.getDocumentById(documentId) ?: return@launch
+            val lineEntities = documentLineDao.getLinesByDocumentIdSync(documentId)
+            if (lineEntities.isEmpty()) return@launch
+
+            val lines = lineEntities.map { line ->
+                DocumentLineUpdate(
+                    lineNumber = line.lineNumber,
+                    actualQuantity = line.actualQuantity,
+                    batchNumber = line.batchNumber,
+                    isCompleted = line.isCompleted
+                )
+            }
+
+            try {
+                updateDocument(documentId, doc.state, lines)
+            } catch (e: Exception) {
+                AppLog.w(TAG, "Scheduled sync failed for $documentId: ${e.message}")
+            }
+        }
+    }
+
+    /**
      * Update document lines
      */
     suspend fun updateDocument(
@@ -613,7 +646,20 @@ class SyncOrchestrator @Inject constructor(
         return if (sent) {
             Result.Success(Unit)
         } else {
-            Result.Error(Exception("Failed to send document update"))
+            // WebSocket send failed (connection dropped between check and send) —
+            // queue the operation for retry instead of silently losing it.
+            AppLog.w(TAG, "WebSocket send failed for document $documentId, queueing for retry")
+            outgoingOperationRepository.queueOperation(
+                operationType = OperationType.DOCUMENT_UPDATE,
+                entityType = EntityType.DOCUMENT,
+                entityId = documentId,
+                payload = gson.toJson(mapOf(
+                    "document_id" to documentId,
+                    "state" to state,
+                    "lines" to lines
+                ))
+            )
+            Result.Error(Exception("WebSocket send failed, operation queued for retry"))
         }
     }
 
@@ -1173,6 +1219,58 @@ class SyncOrchestrator @Inject constructor(
         // Clean up completed and old failed operations
         outgoingOperationRepository.deleteCompletedOperations()
         outgoingOperationRepository.deleteFailedOperations(MAX_QUEUE_RETRIES)
+
+        // Re-push dirty documents that were saved locally but never synced
+        // (e.g., debounce cancelled by navigation, fire-and-forget lost in transit)
+        resyncDirtyDocuments()
+    }
+
+    /**
+     * Find documents with dirty lines that may not have been synced to the server,
+     * and re-send their line data.
+     */
+    private suspend fun resyncDirtyDocuments() {
+        if (!webSocketManager.isConnected() || !webSocketManager.isUserAuthenticated()) return
+
+        try {
+            val dirtyDocuments = documentDao.getDirtyDocuments()
+            if (dirtyDocuments.isEmpty()) return
+
+            AppLog.d(TAG, "Re-syncing ${dirtyDocuments.size} dirty document(s)")
+
+            for (doc in dirtyDocuments) {
+                if (!webSocketManager.isConnected()) break
+
+                val lineEntities = documentLineDao.getLinesByDocumentIdSync(doc.id)
+                if (lineEntities.isEmpty()) continue
+
+                val lines = lineEntities.map { line ->
+                    DocumentLineUpdate(
+                        lineNumber = line.lineNumber,
+                        actualQuantity = line.actualQuantity,
+                        batchNumber = line.batchNumber,
+                        isCompleted = line.isCompleted
+                    )
+                }
+
+                val message = SyncMessage.DocumentUpdate(
+                    id = messageParser.generateMessageId(),
+                    timestamp = messageParser.getCurrentTimestamp(),
+                    documentId = doc.id,
+                    state = doc.state,
+                    lines = lines
+                )
+
+                val sent = webSocketManager.sendMessage(message)
+                if (sent) {
+                    AppLog.d(TAG, "Re-synced dirty document: ${doc.id}")
+                } else {
+                    AppLog.w(TAG, "Failed to re-sync dirty document: ${doc.id}")
+                }
+            }
+        } catch (e: Exception) {
+            AppLog.w(TAG, "Error during dirty document re-sync: ${e.message}")
+        }
     }
 
     private suspend fun processOperation(operation: ua.com.programmer.pick.domain.repository.OutgoingOperation) {
