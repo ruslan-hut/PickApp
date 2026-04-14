@@ -128,6 +128,8 @@ class SyncOrchestrator @Inject constructor(
     private val boxDao: BoxDao,
     private val documentBoxDao: DocumentBoxDao,
     private val outgoingOperationRepository: OutgoingOperationRepository,
+    private val debugJournal: ua.com.programmer.pick.data.debug.DebugJournal,
+    private val debugJournalUploader: ua.com.programmer.pick.data.debug.DebugJournalUploader,
     private val networkMonitor: NetworkMonitor,
     private val documentMapper: DocumentMapper,
     private val productMapper: ProductMapper,
@@ -216,6 +218,11 @@ class SyncOrchestrator @Inject constructor(
                         // Now that user is authenticated, request sync and process pending operations
                         requestDeltaSync()
                         processPendingOperations()
+
+                        // Best-effort: flush any queued debug journal events
+                        scope.launch {
+                            try { debugJournalUploader.flush() } catch (_: Exception) {}
+                        }
 
                         // Documents are loaded via delta sync for all roles.
                         // Locking is an explicit user action (not automatic).
@@ -492,9 +499,26 @@ class SyncOrchestrator @Inject constructor(
             stage = stage
         )
 
+        debugJournal.log(
+            eventType = ua.com.programmer.pick.data.debug.DebugEventType.STAGE_LOCK_SENT,
+            message = "stage lock sent",
+            documentId = documentId,
+            stage = stage
+        )
+
         val response = webSocketManager.sendAndAwait(
             message,
             SyncMessage.StageLockResult::class.java
+        )
+
+        debugJournal.log(
+            eventType = ua.com.programmer.pick.data.debug.DebugEventType.STAGE_LOCK_RESULT,
+            message = if (response == null) "no response (timeout)" else "success=${response.success} lockedBy=${response.lockedBy}",
+            documentId = documentId,
+            stage = stage,
+            severity = if (response?.success == true) ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_INFO
+            else ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN,
+            payload = response?.let { mapOf("success" to it.success, "locked_by" to it.lockedBy, "error" to it.error) }
         )
 
         return if (response != null) {
@@ -553,6 +577,13 @@ class SyncOrchestrator @Inject constructor(
             stage = stage
         )
 
+        debugJournal.log(
+            eventType = ua.com.programmer.pick.data.debug.DebugEventType.STAGE_UNLOCK_SENT,
+            message = "stage unlock sent",
+            documentId = documentId,
+            stage = stage
+        )
+
         val sent = webSocketManager.sendMessage(message)
         return if (sent) {
             documentDao.updateDocumentStateFromServer(documentId, stageStartState(stage), System.currentTimeMillis())
@@ -583,6 +614,11 @@ class SyncOrchestrator @Inject constructor(
      * Safe to call from any scope — survives ViewModel destruction.
      */
     fun scheduleDocumentSync(documentId: String) {
+        debugJournal.log(
+            eventType = ua.com.programmer.pick.data.debug.DebugEventType.SYNC_SCHEDULED,
+            message = "debounced sync scheduled",
+            documentId = documentId
+        )
         documentSyncJobs[documentId]?.cancel()
         documentSyncJobs[documentId] = scope.launch {
             try {
@@ -601,6 +637,11 @@ class SyncOrchestrator @Inject constructor(
      * STAGE_COMPLETE is sent.
      */
     suspend fun flushDocumentSync(documentId: String) {
+        debugJournal.log(
+            eventType = ua.com.programmer.pick.data.debug.DebugEventType.SYNC_FLUSHED,
+            message = "flushing pending sync before completion",
+            documentId = documentId
+        )
         val pending = documentSyncJobs.remove(documentId)
         if (pending != null) {
             pending.cancel()
@@ -623,6 +664,17 @@ class SyncOrchestrator @Inject constructor(
             )
         }
 
+        debugJournal.log(
+            eventType = ua.com.programmer.pick.data.debug.DebugEventType.SYNC_FIRED,
+            message = "performing document sync",
+            documentId = documentId,
+            payload = mapOf(
+                "line_count" to lines.size,
+                "total_actual_qty" to lines.sumOf { it.actualQuantity },
+                "state" to doc.state
+            )
+        )
+
         try {
             updateDocument(documentId, doc.state, lines)
         } catch (e: Exception) {
@@ -642,6 +694,13 @@ class SyncOrchestrator @Inject constructor(
 
         if (!webSocketManager.isConnected()) {
             AppLog.d(TAG, "WebSocket not connected, queueing update operation for document: $documentId")
+            debugJournal.log(
+                eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_UPDATE_QUEUED,
+                message = "WS offline; queued document update",
+                documentId = documentId,
+                severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN,
+                payload = mapOf("line_count" to lines.size)
+            )
             outgoingOperationRepository.queueOperation(
                 operationType = OperationType.DOCUMENT_UPDATE,
                 entityType = EntityType.DOCUMENT,
@@ -665,11 +724,29 @@ class SyncOrchestrator @Inject constructor(
 
         val sent = webSocketManager.sendMessage(message)
         return if (sent) {
+            debugJournal.log(
+                eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_UPDATE_SENT,
+                message = "document update sent",
+                documentId = documentId,
+                payload = mapOf(
+                    "line_count" to lines.size,
+                    "total_actual_qty" to lines.sumOf { it.actualQuantity },
+                    "state" to state,
+                    "message_id" to message.id
+                )
+            )
             Result.Success(Unit)
         } else {
             // WebSocket send failed (connection dropped between check and send) —
             // queue the operation for retry instead of silently losing it.
             AppLog.w(TAG, "WebSocket send failed for document $documentId, queueing for retry")
+            debugJournal.log(
+                eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_UPDATE_QUEUED,
+                message = "WS send failed; queued for retry",
+                documentId = documentId,
+                severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN,
+                payload = mapOf("line_count" to lines.size)
+            )
             outgoingOperationRepository.queueOperation(
                 operationType = OperationType.DOCUMENT_UPDATE,
                 entityType = EntityType.DOCUMENT,
@@ -714,9 +791,27 @@ class SyncOrchestrator @Inject constructor(
             stage = stage
         )
 
+        debugJournal.log(
+            eventType = ua.com.programmer.pick.data.debug.DebugEventType.STAGE_COMPLETE_SENT,
+            message = "stage complete sent",
+            documentId = documentId,
+            stage = stage,
+            payload = mapOf("message_id" to message.id)
+        )
+
         val response = webSocketManager.sendAndAwait(
             message,
             SyncMessage.StageCompleteResult::class.java
+        )
+
+        debugJournal.log(
+            eventType = ua.com.programmer.pick.data.debug.DebugEventType.STAGE_COMPLETE_RESULT,
+            message = if (response == null) "no response (timeout)" else "success=${response.success} state=${response.state}",
+            documentId = documentId,
+            stage = stage,
+            severity = if (response?.success == true) ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_INFO
+            else ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_ERROR,
+            payload = response?.let { mapOf("success" to it.success, "state" to it.state, "error" to it.error) }
         )
 
         return if (response != null) {
@@ -730,6 +825,12 @@ class SyncOrchestrator @Inject constructor(
             )
 
             if (response.success) {
+                debugJournal.log(
+                    eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_DELETED_LOCAL,
+                    message = "local document purged after completion",
+                    documentId = documentId,
+                    stage = stage
+                )
                 // Remove the completed document locally — the server no longer
                 // includes it in this user's document set after stage completion.
                 documentLineDao.deleteLinesByDocumentId(documentId)
@@ -1289,6 +1390,14 @@ class SyncOrchestrator @Inject constructor(
                 )
 
                 val sent = webSocketManager.sendMessage(message)
+                debugJournal.log(
+                    eventType = ua.com.programmer.pick.data.debug.DebugEventType.RESYNC_DIRTY,
+                    message = if (sent) "re-synced dirty document" else "re-sync send failed",
+                    documentId = doc.id,
+                    severity = if (sent) ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_INFO
+                    else ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN,
+                    payload = mapOf("line_count" to lines.size, "state" to doc.state)
+                )
                 if (sent) {
                     AppLog.d(TAG, "Re-synced dirty document: ${doc.id}")
                 } else {

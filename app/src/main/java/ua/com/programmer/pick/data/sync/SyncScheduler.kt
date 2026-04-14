@@ -12,6 +12,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import ua.com.programmer.pick.core.Constants
+import ua.com.programmer.pick.data.worker.DebugJournalWorker
 import ua.com.programmer.pick.data.worker.SyncWorker
 import ua.com.programmer.pick.data.worker.UploadWorker
 import java.util.concurrent.TimeUnit
@@ -108,6 +109,32 @@ class SyncScheduler @Inject constructor(
             Constants.Work.UPLOAD_WORK_NAME,
             ExistingWorkPolicy.REPLACE,
             uploadRequest
+        )
+    }
+
+    /**
+     * Schedule periodic debug-journal prune + upload. Runs every 15 minutes
+     * regardless of whether the journal is currently enabled — the worker
+     * short-circuits when disabled.
+     */
+    fun scheduleDebugJournalWork() {
+        AppLog.d(TAG, "Scheduling debug journal work")
+
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val request = PeriodicWorkRequestBuilder<DebugJournalWorker>(
+            15L, TimeUnit.MINUTES
+        )
+            .setConstraints(constraints)
+            .addTag("debug_journal_tag")
+            .build()
+
+        workManager.enqueueUniquePeriodicWork(
+            "debug_journal_work",
+            ExistingPeriodicWorkPolicy.KEEP,
+            request
         )
     }
 

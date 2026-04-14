@@ -59,4 +59,11 @@ object Constants {
         const val MAX_BACKOFF_MS = 60000L
         const val BACKOFF_MULTIPLIER = 2.0
     }
+
+    // Debug Journal
+    object DebugJournal {
+        const val MAX_AGE_MS = 7L * 24L * 3600L * 1000L
+        const val MAX_ROWS = 5000
+        const val UPLOAD_BATCH = 200
+    }
 }

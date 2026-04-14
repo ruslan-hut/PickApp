@@ -372,6 +372,15 @@ Mark document as completed.
 }
 ```
 
+#### DEBUG_EVENT_BATCH
+Upload a batch of per-document debug-journal events. Best-effort ingestion,
+tenant-scoped. Enabled per device by setting `debug_journal_enabled: true` in
+the `USER_LOGIN_RESULT` payload for that `(tenant_id, device_id)` pair.
+
+See **`DEBUG_JOURNAL_SERVER_PLAN.md`** for the full data model, ingestion
+pipeline, admin REST API, and retention rules. The on-the-wire message is
+documented in `websocket-protocol.md`.
+
 ---
 
 ## 5. Document State Machine

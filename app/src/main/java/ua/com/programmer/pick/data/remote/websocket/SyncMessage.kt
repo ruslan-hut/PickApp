@@ -52,7 +52,11 @@ enum class MessageType {
     // Errors and notifications
     ERROR_REPORT,
     SERVER_ERROR,
-    PUSH
+    PUSH,
+
+    // Debug journal
+    DEBUG_EVENT_BATCH,
+    DEBUG_EVENT_BATCH_RESULT
 }
 
 /**
@@ -119,6 +123,7 @@ sealed class SyncMessage {
         val offlineHash: String? = null,
         val tenantId: String? = null,
         val availableDocumentTypes: List<AvailableDocumentTypeDto>? = null,
+        val debugJournalEnabled: Boolean? = null,
         val errorMessage: String? = null
     ) : SyncMessage() {
         override val type = MessageType.USER_LOGIN_RESULT
@@ -478,7 +483,53 @@ sealed class SyncMessage {
     ) : SyncMessage() {
         override val type = MessageType.PUSH
     }
+
+    // ============================================
+    // Debug Journal Messages
+    // ============================================
+
+    /**
+     * Client batch upload of debug journal events. Best-effort.
+     */
+    data class DebugEventBatch(
+        override val id: String,
+        override val timestamp: String,
+        val tenantId: String,
+        val deviceId: String,
+        val events: List<DebugEventPayload>
+    ) : SyncMessage() {
+        override val type = MessageType.DEBUG_EVENT_BATCH
+    }
+
+    /**
+     * Server ack for debug event batch. `acceptedIds` lists which events
+     * were persisted; the client marks them uploaded.
+     */
+    data class DebugEventBatchResult(
+        override val id: String,
+        override val timestamp: String,
+        val success: Boolean,
+        val acceptedIds: List<String>,
+        val error: String? = null
+    ) : SyncMessage() {
+        override val type = MessageType.DEBUG_EVENT_BATCH_RESULT
+    }
 }
+
+/**
+ * Single debug event wire payload (mirrors DebugJournalEntity minus upload state).
+ */
+data class DebugEventPayload(
+    val id: String,
+    val userId: String?,
+    val documentId: String?,
+    val stage: String?,
+    val eventType: String,
+    val severity: String,
+    val message: String,
+    val payloadJson: String?,
+    val createdAt: Long
+)
 
 /**
  * Line update data for DOCUMENT_UPDATE message

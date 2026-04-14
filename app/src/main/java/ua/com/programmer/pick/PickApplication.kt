@@ -41,6 +41,7 @@ class PickApplication : Application(), Configuration.Provider {
 
         // Schedule periodic background sync
         syncScheduler.schedulePeriodicSync()
+        syncScheduler.scheduleDebugJournalWork()
 
         // Initialize barcode service
         barcodeService.initialize()

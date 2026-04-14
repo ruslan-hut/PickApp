@@ -118,6 +118,11 @@ class UserRepositoryImpl @Inject constructor(
                 appPreferences.setTenantId(newTenantId)
             }
 
+            // Persist debug-journal enablement flag set by the server for this device.
+            loginResult.debugJournalEnabled?.let {
+                appPreferences.setDebugJournalEnabled(it)
+            }
+
             // Hash password for offline login
             val passwordHash = passwordHasher.hash(password, login)
 

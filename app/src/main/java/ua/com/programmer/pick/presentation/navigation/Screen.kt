@@ -20,6 +20,7 @@ sealed class Screen(val route: String) {
     data object ScannerTest : Screen("scanner_test")
     data object Profile : Screen("profile")
     data object ScanLogin : Screen("scan_login")
+    data object DebugJournal : Screen("debug_journal")
 
     companion object {
         const val DOCUMENT_ID_ARG = "documentId"

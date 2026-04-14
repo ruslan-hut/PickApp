@@ -10,6 +10,7 @@ import dagger.hilt.components.SingletonComponent
 import ua.com.programmer.pick.data.local.database.AppDatabase
 import ua.com.programmer.pick.data.local.database.dao.BoxDao
 import ua.com.programmer.pick.data.local.database.dao.ClientDao
+import ua.com.programmer.pick.data.local.database.dao.DebugJournalDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentBoxDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentLineDao
@@ -35,7 +36,12 @@ object DatabaseModule {
             AppDatabase::class.java,
             AppDatabase.DATABASE_NAME
         )
-            .addMigrations(AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9)
+            .addMigrations(
+                AppDatabase.MIGRATION_6_7,
+                AppDatabase.MIGRATION_7_8,
+                AppDatabase.MIGRATION_8_9,
+                AppDatabase.MIGRATION_9_10
+            )
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
     }
@@ -83,4 +89,8 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideDocumentBoxDao(database: AppDatabase): DocumentBoxDao = database.documentBoxDao()
+
+    @Provides
+    @Singleton
+    fun provideDebugJournalDao(database: AppDatabase): DebugJournalDao = database.debugJournalDao()
 }

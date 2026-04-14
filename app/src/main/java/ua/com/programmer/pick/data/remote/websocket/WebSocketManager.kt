@@ -69,6 +69,7 @@ data class UserLoginResult(
     val offlineHash: String? = null,
     val tenantId: String? = null,
     val availableDocumentTypes: List<AvailableDocumentTypeDto>? = null,
+    val debugJournalEnabled: Boolean? = null,
     val errorMessage: String? = null
 )
 
@@ -88,6 +89,7 @@ class WebSocketManager @Inject constructor(
     private val messageParser: MessageParser,
     private val appPreferences: AppPreferences,
     private val networkMonitor: NetworkMonitor,
+    private val debugJournal: ua.com.programmer.pick.data.debug.DebugJournal,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) {
     companion object {
@@ -209,7 +211,8 @@ class WebSocketManager @Inject constructor(
                 role = response.role,
                 offlineHash = response.offlineHash,
                 tenantId = response.tenantId,
-                availableDocumentTypes = response.availableDocumentTypes
+                availableDocumentTypes = response.availableDocumentTypes,
+                debugJournalEnabled = response.debugJournalEnabled
             )
         } else {
             val error = response?.errorMessage ?: "Login failed"
@@ -256,10 +259,20 @@ class WebSocketManager @Inject constructor(
                 AppLog.d(TAG, "Message sent: ${message.type}")
             } else {
                 AppLog.e(TAG, "Failed to send message")
+                debugJournal.log(
+                    eventType = ua.com.programmer.pick.data.debug.DebugEventType.WS_SEND_FAIL,
+                    message = "ws.send returned false for ${message.type}",
+                    severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN
+                )
             }
             sent
         } catch (e: Exception) {
             AppLog.e(TAG, "Error sending message: ${e.message}", e)
+            debugJournal.log(
+                eventType = ua.com.programmer.pick.data.debug.DebugEventType.WS_SEND_FAIL,
+                message = "exception sending ${message.type}: ${e.message}",
+                severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_ERROR
+            )
             false
         }
     }
@@ -297,8 +310,8 @@ class WebSocketManager @Inject constructor(
             return null
         }
 
-        return withTimeoutOrNull(timeoutMs) {
-            suspendCancellableCoroutine { continuation ->
+        val result = withTimeoutOrNull(timeoutMs) {
+            suspendCancellableCoroutine<T?> { continuation ->
                 pendingResponses[message.id] = PendingResponse(
                     messageId = message.id,
                     expectedType = responseType,
@@ -311,6 +324,14 @@ class WebSocketManager @Inject constructor(
                 }
             }
         }
+        if (result == null) {
+            debugJournal.log(
+                eventType = ua.com.programmer.pick.data.debug.DebugEventType.WS_ACK_TIMEOUT,
+                message = "no ack within ${timeoutMs}ms for ${message.type}",
+                severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN
+            )
+        }
+        return result
     }
 
     /**
@@ -406,11 +427,23 @@ class WebSocketManager @Inject constructor(
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             AppLog.d(TAG, "WebSocket closed: $code - $reason")
+            debugJournal.log(
+                eventType = ua.com.programmer.pick.data.debug.DebugEventType.WS_DISCONNECT,
+                message = "closed: $code $reason",
+                severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN,
+                payload = mapOf("code" to code, "reason" to reason)
+            )
             handleDisconnection(code, reason)
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             AppLog.e(TAG, "WebSocket failure: ${t.message}", t)
+            debugJournal.log(
+                eventType = ua.com.programmer.pick.data.debug.DebugEventType.WS_DISCONNECT,
+                message = "failure: ${t.message}",
+                severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_ERROR,
+                payload = mapOf("http_code" to (response?.code ?: -1), "error" to t.message.orEmpty())
+            )
             _connectionState.value = ConnectionState.Error(
                 t.message ?: "Connection failed",
                 response?.code

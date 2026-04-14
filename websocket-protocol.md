@@ -127,6 +127,7 @@ All messages follow a common envelope structure:
 | `DOCUMENT_UPDATE` | Update document lines | **Yes** |
 | `DOCUMENT_COMPLETE` | Complete document processing | **Yes** |
 | `PRODUCT_LOOKUP` | Search product by barcode | **Yes** |
+| `DEBUG_EVENT_BATCH` | Upload a batch of debug-journal events | **Yes** |
 
 ### Server → Client
 
@@ -141,6 +142,7 @@ All messages follow a common envelope structure:
 | `PRODUCT_LOOKUP_RESULT` | Product barcode lookup result |
 | `SERVER_ERROR` | Error response |
 | `PUSH` | Real-time push notification |
+| `DEBUG_EVENT_BATCH_RESULT` | Ack for a debug-journal batch upload |
 
 ---
 
@@ -179,10 +181,17 @@ Authenticate user after WebSocket connection is established.
     "user_id": "65a1b2c3d4e5f6a7b8c9d0e5",
     "user_name": "Worker One",
     "role": "WAREHOUSE_WORKER",
-    "offline_hash": "abc123def456..."
+    "offline_hash": "abc123def456...",
+    "tenant_id": "tenant-abc",
+    "debug_journal_enabled": false
   }
 }
 ```
+
+`debug_journal_enabled` is optional; when `true`, the client starts recording
+per-document debug events and uploading them via `DEBUG_EVENT_BATCH`. The flag
+is looked up server-side per `(tenant_id, device_id)`. See the "Debug Journal"
+section below.
 
 **Server responds (failure):**
 ```json
@@ -577,6 +586,72 @@ Push events:
 - `document_locked` - Document was locked by another user
 - `document_unlocked` - Document was unlocked
 - `reference_updated` - Reference data changed
+
+---
+
+### DEBUG_EVENT_BATCH
+
+Upload a batch of debug-journal events from the device. Best-effort;
+fire-and-retry. Enabled per device via `debug_journal_enabled` in
+`USER_LOGIN_RESULT` (see Debug Journal section below).
+
+**Client sends:**
+```json
+{
+  "id": "<nanosec>",
+  "type": "DEBUG_EVENT_BATCH",
+  "timestamp": "2026-04-14T12:34:56Z",
+  "payload": {
+    "tenant_id": "tenant-abc",
+    "device_id": "device-uuid",
+    "events": [
+      {
+        "id": "uuid",
+        "user_id": "user-123",
+        "document_id": "doc-456",
+        "stage": "collect",
+        "event_type": "DOC_UPDATE_SENT",
+        "severity": "INFO",
+        "message": "document update sent",
+        "payload_json": "{\"line_count\":5,\"total_actual_qty\":12.0}",
+        "created_at": 1712000000000
+      }
+    ]
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| tenant_id | string | Must match the authenticated session tenant |
+| device_id | string | Must match the connected device |
+| events[] | array | Up to 200 events per batch |
+| events[].id | uuid | Client-generated; idempotent on server |
+| events[].event_type | string | See Debug Journal section for the catalog |
+| events[].severity | string | `INFO` / `WARN` / `ERROR` |
+| events[].payload_json | string? | Opaque structured blob (stringified JSON) |
+| events[].created_at | long | Device epoch ms |
+
+**Server responds:**
+```json
+{
+  "id": "<same-as-request>",
+  "type": "DEBUG_EVENT_BATCH_RESULT",
+  "timestamp": "2026-04-14T12:34:56Z",
+  "payload": {
+    "success": true,
+    "accepted_ids": ["uuid1", "uuid2"],
+    "error": null
+  }
+}
+```
+
+- `success=true`, full `accepted_ids` → client marks all events uploaded.
+- `success=true`, subset → client marks only those; bumps attempts on the rest.
+- `success=false` → client bumps attempts on the whole batch and retries later.
+
+Only one `DEBUG_EVENT_BATCH` is ever in flight from a given client; the
+uploader is mutex-guarded, so correlation by message type alone is safe.
 
 ---
 

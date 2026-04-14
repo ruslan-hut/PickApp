@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import ua.com.programmer.pick.core.util.AppLog
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -40,6 +41,7 @@ class AppPreferences @Inject constructor(
         private val SELECTED_DOCUMENT_TYPE = stringPreferencesKey("selected_document_type")
         private val TENANT_ID = stringPreferencesKey("tenant_id")
         private val LAST_LOGIN = stringPreferencesKey("last_login")
+        private val DEBUG_JOURNAL_ENABLED = booleanPreferencesKey("debug_journal_enabled")
         // Plaintext keys kept for migration only
         private val USER_LOGIN = stringPreferencesKey("user_login")
         private val USER_PASSWORD = stringPreferencesKey("user_password")
@@ -244,6 +246,16 @@ class AppPreferences @Inject constructor(
     }
 
     val lastLogin: Flow<String?> = context.dataStore.data.map { it[LAST_LOGIN] }
+
+    val debugJournalEnabled: Flow<Boolean> = context.dataStore.data.map { it[DEBUG_JOURNAL_ENABLED] ?: false }
+
+    suspend fun setDebugJournalEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[DEBUG_JOURNAL_ENABLED] = enabled }
+    }
+
+    fun getDebugJournalEnabledSync(): Boolean = runBlocking {
+        context.dataStore.data.first()[DEBUG_JOURNAL_ENABLED] ?: false
+    }
 
     suspend fun setLastLogin(login: String) {
         context.dataStore.edit { it[LAST_LOGIN] = login }

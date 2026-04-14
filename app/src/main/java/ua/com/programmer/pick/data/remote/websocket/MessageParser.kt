@@ -85,6 +85,14 @@ class MessageParser @Inject constructor(
         private const val FIELD_AVAILABLE_DOCUMENT_TYPES = "available_document_types"
         private const val FIELD_DESCRIPTION = "description"
         private const val FIELD_DOCUMENT_TYPE = "document_type"
+        private const val FIELD_DEBUG_JOURNAL_ENABLED = "debug_journal_enabled"
+        private const val FIELD_DEVICE_ID = "device_id"
+        private const val FIELD_EVENTS = "events"
+        private const val FIELD_ACCEPTED_IDS = "accepted_ids"
+        private const val FIELD_EVENT_TYPE_PAYLOAD = "event_type"
+        private const val FIELD_SEVERITY = "severity"
+        private const val FIELD_PAYLOAD_JSON = "payload_json"
+        private const val FIELD_CREATED_AT = "created_at"
 
         private val ISO_8601_FORMATTER = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
@@ -116,6 +124,7 @@ class MessageParser @Inject constructor(
                 MessageType.BOX_DELIVERY_CONFIRM_RESULT.name -> parseBoxDeliveryConfirmResult(id, timestamp, payload)
                 MessageType.SERVER_ERROR.name -> parseServerError(id, timestamp, payload)
                 MessageType.PUSH.name -> parsePush(id, timestamp, payload)
+                MessageType.DEBUG_EVENT_BATCH_RESULT.name -> parseDebugEventBatchResult(id, timestamp, payload)
                 else -> {
                     AppLog.w(TAG, "Unknown message type: $typeStr")
                     null
@@ -240,6 +249,26 @@ class MessageParser @Inject constructor(
                 addProperty(FIELD_CLIENT_TS, message.clientTs)
             }
 
+            is SyncMessage.DebugEventBatch -> JsonObject().apply {
+                addProperty(FIELD_TENANT_ID, message.tenantId)
+                addProperty(FIELD_DEVICE_ID, message.deviceId)
+                val arr = JsonArray()
+                message.events.forEach { evt ->
+                    arr.add(JsonObject().apply {
+                        addProperty(FIELD_ID, evt.id)
+                        evt.userId?.let { addProperty(FIELD_USER_ID, it) }
+                        evt.documentId?.let { addProperty(FIELD_DOCUMENT_ID, it) }
+                        evt.stage?.let { addProperty(FIELD_STAGE, it) }
+                        addProperty(FIELD_EVENT_TYPE_PAYLOAD, evt.eventType)
+                        addProperty(FIELD_SEVERITY, evt.severity)
+                        addProperty(FIELD_MESSAGE, evt.message)
+                        evt.payloadJson?.let { addProperty(FIELD_PAYLOAD_JSON, it) }
+                        addProperty(FIELD_CREATED_AT, evt.createdAt)
+                    })
+                }
+                add(FIELD_EVENTS, arr)
+            }
+
             // Server-to-client messages (not serialized by client)
             is SyncMessage.Pong,
             is SyncMessage.UserLoginResult,
@@ -252,7 +281,8 @@ class MessageParser @Inject constructor(
             is SyncMessage.BoxPickupConfirmResult,
             is SyncMessage.BoxDeliveryConfirmResult,
             is SyncMessage.ServerError,
-            is SyncMessage.Push -> null
+            is SyncMessage.Push,
+            is SyncMessage.DebugEventBatchResult -> null
         }
     }
 
@@ -283,6 +313,9 @@ class MessageParser @Inject constructor(
             offlineHash = payload?.get(FIELD_OFFLINE_HASH)?.asString,
             tenantId = payload?.get(FIELD_TENANT_ID)?.asString,
             availableDocumentTypes = availableTypes,
+            debugJournalEnabled = payload?.get(FIELD_DEBUG_JOURNAL_ENABLED)?.let {
+                if (it.isJsonNull) null else it.asBoolean
+            },
             errorMessage = payload?.get(FIELD_ERROR_MESSAGE)?.asString
         )
     }
@@ -401,6 +434,17 @@ class MessageParser @Inject constructor(
             success = payload?.get(FIELD_SUCCESS)?.asBoolean ?: false,
             barcode = payload?.get(FIELD_BARCODE)?.asString,
             wasNoop = payload?.get(FIELD_WAS_NOOP)?.asBoolean ?: false
+        )
+    }
+
+    private fun parseDebugEventBatchResult(id: String, timestamp: String, payload: JsonObject?): SyncMessage.DebugEventBatchResult {
+        val acceptedIds = payload?.get(FIELD_ACCEPTED_IDS)?.asJsonArray?.map { it.asString } ?: emptyList()
+        return SyncMessage.DebugEventBatchResult(
+            id = id,
+            timestamp = timestamp,
+            success = payload?.get(FIELD_SUCCESS)?.asBoolean ?: false,
+            acceptedIds = acceptedIds,
+            error = payload?.get(FIELD_ERROR)?.asString
         )
     }
 

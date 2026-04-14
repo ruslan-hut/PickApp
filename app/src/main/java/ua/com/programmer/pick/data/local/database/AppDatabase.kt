@@ -5,6 +5,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import ua.com.programmer.pick.data.local.database.dao.ClientDao
+import ua.com.programmer.pick.data.local.database.dao.DebugJournalDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentLineDao
 import ua.com.programmer.pick.data.local.database.dao.OutgoingOperationDao
@@ -17,6 +18,7 @@ import ua.com.programmer.pick.data.local.database.dao.DocumentBoxDao
 import ua.com.programmer.pick.data.local.database.dao.WarehouseDao
 import ua.com.programmer.pick.data.local.database.entity.BoxEntity
 import ua.com.programmer.pick.data.local.database.entity.ClientEntity
+import ua.com.programmer.pick.data.local.database.entity.DebugJournalEntity
 import ua.com.programmer.pick.data.local.database.entity.DocumentEntity
 import ua.com.programmer.pick.data.local.database.entity.DocumentBoxEntity
 import ua.com.programmer.pick.data.local.database.entity.DocumentLineEntity
@@ -43,9 +45,10 @@ import ua.com.programmer.pick.data.local.database.entity.WarehouseLocationEntity
         DocumentLineEntity::class,
         OutgoingOperationEntity::class,
         BoxEntity::class,
-        DocumentBoxEntity::class
+        DocumentBoxEntity::class,
+        DebugJournalEntity::class
     ],
-    version = 9,  // Version 9: Added boxes and document_boxes tables
+    version = 10, // Version 10: Added debug_journal_events table
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -61,6 +64,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun outgoingOperationDao(): OutgoingOperationDao
     abstract fun boxDao(): BoxDao
     abstract fun documentBoxDao(): DocumentBoxDao
+    abstract fun debugJournalDao(): DebugJournalDao
 
     companion object {
         const val DATABASE_NAME = "pick_database"
@@ -124,6 +128,32 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_document_boxes_document_id ON document_boxes (document_id)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_document_boxes_barcode ON document_boxes (barcode)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_document_boxes_box_id ON document_boxes (box_id)")
+            }
+        }
+
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS debug_journal_events (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        tenant_id TEXT NOT NULL,
+                        device_id TEXT NOT NULL,
+                        user_id TEXT,
+                        document_id TEXT,
+                        stage TEXT,
+                        event_type TEXT NOT NULL,
+                        severity TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        payload_json TEXT,
+                        created_at INTEGER NOT NULL,
+                        uploaded INTEGER NOT NULL DEFAULT 0,
+                        upload_attempts INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_debug_journal_events_document_id ON debug_journal_events (document_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_debug_journal_events_created_at ON debug_journal_events (created_at)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_debug_journal_events_uploaded ON debug_journal_events (uploaded)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_debug_journal_events_tenant_id ON debug_journal_events (tenant_id)")
             }
         }
     }

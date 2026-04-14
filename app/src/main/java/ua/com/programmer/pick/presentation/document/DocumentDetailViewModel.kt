@@ -21,6 +21,8 @@ import ua.com.programmer.pick.core.scanner.BarcodeService
 import ua.com.programmer.pick.core.scanner.ScannedBarcode
 import ua.com.programmer.pick.data.local.database.dao.ProductImageDao
 import ua.com.programmer.pick.core.util.Result
+import ua.com.programmer.pick.data.debug.DebugEventType
+import ua.com.programmer.pick.data.debug.DebugJournal
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.domain.model.DocumentLine
 import ua.com.programmer.pick.domain.model.DocumentState
@@ -39,6 +41,7 @@ class DocumentDetailViewModel @Inject constructor(
     private val barcodeService: BarcodeService,
     private val productRepository: ProductRepository,
     private val syncOrchestrator: SyncOrchestrator,
+    private val debugJournal: DebugJournal,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -264,6 +267,12 @@ class DocumentDetailViewModel @Inject constructor(
 
                     try {
                         documentRepository.saveLine(newLine)
+                        debugJournal.log(
+                            eventType = DebugEventType.LINE_CREATE,
+                            message = "new line from barcode scan",
+                            documentId = docId,
+                            payload = mapOf("line_id" to newLine.id, "qty" to newLine.actualQuantity, "barcode" to identifier)
+                        )
                         notifyDocumentLinesChanged()
                     } catch (_: Exception) {
                         _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
@@ -317,6 +326,12 @@ class DocumentDetailViewModel @Inject constructor(
                     val delta = newQty - line.actualQuantity
                     try {
                         documentRepository.incrementLineQuantity(line.id, delta)
+                        debugJournal.log(
+                            eventType = DebugEventType.LINE_EDIT,
+                            message = "line increment from barcode scan",
+                            documentId = docId,
+                            payload = mapOf("line_id" to line.id, "delta" to delta, "new_qty" to newQty, "barcode" to identifier)
+                        )
                         notifyDocumentLinesChanged()
                     } catch (_: Exception) {
                         try {
@@ -358,6 +373,12 @@ class DocumentDetailViewModel @Inject constructor(
 
             try {
                 documentRepository.updateLine(lineId, newQuantity, null)
+                debugJournal.log(
+                    eventType = DebugEventType.LINE_EDIT,
+                    message = "manual quantity edit",
+                    documentId = currentDocumentId,
+                    payload = mapOf("line_id" to lineId, "new_qty" to newQuantity)
+                )
                 _uiState.update { it.copy(isSaving = false) }
                 notifyDocumentLinesChanged()
             } catch (ex: Exception) {

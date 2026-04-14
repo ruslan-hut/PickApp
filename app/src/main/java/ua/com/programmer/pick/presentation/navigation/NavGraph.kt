@@ -39,6 +39,7 @@ import ua.com.programmer.pick.presentation.document.DocumentDetailScreen
 import ua.com.programmer.pick.presentation.documents.DocumentsScreen
 import ua.com.programmer.pick.presentation.home.HomeScreen
 import ua.com.programmer.pick.presentation.home.HomeViewModel
+import ua.com.programmer.pick.presentation.debug.DebugJournalScreen
 import ua.com.programmer.pick.presentation.profile.ProfileScreen
 import ua.com.programmer.pick.presentation.collector.BoxScanningScreen
 import ua.com.programmer.pick.presentation.courier.CourierScreen
@@ -236,7 +237,16 @@ fun PickNavGraph(
                     },
                     onScannerSettingsClick = {
                         navController.navigate(Screen.ScannerSettings.route)
+                    },
+                    onDebugJournalClick = {
+                        navController.navigate(Screen.DebugJournal.route)
                     }
+                )
+            }
+
+            composable(route = Screen.DebugJournal.route) {
+                DebugJournalScreen(
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
         }
