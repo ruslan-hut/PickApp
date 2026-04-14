@@ -160,6 +160,7 @@ class DataWedgeDiagnostics @Inject constructor(
             status.intentOutputEnabled != true -> appendLine("Intent Output is DISABLED. Enable it in DataWedge profile settings.")
             status.intentAction != EXPECTED_INTENT_ACTION -> appendLine("Intent action mismatch! Set action to: $EXPECTED_INTENT_ACTION")
             status.intentDelivery?.lowercase()?.contains("broadcast") != true -> appendLine("Intent delivery should be 'Broadcast intent', not '${status.intentDelivery}'.")
+            status.keystrokeOutputEnabled == true -> appendLine("WARNING: Keystroke Output is ENABLED alongside Intent Output. This can cause duplicate or lost scans. Disable Keystroke Output in the DataWedge profile.")
             else -> appendLine("Configuration looks correct. If scanning still fails, check that Scanner Input is enabled.")
         }
     }
