@@ -585,27 +585,48 @@ class SyncOrchestrator @Inject constructor(
     fun scheduleDocumentSync(documentId: String) {
         documentSyncJobs[documentId]?.cancel()
         documentSyncJobs[documentId] = scope.launch {
-            delay(500L)
-            documentSyncJobs.remove(documentId)
-
-            val doc = documentDao.getDocumentById(documentId) ?: return@launch
-            val lineEntities = documentLineDao.getLinesByDocumentIdSync(documentId)
-            if (lineEntities.isEmpty()) return@launch
-
-            val lines = lineEntities.map { line ->
-                DocumentLineUpdate(
-                    lineNumber = line.lineNumber,
-                    actualQuantity = line.actualQuantity,
-                    batchNumber = line.batchNumber,
-                    isCompleted = line.isCompleted
-                )
-            }
-
             try {
-                updateDocument(documentId, doc.state, lines)
-            } catch (e: Exception) {
-                AppLog.w(TAG, "Scheduled sync failed for $documentId: ${e.message}")
+                delay(500L)
+                performDocumentSync(documentId)
+            } finally {
+                documentSyncJobs.remove(documentId)
             }
+        }
+    }
+
+    /**
+     * Cancel any pending debounced sync for this document and run the sync
+     * immediately, suspending until it completes. Used before stage completion
+     * so that the latest line edits are guaranteed to reach the server before
+     * STAGE_COMPLETE is sent.
+     */
+    suspend fun flushDocumentSync(documentId: String) {
+        val pending = documentSyncJobs.remove(documentId)
+        if (pending != null) {
+            pending.cancel()
+            try { pending.join() } catch (_: Exception) {}
+        }
+        performDocumentSync(documentId)
+    }
+
+    private suspend fun performDocumentSync(documentId: String) {
+        val doc = documentDao.getDocumentById(documentId) ?: return
+        val lineEntities = documentLineDao.getLinesByDocumentIdSync(documentId)
+        if (lineEntities.isEmpty()) return
+
+        val lines = lineEntities.map { line ->
+            DocumentLineUpdate(
+                lineNumber = line.lineNumber,
+                actualQuantity = line.actualQuantity,
+                batchNumber = line.batchNumber,
+                isCompleted = line.isCompleted
+            )
+        }
+
+        try {
+            updateDocument(documentId, doc.state, lines)
+        } catch (e: Exception) {
+            AppLog.w(TAG, "Document sync failed for $documentId: ${e.message}")
         }
     }
 
@@ -668,6 +689,12 @@ class SyncOrchestrator @Inject constructor(
      */
     suspend fun completeStage(documentId: String, stage: String): Result<StageCompleteResult> {
         AppLog.d(TAG, "Completing stage $stage for document: $documentId")
+
+        // Flush any pending debounced line updates so the server receives the
+        // latest collected quantities BEFORE we mark the stage complete.
+        // Without this, completing within the 500ms debounce window would
+        // race against (and lose) the most recent line edits.
+        flushDocumentSync(documentId)
 
         if (!webSocketManager.isConnected()) {
             AppLog.d(TAG, "WebSocket not connected, queueing complete operation for document: $documentId")
