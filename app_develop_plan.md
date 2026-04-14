@@ -128,18 +128,20 @@ Expected volume:
 
 ### 6.2 Roles (MVP)
 
-#### Warehouse Worker
-- Works with inventory documents from ERP
-- Inputs actual stock levels
+#### Collector
+- Works with inventory and shipment documents from ERP
+- Inputs actual stock levels via barcode scanning
 - Can view reference data
-- Cannot create or edit shipment/receipt documents
+- Cannot create or edit documents outside assigned work
 
-#### Picker
-- Cannot create documents
-- Can edit shipment documents (actual quantities)
+#### Courier
+- Picks up and delivers prepared boxes
+- Confirms pickup and delivery offline-capable
+- Cannot edit document lines
 
 #### Administrator
 - Full access
+- Can view the in-app Debug Journal (see `CLAUDE.md`)
 
 ---
 
@@ -234,22 +236,9 @@ Explicitly excluded from MVP:
 
 ---
 
-## 14. Development Phases
+## 14. Status
 
-1. Requirements finalization and sync contracts
-2. Application architecture and project skeleton
-3. Local database and synchronization engine
-4. Document workflows and business logic
-5. TSD-focused UX and scanning
-6. Offline handling and recovery scenarios
-7. Pilot deployment and stabilization
-
----
-
-## 15. Definition of MVP Completion
-
-- Stable offline-first operation
-- Reliable delta synchronization
-- All three document scenarios functional
-- Role-based access enforced
-- Production-ready for pilot warehouse usage
+MVP shipped. This document is kept as a frozen product-spec reference for
+scope, business scenarios, roles, and offline-first requirements. Current
+implementation details (layer structure, message catalog, debug journal) live
+in `CLAUDE.md`, `websocket-protocol.md`, and `BACKEND_SPEC.md`.
