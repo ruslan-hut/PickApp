@@ -2,13 +2,23 @@ package ua.com.programmer.pick.data.local.database.entity
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "users")
+@Entity(
+    tableName = "users",
+    indices = [Index(value = ["external_id"])]
+)
 data class UserEntity(
     @PrimaryKey
     @ColumnInfo(name = "id")
     val id: String,
+
+    // ERP external_id — used by SyncOrchestrator to translate worker
+    // references on Document/DocumentBox back to the local Mongo ObjectID
+    // hex used as the users primary key. See ProductEntity.externalId.
+    @ColumnInfo(name = "external_id")
+    val externalId: String? = null,
 
     @ColumnInfo(name = "login")
     val login: String,

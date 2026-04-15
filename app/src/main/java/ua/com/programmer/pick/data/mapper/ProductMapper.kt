@@ -17,6 +17,7 @@ class ProductMapper @Inject constructor() {
     fun toEntity(dto: ProductDto): ProductEntity {
         return ProductEntity(
             id = dto.id,
+            externalId = dto.externalId,
             code = dto.code,
             name = dto.name,
             description = dto.description,
@@ -67,6 +68,7 @@ fun ProductEntity.toDomain(barcodes: List<ProductBarcodeEntity> = emptyList()): 
 fun Product.toEntity(lastUpdated: Long = System.currentTimeMillis()): ProductEntity {
     return ProductEntity(
         id = id,
+        externalId = null,
         code = code,
         name = name,
         description = description,

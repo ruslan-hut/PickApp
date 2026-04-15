@@ -29,14 +29,12 @@ import ua.com.programmer.pick.domain.model.DocumentState
 import ua.com.programmer.pick.domain.model.ProductImage
 import ua.com.programmer.pick.domain.repository.DocumentRepository
 import ua.com.programmer.pick.domain.repository.ProductRepository
-import ua.com.programmer.pick.domain.repository.UserRepository
 import javax.inject.Inject
 
 @HiltViewModel
 class DocumentDetailViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
     private val documentRepository: DocumentRepository,
-    private val userRepository: UserRepository,
     private val productImageDao: ProductImageDao,
     private val barcodeService: BarcodeService,
     private val productRepository: ProductRepository,
@@ -63,28 +61,12 @@ class DocumentDetailViewModel @Inject constructor(
     init {
         // Subscribe to barcode scans once when ViewModel is created
         subscribeToScans()
-        // Load current user
-        loadCurrentUser()
-    }
-
-    private fun loadCurrentUser() {
-        viewModelScope.launch {
-            try {
-                val user = userRepository.getCurrentUser().first()
-                _uiState.update { it.copy(currentUserId = user?.id) }
-            } catch (_: Exception) {
-                // Ignore errors loading user
-            }
-        }
     }
 
     fun load(documentId: String) {
         // Reset state completely when loading a different document
         if (currentDocumentId != documentId) {
-            _uiState.value = DocumentDetailUiState(
-                currentUserId = _uiState.value.currentUserId,
-                isLoading = true
-            )
+            _uiState.value = DocumentDetailUiState(isLoading = true)
         } else {
             _uiState.update { it.copy(isLoading = true) }
         }
@@ -161,18 +143,16 @@ class DocumentDetailViewModel @Inject constructor(
         val doc = _uiState.value.document ?: return
         val docId = doc.id
 
-        // Check if current user can edit the document
+        // Not in an in-process state → can't edit. Per the server-driven rule
+        // the app never sees another worker's in-process doc, so this branch
+        // means the doc is still in its stage start (LOADED / PACK) and needs
+        // to be taken into work first.
         if (!_uiState.value.canEdit) {
-            val state = _uiState.value
             AppLog.w(
                 "DocumentDetailViewModel",
-                "LOCK_TRACE scan-rejected: docId=$docId docState=${doc.state} assignedUserId=${doc.assignedUserId} currentUserId=${state.currentUserId} isInProcess=${DocumentState.isInProcess(doc.state)} isTakenByOther=${state.isTakenByOtherUser}"
+                "scan-rejected: docId=$docId docState=${doc.state} isInProcess=${DocumentState.isInProcess(doc.state)}"
             )
-            if (_uiState.value.isTakenByOtherUser) {
-                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_TAKEN_BY_OTHER))
-            } else {
-                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.CANNOT_EDIT_DOCUMENT))
-            }
+            _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.CANNOT_EDIT_DOCUMENT))
             return
         }
 
@@ -350,14 +330,9 @@ class DocumentDetailViewModel @Inject constructor(
     }
 
     fun updateLineQuantity(lineId: String, newQuantity: Double) {
-        // Check if current user can edit the document
         if (!_uiState.value.canEdit) {
             viewModelScope.launch {
-                if (_uiState.value.isTakenByOtherUser) {
-                    _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_TAKEN_BY_OTHER))
-                } else {
-                    _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.CANNOT_EDIT_DOCUMENT))
-                }
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.CANNOT_EDIT_DOCUMENT))
             }
             return
         }
@@ -411,33 +386,33 @@ class DocumentDetailViewModel @Inject constructor(
 
                 when (lockResult) {
                     is Result.Success -> {
+                        // Server is the source of truth: `success=true` means
+                        // the lock is ours (or idempotent re-lock we already
+                        // held). No local "is this mine?" logic. On success
+                        // the repository has already advanced the local state
+                        // to stage.InProcess, so a plain reload is enough.
                         val data = lockResult.data
-                        val currentUserId = _uiState.value.currentUserId
-                        val lockedBySelf = data.lockedBy != null && data.lockedBy == currentUserId
-
-                        // Reload document from local DB (lockForStage persists
-                        // the assigned user even on success=false, so canEdit
-                        // will correctly reflect lockedBySelf).
                         val updatedDoc = documentRepository.getDocumentById(documentId)
                         AppLog.i(
                             "DocumentDetailViewModel",
-                            "LOCK_TRACE vm-result: docId=$documentId success=${data.success} respLockedBy=${data.lockedBy} currentUserId=$currentUserId lockedBySelf=$lockedBySelf reloadedState=${updatedDoc?.state} reloadedAssignedUserId=${updatedDoc?.assignedUserId} idsEqual=${updatedDoc?.assignedUserId == currentUserId}"
+                            "lock-result: docId=$documentId success=${data.success} lockedBy=${data.lockedBy} reloadedState=${updatedDoc?.state}"
                         )
                         _uiState.update {
                             it.copy(document = updatedDoc, isProcessingAction = false)
                         }
 
-                        when {
-                            data.success || lockedBySelf -> {
-                                // Either freshly locked for us, or already ours — treat as success.
-                                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_TAKEN_INTO_WORK))
+                        if (data.success) {
+                            _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_TAKEN_INTO_WORK))
+                        } else {
+                            // Server rejected the lock — most commonly because
+                            // another worker holds it (ForceReleaseLock / race)
+                            // or the doc state has advanced since our last sync.
+                            val toast = if (data.error?.contains("locked", ignoreCase = true) == true) {
+                                ToastMessage.DOCUMENT_TAKEN_BY_OTHER
+                            } else {
+                                ToastMessage.ERROR_TAKE_INTO_WORK
                             }
-                            data.lockedBy != null -> {
-                                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_TAKEN_BY_OTHER))
-                            }
-                            else -> {
-                                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_TAKE_INTO_WORK))
-                            }
+                            _uiEvents.emit(DocumentDetailUiEvent.ShowToast(toast))
                         }
                     }
                     is Result.Error -> {

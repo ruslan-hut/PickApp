@@ -532,9 +532,11 @@ class SyncOrchestrator @Inject constructor(
 
             AppLog.i(TAG, "LOCK_TRACE response: reqDocId=$documentId respDocId=${response.documentId} success=${response.success} lockedBy=${response.lockedBy} error=${response.error}")
 
-            // Always reflect the server-reported lock owner locally — even on
-            // success=false (e.g. "already locked"), so the UI can correctly
-            // recognize when the lock belongs to the current user.
+            // Trust the server: if success is true, the lock is ours and the
+            // state has advanced. No local "is this mine?" logic — per the
+            // server-driven architecture rule in CLAUDE.md, authorization
+            // decisions live on the server. The lockedBy field is kept for
+            // diagnostic logging and error messages only.
             if (response.success) {
                 documentDao.updateDocumentStateFromServer(documentId, stageInProcessState(stage), System.currentTimeMillis())
             }
@@ -889,10 +891,10 @@ class SyncOrchestrator @Inject constructor(
         val itemCount = if (message.data.isJsonArray) message.data.asJsonArray.size() else 0
         val deletedCount = message.deletedIds?.size ?: 0
         syncReceivedCounts[message.entityType] = (syncReceivedCounts[message.entityType] ?: 0) + itemCount
-        AppLog.i(TAG, "SYNC_DATA entity=${message.entityType} upsert=$itemCount delete=$deletedCount")
+        AppLog.i(TAG, "SYNC_DATA entity=${message.entityType} upsert=$itemCount delete=$deletedCount fullSet=${message.fullSet}")
 
         try {
-            applySync(message.entityType, message.data, message.deletedIds)
+            applySync(message.entityType, message.data, message.deletedIds, message.fullSet)
             updateEntitySyncStatus(message.entityType, SyncStatus.SUCCESS)
         } catch (e: Exception) {
             AppLog.e(TAG, "Failed to apply sync data for ${message.entityType}: ${e.message}", e)
@@ -1005,13 +1007,14 @@ class SyncOrchestrator @Inject constructor(
     private suspend fun applySync(
         entityType: String,
         data: com.google.gson.JsonElement,
-        deletedIds: List<String>?
+        deletedIds: List<String>?,
+        fullSet: Boolean = false
     ) {
         AppLog.d(TAG, "Applying sync for $entityType")
 
         when (entityType) {
             Constants.SyncEntity.USERS -> applyUserSync(data, deletedIds)
-            Constants.SyncEntity.DOCUMENTS -> applyDocumentSync(data, deletedIds)
+            Constants.SyncEntity.DOCUMENTS -> applyDocumentSync(data, deletedIds, fullSet)
             Constants.SyncEntity.PRODUCTS -> applyProductSync(data, deletedIds)
             Constants.SyncEntity.CLIENTS -> applyClientSync(data, deletedIds)
             Constants.SyncEntity.WAREHOUSES -> applyWarehouseSync(data, deletedIds)
@@ -1044,7 +1047,8 @@ class SyncOrchestrator @Inject constructor(
 
     private suspend fun applyDocumentSync(
         data: com.google.gson.JsonElement,
-        deletedIds: List<String>?
+        deletedIds: List<String>?,
+        fullSet: Boolean
     ) {
         if (!data.isJsonArray) return
 
@@ -1052,14 +1056,29 @@ class SyncOrchestrator @Inject constructor(
         val documents: List<DocumentDto> = gson.fromJson(data, type)
         val receivedIds = documents.map { it.id }.toSet()
 
-        AppLog.i(TAG, "Sync documents: ${documents.size} upsert, ${deletedIds?.size ?: 0} delete")
+        AppLog.i(TAG, "Sync documents: ${documents.size} upsert, ${deletedIds?.size ?: 0} delete, fullSet=$fullSet")
 
-        // Server always sends the complete document set — purge anything not in it.
-        if (receivedIds.isEmpty()) {
-            documentDao.deleteAllNonDirtyDocuments()
-        } else {
-            documentDao.deleteNonDirtyDocumentsNotIn(receivedIds.toList())
+        // Purge only when the server marks this payload as the full authoritative
+        // set for the current filter (e.g. DOCUMENT_LIST_REFRESH). Delta sync
+        // payloads must NOT purge — they only carry rows modified since the
+        // client's last cursor, and purging non-received docs would silently
+        // drop unchanged ones. See SyncDataPayload.full_set on the server.
+        if (fullSet) {
+            if (receivedIds.isEmpty()) {
+                documentDao.deleteAllNonDirtyDocuments()
+            } else {
+                documentDao.deleteNonDirtyDocumentsNotIn(receivedIds.toList())
+            }
         }
+
+        // v2 backend: DocumentLine.product_id arrives as an ERP external_id.
+        // We still translate product ids back to the local internal id so
+        // ProductImageDao joins continue to work. Document.assigned_user_id
+        // is NOT translated — per the server-driven architecture rule, the
+        // app does not make authorization decisions locally, so whatever
+        // string the server sends in assigned_user_id is stored as-is and
+        // only used for display. See CLAUDE.md "Server-Driven Architecture".
+        val productIdMap = resolveExternalProductIds(documents)
 
         documents.forEach { dto ->
             val existing = documentDao.getDocumentById(dto.id)
@@ -1068,11 +1087,12 @@ class SyncOrchestrator @Inject constructor(
                 // If the server version is newer, accept the state change and clear the dirty flag.
                 if (dto.version > existing.version) {
                     AppLog.i(TAG, "Server version ${dto.version} > local ${existing.version} for dirty document ${dto.id}, accepting server state")
-                    val entity = documentMapper.toEntity(dto)
-                    documentDao.upsertDocument(entity)
+                    documentDao.upsertDocument(documentMapper.toEntity(dto))
                     if (dto.lines != null) {
                         documentLineDao.deleteLinesByDocumentId(dto.id)
-                        val lineEntities = dto.lines.map { documentMapper.toLineEntity(it) }
+                        val lineEntities = dto.lines.map {
+                            translateLineEntity(documentMapper.toLineEntity(it), productIdMap)
+                        }
                         documentLineDao.insertLines(lineEntities)
                     }
                     // Recalculate totals from synced lines
@@ -1092,7 +1112,9 @@ class SyncOrchestrator @Inject constructor(
             // Replace lines — server sends the complete set
             if (dto.lines != null) {
                 documentLineDao.deleteLinesByDocumentId(dto.id)
-                val lineEntities = dto.lines.map { documentMapper.toLineEntity(it) }
+                val lineEntities = dto.lines.map {
+                    translateLineEntity(documentMapper.toLineEntity(it), productIdMap)
+                }
                 documentLineDao.insertLines(lineEntities)
             }
 
@@ -1110,6 +1132,45 @@ class SyncOrchestrator @Inject constructor(
         deletedIds?.forEach { id ->
             documentDao.deleteDocument(id)
         }
+    }
+
+    // ============================================
+    // v2 → v1 ID translation (sync ingest boundary)
+    // ============================================
+    //
+    // The v2 backend emits ERP external_ids in cross-reference fields where
+    // the v1 backend used to emit Mongo ObjectID hex. We translate only
+    // product references back to local internal IDs so ProductImageDao
+    // joins continue to work. Other cross-references (assigned_user_id,
+    // warehouse_id, client_id) are stored as whatever the server sent and
+    // used only for display — per CLAUDE.md "Server-Driven Architecture",
+    // the app does not make authorization decisions locally and therefore
+    // has no need to reconcile them against any local identity space.
+    //
+    // The lookup misses harmlessly when the server still sends ObjectID hex
+    // (old backend), so a single binary works against both wire formats.
+
+    /** Collect line.product_id values across the batch and resolve them by external_id. */
+    private suspend fun resolveExternalProductIds(documents: List<DocumentDto>): Map<String, String> {
+        val externalIds = documents
+            .asSequence()
+            .flatMap { (it.lines ?: emptyList()).asSequence() }
+            .mapNotNull { it.productId.takeIf { id -> id.isNotBlank() } }
+            .toSet()
+            .toList()
+        if (externalIds.isEmpty()) return emptyMap()
+        return productDao.findByExternalIds(externalIds)
+            .mapNotNull { p -> p.externalId?.let { it to p.id } }
+            .toMap()
+    }
+
+    private fun translateLineEntity(
+        entity: ua.com.programmer.pick.data.local.database.entity.DocumentLineEntity,
+        productIdMap: Map<String, String>
+    ): ua.com.programmer.pick.data.local.database.entity.DocumentLineEntity {
+        val translatedProduct = productIdMap[entity.productId] ?: entity.productId
+        if (translatedProduct == entity.productId) return entity
+        return entity.copy(productId = translatedProduct)
     }
 
     private suspend fun applyProductSync(
@@ -1263,12 +1324,50 @@ class SyncOrchestrator @Inject constructor(
             val documentBoxes: List<DocumentBoxDto> = gson.fromJson(data, type)
 
             AppLog.i(TAG, "Sync document_boxes: ${documentBoxes.size} upsert, ${deletedIds?.size ?: 0} delete")
-            documentBoxDao.insertDocumentBoxes(documentBoxes.map { it.toEntity() })
+
+            // v2 backend translation: box_id, collected_by, picked_up_by and
+            // delivered_by now arrive as ERP external_ids. Translate back to
+            // local internal IDs (see resolveExternalProductIds for rationale).
+            val boxIdMap = resolveExternalBoxIds(documentBoxes)
+            val userIdMap = resolveExternalUserIdsForBoxes(documentBoxes)
+
+            val entities = documentBoxes.map { dto ->
+                val entity = dto.toEntity()
+                entity.copy(
+                    boxId = boxIdMap[entity.boxId] ?: entity.boxId,
+                    collectedBy = entity.collectedBy?.let { userIdMap[it] ?: it },
+                    pickedUpBy = entity.pickedUpBy?.let { userIdMap[it] ?: it },
+                    deliveredBy = entity.deliveredBy?.let { userIdMap[it] ?: it }
+                )
+            }
+            documentBoxDao.insertDocumentBoxes(entities)
         }
 
         deletedIds?.takeIf { it.isNotEmpty() }?.let { ids ->
             documentBoxDao.deleteDocumentBoxesByIds(ids)
         }
+    }
+
+    private suspend fun resolveExternalBoxIds(boxes: List<DocumentBoxDto>): Map<String, String> {
+        val externalIds = boxes.mapNotNull { it.boxId.takeIf(String::isNotBlank) }.toSet().toList()
+        if (externalIds.isEmpty()) return emptyMap()
+        return boxDao.findByExternalIds(externalIds)
+            .mapNotNull { b -> b.externalId?.let { it to b.id } }
+            .toMap()
+    }
+
+    private suspend fun resolveExternalUserIdsForBoxes(boxes: List<DocumentBoxDto>): Map<String, String> {
+        val externalIds = boxes
+            .asSequence()
+            .flatMap { sequenceOf(it.collectedBy, it.pickedUpBy, it.deliveredBy) }
+            .filterNotNull()
+            .filter { it.isNotBlank() }
+            .toSet()
+            .toList()
+        if (externalIds.isEmpty()) return emptyMap()
+        return userDao.findByExternalIds(externalIds)
+            .mapNotNull { u -> u.externalId?.let { it to u.id } }
+            .toMap()
     }
 
     // ============================================

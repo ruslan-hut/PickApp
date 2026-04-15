@@ -7,12 +7,22 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "products",
-    indices = [Index(value = ["code"], unique = true)]
+    indices = [
+        Index(value = ["code"], unique = true),
+        Index(value = ["external_id"])
+    ]
 )
 data class ProductEntity(
     @PrimaryKey
     @ColumnInfo(name = "id")
     val id: String,
+
+    // ERP external_id. Populated from ProductDto.externalId on sync; used by
+    // SyncOrchestrator to translate DocumentLine.product_id (which the v2
+    // backend now emits as an external_id) back to the local Mongo ObjectID
+    // hex used as the products primary key.
+    @ColumnInfo(name = "external_id")
+    val externalId: String? = null,
 
     @ColumnInfo(name = "code")
     val code: String,

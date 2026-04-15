@@ -43,6 +43,7 @@ class MessageParser @Inject constructor(
         private const val FIELD_CURSORS = "cursors"
         private const val FIELD_DATA = "data"
         private const val FIELD_DELETED_IDS = "deleted_ids"
+        private const val FIELD_FULL_SET = "full_set"
         private const val FIELD_SYNC_ID = "sync_id"
         private const val FIELD_DOCUMENT_ID = "document_id"
         private const val FIELD_STATE = "state"
@@ -77,6 +78,7 @@ class MessageParser @Inject constructor(
         private const val FIELD_LOGIN = "login"
         private const val FIELD_PASSWORD = "password"
         private const val FIELD_USER_ID = "user_id"
+        private const val FIELD_USER_EXTERNAL_ID = "user_external_id"
         private const val FIELD_USER_NAME = "user_name"
         private const val FIELD_ROLE = "role"
         private const val FIELD_OFFLINE_HASH = "offline_hash"
@@ -308,6 +310,7 @@ class MessageParser @Inject constructor(
             timestamp = timestamp,
             success = payload?.get(FIELD_SUCCESS)?.asBoolean ?: false,
             userId = payload?.get(FIELD_USER_ID)?.asString,
+            userExternalId = payload?.get(FIELD_USER_EXTERNAL_ID)?.asString,
             userName = payload?.get(FIELD_USER_NAME)?.asString,
             role = payload?.get(FIELD_ROLE)?.asString,
             offlineHash = payload?.get(FIELD_OFFLINE_HASH)?.asString,
@@ -334,7 +337,8 @@ class MessageParser @Inject constructor(
             timestamp = timestamp,
             entityType = payload.get(FIELD_ENTITY_TYPE)?.asString ?: return null,
             data = data,
-            deletedIds = payload.get(FIELD_DELETED_IDS)?.asJsonArray?.map { it.asString }
+            deletedIds = payload.get(FIELD_DELETED_IDS)?.asJsonArray?.map { it.asString },
+            fullSet = payload.get(FIELD_FULL_SET)?.let { if (it.isJsonNull) false else it.asBoolean } ?: false
         )
     }
 

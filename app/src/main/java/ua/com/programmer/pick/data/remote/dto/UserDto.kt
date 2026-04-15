@@ -5,6 +5,11 @@ import com.google.gson.annotations.SerializedName
 data class UserDto(
     @SerializedName("id")
     val id: String,
+    // ERP external_id — canonical identifier used in cross-references such as
+    // Document.assigned_user_id and DocumentBox.collected_by on the v2 backend
+    // wire format. Optional so older payloads still deserialize.
+    @SerializedName("external_id")
+    val externalId: String? = null,
     @SerializedName("login")
     val login: String,
     @SerializedName("name")

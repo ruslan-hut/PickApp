@@ -64,6 +64,9 @@ sealed class UserAuthState {
 data class UserLoginResult(
     val success: Boolean,
     val userId: String? = null,
+    // Worker's ERP external_id, forwarded from the server so UserRepositoryImpl
+    // can populate UserEntity.externalId at login time.
+    val userExternalId: String? = null,
     val userName: String? = null,
     val role: String? = null,
     val offlineHash: String? = null,
@@ -207,6 +210,7 @@ class WebSocketManager @Inject constructor(
             UserLoginResult(
                 success = true,
                 userId = response.userId,
+                userExternalId = response.userExternalId,
                 userName = response.userName,
                 role = response.role,
                 offlineHash = response.offlineHash,
@@ -382,9 +386,16 @@ class WebSocketManager @Inject constructor(
 
     /**
      * Build WebSocket URL with device_id in query parameter.
-     * Format: ws://{host}:{port}/ws/connect?app_token={app_token}&device_id={device_id}
+     * Format: ws://{host}:{port}/ws/connect?app_token={app_token}&device_id={device_id}&protocol_version=v2
      *
-     * Note: app_token is also sent via X-App-Token header as fallback
+     * Note: app_token is also sent via X-App-Token header as fallback.
+     *
+     * protocol_version=v2 marks this client as having the ERP external_id
+     * translation logic in SyncOrchestrator. The backend defaults to v1 when
+     * absent and currently emits the same DTO format regardless, so the flag
+     * is purely a forward marker for the eventual Phase 3 cleanup of the
+     * dual-accept heuristic on the server side. See CLAUDE.md
+     * "Canonical ID Principle".
      */
     private fun buildWebSocketUrl(deviceId: String): String {
         val baseUrl = Constants.Network.BASE_URL
@@ -392,7 +403,8 @@ class WebSocketManager @Inject constructor(
             .replace("http://", "ws://")
             .trimEnd('/')
 
-        return "$baseUrl/ws/connect?app_token=${Constants.Network.APP_TOKEN}&device_id=$deviceId"
+        return "$baseUrl/ws/connect?app_token=${Constants.Network.APP_TOKEN}" +
+            "&device_id=$deviceId&protocol_version=v2"
     }
 
     private fun createWebSocketListener() = object : WebSocketListener() {

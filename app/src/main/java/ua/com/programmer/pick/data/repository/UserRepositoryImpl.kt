@@ -133,7 +133,12 @@ class UserRepositoryImpl @Inject constructor(
 
             val currentTime = System.currentTimeMillis()
 
-            // Check if user already exists
+            // Check if user already exists. On both paths, persist the worker's
+            // ERP external_id (sent by v2 backend in the login response) so that
+            // cross-reference fields coming back from the server — e.g.
+            // StageLockResult.locked_by, Document.assigned_user_id — can be
+            // translated back to the local internal user id without waiting for
+            // the full users sync to run.
             val existingUser = userDao.getUserById(userId)
             val userEntity = if (existingUser != null) {
                 existingUser.copy(
@@ -141,12 +146,14 @@ class UserRepositoryImpl @Inject constructor(
                     name = loginResult.userName ?: existingUser.name,
                     passwordHash = passwordHash,
                     role = loginResult.role ?: existingUser.role,
+                    externalId = loginResult.userExternalId ?: existingUser.externalId,
                     lastLoginAt = currentTime,
                     lastUpdated = currentTime
                 )
             } else {
                 UserEntity(
                     id = userId,
+                    externalId = loginResult.userExternalId,
                     login = login,
                     name = loginResult.userName ?: login,
                     passwordHash = passwordHash,

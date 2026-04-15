@@ -13,6 +13,14 @@ interface BoxDao {
     @Query("SELECT * FROM boxes WHERE id = :id")
     suspend fun getBoxById(id: String): BoxEntity?
 
+    /**
+     * Batch-fetch boxes by ERP external_id. Used by SyncOrchestrator to
+     * translate v2-format DocumentBox.box_id values back to local internal
+     * IDs before insert.
+     */
+    @Query("SELECT * FROM boxes WHERE external_id IN (:externalIds)")
+    suspend fun findByExternalIds(externalIds: List<String>): List<BoxEntity>
+
     @Query("SELECT * FROM boxes WHERE barcode = :barcode")
     suspend fun getBoxByBarcode(barcode: String): BoxEntity?
 

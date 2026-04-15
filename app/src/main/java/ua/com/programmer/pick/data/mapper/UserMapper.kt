@@ -20,6 +20,7 @@ fun UserEntity.toDomain(): User {
 fun User.toEntity(passwordHash: String, lastUpdated: Long): UserEntity {
     return UserEntity(
         id = id,
+        externalId = null,
         login = login,
         name = name,
         passwordHash = passwordHash,
@@ -34,6 +35,7 @@ fun User.toEntity(passwordHash: String, lastUpdated: Long): UserEntity {
 fun UserDto.toEntity(passwordHash: String): UserEntity {
     return UserEntity(
         id = id,
+        externalId = externalId,
         login = login,
         name = name,
         passwordHash = passwordHash,
@@ -65,6 +67,7 @@ fun UserDto.toDomain(): User {
 fun UserDto.toEntityForSync(existingPasswordHash: String?): UserEntity {
     return UserEntity(
         id = id,
+        externalId = externalId,
         login = login,
         name = name,
         passwordHash = existingPasswordHash ?: "",

@@ -9,60 +9,32 @@ data class DocumentDetailUiState(
     val document: Document? = null,
     val lines: List<DocumentLine> = emptyList(),
     val productImages: Map<String, ProductImage> = emptyMap(),
-    val currentUserId: String? = null,
     val isLoading: Boolean = false,
     val isSaving: Boolean = false,
     val isProcessingAction: Boolean = false,
     val errorMessage: String? = null,
     val selectedLineId: String? = null
 ) {
-    /**
-     * Check if the current user can edit this document.
-     * Editing is allowed in any in-process state (COLLECTING, PACKING) by the assigned user.
-     */
+    // Per CLAUDE.md "Server-Driven Architecture": the app is a thin display
+    // layer and does NOT make authorization decisions locally. The server
+    // already filters the sync payload by role — a collector only ever sees
+    // documents they're allowed to work on. If a document is in an
+    // in-process state and the app has it in its local cache, by definition
+    // the current user is authorized to edit it. Take/complete/release
+    // follow the same logic: allow the action locally, let the server
+    // accept or reject the resulting STAGE_* message authoritatively.
+
+    /** Editable when the document is in an in-process state (COLLECTING / PACKING / DELIVERING). */
     val canEdit: Boolean
-        get() {
-            val doc = document ?: return false
-            val userId = currentUserId ?: return false
-            return DocumentState.isInProcess(doc.state) &&
-                   doc.assignedUserId == userId
-        }
+        get() = document?.state?.let { DocumentState.isInProcess(it) } ?: false
 
-    /**
-     * Check if the current user can take this document into work.
-     * Allowed when document is in a stage start state (LOADED, PACK).
-     */
+    /** Takeable when the document is in a stage start state (LOADED / PACK / DELIVERY). */
     val canTakeIntoWork: Boolean
-        get() {
-            val doc = document ?: return false
-            if (DocumentState.isStageStart(doc.state)) return true
-            // Allow re-locking if in-process but not currently assigned to this user
-            if (DocumentState.isInProcess(doc.state) && !canEdit) return true
-            return false
-        }
+        get() = document?.state?.let { DocumentState.isStageStart(it) } ?: false
 
-    /**
-     * Check if the current user can complete the current stage.
-     * Allowed in any in-process state (COLLECTING, PACKING) by the assigned user.
-     */
     val canComplete: Boolean
         get() = canEdit
 
-    /**
-     * Check if the current user can release (unlock) this document.
-     */
     val canRelease: Boolean
         get() = canEdit
-
-    /**
-     * Check if the document is taken by another user.
-     */
-    val isTakenByOtherUser: Boolean
-        get() {
-            val doc = document ?: return false
-            val userId = currentUserId ?: return false
-            return DocumentState.isInProcess(doc.state) &&
-                   doc.assignedUserId != null &&
-                   doc.assignedUserId != userId
-        }
 }

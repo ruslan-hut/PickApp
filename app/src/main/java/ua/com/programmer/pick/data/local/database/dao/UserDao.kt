@@ -14,6 +14,14 @@ interface UserDao {
     @Query("SELECT * FROM users WHERE id = :id")
     suspend fun getUserById(id: String): UserEntity?
 
+    /**
+     * Batch-fetch users by ERP external_id. Used by SyncOrchestrator to
+     * translate v2-format worker references on Document/DocumentBox back to
+     * local internal IDs before insert.
+     */
+    @Query("SELECT * FROM users WHERE external_id IN (:externalIds)")
+    suspend fun findByExternalIds(externalIds: List<String>): List<UserEntity>
+
     @Query("SELECT * FROM users WHERE id = :id")
     fun getUserByIdFlow(id: String): Flow<UserEntity?>
 

@@ -118,6 +118,10 @@ sealed class SyncMessage {
         override val timestamp: String,
         val success: Boolean,
         val userId: String? = null,
+        // ERP external_id of the authenticated worker. Sent by v2 backend so
+        // the app can populate UserEntity.externalId immediately on login,
+        // before the full users sync runs.
+        val userExternalId: String? = null,
         val userName: String? = null,
         val role: String? = null,
         val offlineHash: String? = null,
@@ -159,15 +163,22 @@ sealed class SyncMessage {
     }
 
     /**
-     * Server sync data batch
-     * Payload: entity_type, data, deleted_ids
+     * Server sync data batch.
+     *
+     * fullSet distinguishes a delta sync (false — merge-only; local rows
+     * outside this payload must NOT be purged) from a full list refresh
+     * (true — authoritative set; local rows outside this payload must be
+     * deleted so the UI reflects server-side removals). Absent = false
+     * (safer default). See the server's SyncDataPayload doc for the full
+     * invariant.
      */
     data class SyncData(
         override val id: String,
         override val timestamp: String,
         val entityType: String,
         val data: JsonElement,
-        val deletedIds: List<String>? = null
+        val deletedIds: List<String>? = null,
+        val fullSet: Boolean = false
     ) : SyncMessage() {
         override val type = MessageType.SYNC_DATA
     }

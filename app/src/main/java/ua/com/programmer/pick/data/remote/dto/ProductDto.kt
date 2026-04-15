@@ -9,6 +9,12 @@ data class ProductDto(
     @SerializedName("id")
     val id: String,
 
+    // ERP external_id — the canonical identifier used in cross-references
+    // (DocumentLine.product_id) on the v2 backend wire format. Optional so the
+    // app keeps deserializing payloads from older servers that omit it.
+    @SerializedName("external_id")
+    val externalId: String? = null,
+
     @SerializedName("code")
     val code: String,
 

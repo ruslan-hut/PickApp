@@ -48,7 +48,7 @@ import ua.com.programmer.pick.data.local.database.entity.WarehouseLocationEntity
         DocumentBoxEntity::class,
         DebugJournalEntity::class
     ],
-    version = 10, // Version 10: Added debug_journal_events table
+    version = 11, // Version 11: external_id columns on products and users (v2 sync translation)
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -128,6 +128,20 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_document_boxes_document_id ON document_boxes (document_id)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_document_boxes_barcode ON document_boxes (barcode)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_document_boxes_box_id ON document_boxes (box_id)")
+            }
+        }
+
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Add ERP external_id to products and users so the sync layer can
+                // translate v2-format cross-references (DocumentLine.product_id,
+                // Document.assigned_user_id, DocumentBox.collected_by, etc.)
+                // back to local internal IDs. Backfilled by the next product/user
+                // sync from the server.
+                db.execSQL("ALTER TABLE products ADD COLUMN external_id TEXT")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_products_external_id ON products (external_id)")
+                db.execSQL("ALTER TABLE users ADD COLUMN external_id TEXT")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_users_external_id ON users (external_id)")
             }
         }
 
