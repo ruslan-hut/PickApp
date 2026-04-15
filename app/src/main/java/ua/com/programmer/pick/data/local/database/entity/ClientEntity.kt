@@ -7,12 +7,21 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "clients",
-    indices = [Index(value = ["code"], unique = true)]
+    indices = [
+        Index(value = ["code"], unique = true),
+        Index(value = ["external_id"])
+    ]
 )
 data class ClientEntity(
     @PrimaryKey
     @ColumnInfo(name = "id")
     val id: String,
+
+    // ERP external_id. Populated from ClientDto.externalId on sync so the app
+    // can translate v2-format cross-references (e.g. Document.client_id) back
+    // to the local row id. Backfilled by the next client sync.
+    @ColumnInfo(name = "external_id")
+    val externalId: String? = null,
 
     @ColumnInfo(name = "code")
     val code: String,

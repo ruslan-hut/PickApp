@@ -9,6 +9,9 @@ data class ClientDto(
     @SerializedName("id")
     val id: String,
 
+    @SerializedName("external_id")
+    val externalId: String? = null,
+
     @SerializedName("code")
     val code: String,
 

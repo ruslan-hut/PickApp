@@ -12,6 +12,7 @@ class ClientMapper @Inject constructor() {
     fun toEntity(dto: ClientDto): ClientEntity {
         return ClientEntity(
             id = dto.id,
+            externalId = dto.externalId,
             code = dto.code,
             name = dto.name,
             address = dto.address,

@@ -15,6 +15,7 @@ class WarehouseMapper @Inject constructor() {
     fun toEntity(dto: WarehouseDto): WarehouseEntity {
         return WarehouseEntity(
             id = dto.id,
+            externalId = dto.externalId,
             code = dto.code,
             name = dto.name,
             isAddressed = dto.isAddressed,

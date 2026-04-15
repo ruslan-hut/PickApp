@@ -14,6 +14,9 @@ interface DocumentDao {
     @Query("SELECT * FROM documents WHERE id = :id")
     suspend fun getDocumentById(id: String): DocumentEntity?
 
+    @Query("SELECT * FROM documents WHERE external_id = :externalId LIMIT 1")
+    suspend fun getDocumentByExternalId(externalId: String): DocumentEntity?
+
     @Query("SELECT * FROM documents WHERE id = :id")
     fun observeDocumentById(id: String): Flow<DocumentEntity?>
 

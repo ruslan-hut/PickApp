@@ -48,7 +48,7 @@ import ua.com.programmer.pick.data.local.database.entity.WarehouseLocationEntity
         DocumentBoxEntity::class,
         DebugJournalEntity::class
     ],
-    version = 11, // Version 11: external_id columns on products and users (v2 sync translation)
+    version = 12, // Version 12: external_id columns on clients and warehouses (v2 sync translation)
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -142,6 +142,20 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_products_external_id ON products (external_id)")
                 db.execSQL("ALTER TABLE users ADD COLUMN external_id TEXT")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_users_external_id ON users (external_id)")
+            }
+        }
+
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Add ERP external_id to clients and warehouses. The backend now
+                // emits external_id on ClientSyncDto and WarehouseSyncDto; storing
+                // it locally enables future translation of Document.client_id and
+                // Document.warehouse_id (and User.warehouse_id) back to local row ids.
+                // Backfilled by the next client/warehouse sync.
+                db.execSQL("ALTER TABLE clients ADD COLUMN external_id TEXT")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_clients_external_id ON clients (external_id)")
+                db.execSQL("ALTER TABLE warehouses ADD COLUMN external_id TEXT")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_warehouses_external_id ON warehouses (external_id)")
             }
         }
 

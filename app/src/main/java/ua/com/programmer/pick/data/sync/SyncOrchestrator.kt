@@ -443,10 +443,11 @@ class SyncOrchestrator @Inject constructor(
             return Result.Error(Exception("User not authenticated"))
         }
 
+        val externalId = toExternalDocumentId(documentId)
         val message = SyncMessage.DocumentProducts(
             id = messageParser.generateMessageId(),
             timestamp = messageParser.getCurrentTimestamp(),
-            documentId = documentId
+            documentId = externalId
         )
 
         val sent = webSocketManager.sendMessage(message)
@@ -475,6 +476,29 @@ class SyncOrchestrator @Inject constructor(
         return Result.Success(Unit)
     }
 
+    /**
+     * Send a BOX_SCAN message to the server. Translates the Room document id
+     * to its ERP external_id so callers never touch the wire format.
+     */
+    suspend fun sendBoxScan(
+        documentRoomId: String,
+        barcode: String,
+        weight: Int
+    ): SyncMessage.BoxScanResult? {
+        val externalId = toExternalDocumentId(documentRoomId)
+        val message = SyncMessage.BoxScan(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp(),
+            documentId = externalId,
+            barcode = barcode,
+            weight = weight
+        )
+        return webSocketManager.sendAndAwait(
+            message,
+            SyncMessage.BoxScanResult::class.java
+        )
+    }
+
     // ============================================
     // Document Operations
     // ============================================
@@ -492,10 +516,11 @@ class SyncOrchestrator @Inject constructor(
             return Result.Error(Exception("User not authenticated"))
         }
 
+        val externalId = toExternalDocumentId(documentId)
         val message = SyncMessage.StageLock(
             id = messageParser.generateMessageId(),
             timestamp = messageParser.getCurrentTimestamp(),
-            documentId = documentId,
+            documentId = externalId,
             stage = stage
         )
 
@@ -561,13 +586,15 @@ class SyncOrchestrator @Inject constructor(
     suspend fun unlockFromStage(documentId: String, stage: String): Result<Unit> {
         AppLog.d(TAG, "Unlocking document $documentId from stage: $stage")
 
+        val externalId = toExternalDocumentId(documentId)
+
         if (!webSocketManager.isConnected()) {
             AppLog.d(TAG, "WebSocket not connected, queueing unlock operation for document: $documentId")
             outgoingOperationRepository.queueOperation(
                 operationType = OperationType.STAGE_UNLOCK,
                 entityType = EntityType.DOCUMENT,
                 entityId = documentId,
-                payload = gson.toJson(mapOf("document_id" to documentId, "stage" to stage))
+                payload = gson.toJson(mapOf("document_id" to externalId, "stage" to stage))
             )
             return Result.Success(Unit)
         }
@@ -575,7 +602,7 @@ class SyncOrchestrator @Inject constructor(
         val message = SyncMessage.StageUnlock(
             id = messageParser.generateMessageId(),
             timestamp = messageParser.getCurrentTimestamp(),
-            documentId = documentId,
+            documentId = externalId,
             stage = stage
         )
 
@@ -694,6 +721,8 @@ class SyncOrchestrator @Inject constructor(
     ): Result<Unit> {
         AppLog.d(TAG, "Updating document: $documentId with ${lines.size} lines")
 
+        val externalId = toExternalDocumentId(documentId)
+
         if (!webSocketManager.isConnected()) {
             AppLog.d(TAG, "WebSocket not connected, queueing update operation for document: $documentId")
             debugJournal.log(
@@ -708,7 +737,7 @@ class SyncOrchestrator @Inject constructor(
                 entityType = EntityType.DOCUMENT,
                 entityId = documentId,
                 payload = gson.toJson(mapOf(
-                    "document_id" to documentId,
+                    "document_id" to externalId,
                     "state" to state,
                     "lines" to lines
                 ))
@@ -719,7 +748,7 @@ class SyncOrchestrator @Inject constructor(
         val message = SyncMessage.DocumentUpdate(
             id = messageParser.generateMessageId(),
             timestamp = messageParser.getCurrentTimestamp(),
-            documentId = documentId,
+            documentId = externalId,
             state = state,
             lines = lines
         )
@@ -754,7 +783,7 @@ class SyncOrchestrator @Inject constructor(
                 entityType = EntityType.DOCUMENT,
                 entityId = documentId,
                 payload = gson.toJson(mapOf(
-                    "document_id" to documentId,
+                    "document_id" to externalId,
                     "state" to state,
                     "lines" to lines
                 ))
@@ -775,13 +804,15 @@ class SyncOrchestrator @Inject constructor(
         // race against (and lose) the most recent line edits.
         flushDocumentSync(documentId)
 
+        val externalId = toExternalDocumentId(documentId)
+
         if (!webSocketManager.isConnected()) {
             AppLog.d(TAG, "WebSocket not connected, queueing complete operation for document: $documentId")
             outgoingOperationRepository.queueOperation(
                 operationType = OperationType.STAGE_COMPLETE,
                 entityType = EntityType.DOCUMENT,
                 entityId = documentId,
-                payload = gson.toJson(mapOf("document_id" to documentId, "stage" to stage))
+                payload = gson.toJson(mapOf("document_id" to externalId, "stage" to stage))
             )
             return Result.Error(Exception("WebSocket not connected, operation queued"))
         }
@@ -789,7 +820,7 @@ class SyncOrchestrator @Inject constructor(
         val message = SyncMessage.StageComplete(
             id = messageParser.generateMessageId(),
             timestamp = messageParser.getCurrentTimestamp(),
-            documentId = documentId,
+            documentId = externalId,
             stage = stage
         )
 
@@ -938,9 +969,10 @@ class SyncOrchestrator @Inject constructor(
         AppLog.d(TAG, "Stage lock result: ${message.documentId}, stage: ${message.stage}, success: ${message.success}")
 
         if (message.success) {
-            documentDao.updateDocumentStateFromServer(message.documentId, stageInProcessState(message.stage), System.currentTimeMillis())
+            val roomId = toRoomDocumentId(message.documentId)
+            documentDao.updateDocumentStateFromServer(roomId, stageInProcessState(message.stage), System.currentTimeMillis())
             message.lockedBy?.let { userId ->
-                documentDao.updateAssignedUser(message.documentId, userId, System.currentTimeMillis())
+                documentDao.updateAssignedUser(roomId, userId, System.currentTimeMillis())
             }
         }
     }
@@ -950,9 +982,10 @@ class SyncOrchestrator @Inject constructor(
 
         if (message.success) {
             val state = message.state ?: return
-            documentDao.updateDocumentStateFromServer(message.documentId, state, System.currentTimeMillis())
+            val roomId = toRoomDocumentId(message.documentId)
+            documentDao.updateDocumentStateFromServer(roomId, state, System.currentTimeMillis())
             message.version?.let { version ->
-                documentDao.updateDocumentVersion(message.documentId, version.toInt())
+                documentDao.updateDocumentVersion(roomId, version.toInt())
             }
         }
     }
@@ -1149,6 +1182,22 @@ class SyncOrchestrator @Inject constructor(
     //
     // The lookup misses harmlessly when the server still sends ObjectID hex
     // (old backend), so a single binary works against both wire formats.
+
+    // Document id translation layer for the outbound wire format. ViewModels
+    // and navigation deal exclusively in Room primary keys (DocumentEntity.id).
+    // The sync boundary converts those to ERP external_ids before sending a
+    // message, and converts server echoes (StageLockResult.documentId etc.)
+    // back to Room ids before mutating the local DB. Fallbacks handle the
+    // transitional case where either side still uses the ObjectID-hex form.
+
+    private suspend fun toExternalDocumentId(roomDocumentId: String): String {
+        val doc = documentDao.getDocumentById(roomDocumentId)
+        return doc?.externalId?.takeIf { it.isNotEmpty() } ?: roomDocumentId
+    }
+
+    private suspend fun toRoomDocumentId(incoming: String): String {
+        return documentDao.getDocumentByExternalId(incoming)?.id ?: incoming
+    }
 
     /** Collect line.product_id values across the batch and resolve them by external_id. */
     private suspend fun resolveExternalProductIds(documents: List<DocumentDto>): Map<String, String> {
@@ -1483,7 +1532,7 @@ class SyncOrchestrator @Inject constructor(
                 val message = SyncMessage.DocumentUpdate(
                     id = messageParser.generateMessageId(),
                     timestamp = messageParser.getCurrentTimestamp(),
-                    documentId = doc.id,
+                    documentId = doc.externalId?.takeIf { it.isNotEmpty() } ?: doc.id,
                     state = doc.state,
                     lines = lines
                 )

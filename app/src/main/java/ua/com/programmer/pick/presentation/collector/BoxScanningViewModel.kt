@@ -12,9 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ua.com.programmer.pick.core.scanner.BarcodeService
-import ua.com.programmer.pick.data.remote.websocket.MessageParser
-import ua.com.programmer.pick.data.remote.websocket.SyncMessage
-import ua.com.programmer.pick.data.remote.websocket.WebSocketManager
+import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.domain.model.DocumentBox
 import ua.com.programmer.pick.domain.repository.BoxRepository
 import ua.com.programmer.pick.presentation.navigation.Screen
@@ -38,8 +36,7 @@ sealed class BoxScanningEvent {
 class BoxScanningViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val boxRepository: BoxRepository,
-    private val webSocketManager: WebSocketManager,
-    private val messageParser: MessageParser,
+    private val syncOrchestrator: SyncOrchestrator,
     private val barcodeService: BarcodeService
 ) : ViewModel() {
 
@@ -90,17 +87,10 @@ class BoxScanningViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isScanning = true, errorMessage = null) }
 
-            val message = SyncMessage.BoxScan(
-                id = messageParser.generateMessageId(),
-                timestamp = messageParser.getCurrentTimestamp(),
-                documentId = documentId,
+            val response = syncOrchestrator.sendBoxScan(
+                documentRoomId = documentId,
                 barcode = barcode,
                 weight = weight
-            )
-
-            val response = webSocketManager.sendAndAwait(
-                message,
-                SyncMessage.BoxScanResult::class.java
             )
 
             if (response?.success == true) {
