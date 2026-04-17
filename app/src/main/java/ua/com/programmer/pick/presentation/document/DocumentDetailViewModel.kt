@@ -20,7 +20,6 @@ import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.scanner.BarcodeService
 import ua.com.programmer.pick.core.scanner.ScannedBarcode
 import ua.com.programmer.pick.data.local.database.dao.ProductImageDao
-import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.core.util.Result
 import ua.com.programmer.pick.data.debug.DebugEventType
 import ua.com.programmer.pick.data.debug.DebugJournal
@@ -49,7 +48,6 @@ class DocumentDetailViewModel @Inject constructor(
     private val debugJournal: DebugJournal,
     private val boxDao: BoxDao,
     private val documentBoxDao: DocumentBoxDao,
-    private val appPreferences: AppPreferences,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -72,23 +70,12 @@ class DocumentDetailViewModel @Inject constructor(
     init {
         // Subscribe to barcode scans once when ViewModel is created
         subscribeToScans()
-        // Track the logged-in user so the UI can distinguish "this document is
-        // locked by me" from "locked by someone else" — the admin role sees
-        // both and must not be treated as the lock owner.
-        appPreferences.currentUserId
-            .onEach { userId -> _uiState.update { it.copy(currentUserId = userId) } }
-            .launchIn(viewModelScope)
     }
 
     fun load(documentId: String) {
-        // Reset state completely when loading a different document. Preserve
-        // currentUserId across the reset — it's a session-scoped value, not
-        // tied to any particular document.
+        // Reset state completely when loading a different document.
         if (currentDocumentId != documentId) {
-            _uiState.value = DocumentDetailUiState(
-                isLoading = true,
-                currentUserId = _uiState.value.currentUserId
-            )
+            _uiState.value = DocumentDetailUiState(isLoading = true)
         } else {
             _uiState.update { it.copy(isLoading = true) }
         }
@@ -129,7 +116,21 @@ class DocumentDetailViewModel @Inject constructor(
                 boxesSubscriptionJob?.cancel()
                 boxesSubscriptionJob = documentBoxDao.getBoxesByDocumentId(documentId)
                     .onEach { entities ->
-                        _uiState.update { it.copy(documentBoxes = entities.toDocumentBoxDomainList()) }
+                        val domain = entities.toDocumentBoxDomainList()
+                        val newIds = domain.map { it.boxId }
+                            .filter { it !in _uiState.value.boxNamesById }
+                            .toSet()
+                        val added = if (newIds.isEmpty()) emptyMap()
+                        else newIds.mapNotNull { id ->
+                            boxDao.getBoxById(id)?.name?.let { id to it }
+                        }.toMap()
+                        _uiState.update { state ->
+                            state.copy(
+                                documentBoxes = domain,
+                                boxNamesById = if (added.isEmpty()) state.boxNamesById
+                                else state.boxNamesById + added
+                            )
+                        }
                     }
                     .launchIn(viewModelScope)
 

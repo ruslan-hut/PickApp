@@ -355,6 +355,7 @@ fun DocumentDetailScreen(
                                 uiState.showBoxesTab && uiState.activeTab == DocumentDetailTab.BOXES -> {
                                     BoxesTab(
                                         documentBoxes = uiState.documentBoxes,
+                                        boxNamesById = uiState.boxNamesById,
                                         canRemove = uiState.isPackStage,
                                         onRemove = { docBoxId -> viewModel.removeBox(docBoxId) }
                                     )
@@ -707,6 +708,7 @@ private fun CompleteConfirmDialog(
 @Composable
 private fun BoxesTab(
     documentBoxes: List<DocumentBox>,
+    boxNamesById: Map<String, String>,
     canRemove: Boolean,
     onRemove: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -740,9 +742,12 @@ private fun BoxesTab(
             contentPadding = PaddingValues(vertical = 8.dp)
         ) {
             items(items = documentBoxes, key = { it.id }) { box ->
+                val name = boxNamesById[box.boxId]
                 if (canRemove) {
                     // Swipe-to-delete with no confirmation dialog — matches the
-                    // worker's requested flow. Any direction triggers removal.
+                    // worker's requested flow. The dismiss background reveals
+                    // only once the user starts swiping; otherwise it stays
+                    // invisible so the resting card has no red halo.
                     val dismissState = rememberSwipeToDismissBoxState(
                         confirmValueChange = { value ->
                             if (value != SwipeToDismissBoxValue.Settled) {
@@ -753,19 +758,27 @@ private fun BoxesTab(
                             }
                         }
                     )
-                    SwipeToDismissBox(
-                        state = dismissState,
-                        backgroundContent = {
-                            Surface(
-                                modifier = Modifier.fillMaxSize(),
-                                color = MaterialTheme.colorScheme.errorContainer
-                            ) {}
+                    val isSwiping = dismissState.targetValue != SwipeToDismissBoxValue.Settled
+                    Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                        SwipeToDismissBox(
+                            state = dismissState,
+                            backgroundContent = {
+                                if (isSwiping) {
+                                    Surface(
+                                        modifier = Modifier.fillMaxSize(),
+                                        color = MaterialTheme.colorScheme.errorContainer,
+                                        shape = CardShape
+                                    ) {}
+                                }
+                            }
+                        ) {
+                            DocumentBoxRow(box = box, name = name)
                         }
-                    ) {
-                        DocumentBoxRow(box = box)
                     }
                 } else {
-                    DocumentBoxRow(box = box)
+                    Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                        DocumentBoxRow(box = box, name = name)
+                    }
                 }
             }
             item { Spacer(modifier = Modifier.height(16.dp)) }
@@ -774,14 +787,14 @@ private fun BoxesTab(
 }
 
 @Composable
-private fun DocumentBoxRow(box: DocumentBox, modifier: Modifier = Modifier) {
+private fun DocumentBoxRow(box: DocumentBox, name: String?, modifier: Modifier = Modifier) {
     val accentColor = if (box.isParcel) {
         MaterialTheme.colorScheme.primary
     } else {
         MaterialTheme.colorScheme.outlineVariant
     }
     PickElevatedCard(
-        modifier = modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+        modifier = modifier,
         containerColor = if (box.isParcel) {
             MaterialTheme.colorScheme.primaryContainer
         } else {
@@ -824,7 +837,7 @@ private fun DocumentBoxRow(box: DocumentBox, modifier: Modifier = Modifier) {
                     }
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = box.barcode,
+                        text = name ?: box.barcode,
                         style = MaterialTheme.typography.titleSmall
                     )
                 }

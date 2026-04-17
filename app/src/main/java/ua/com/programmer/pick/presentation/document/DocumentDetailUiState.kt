@@ -17,6 +17,10 @@ data class DocumentDetailUiState(
     val lines: List<DocumentLine> = emptyList(),
     val productImages: Map<String, ProductImage> = emptyMap(),
     val documentBoxes: List<DocumentBox> = emptyList(),
+    // boxId → display name from the master Box catalog. Populated by the
+    // ViewModel alongside documentBoxes so the packed-boxes list can render
+    // human-readable names instead of barcodes.
+    val boxNamesById: Map<String, String> = emptyMap(),
     val activeTab: DocumentDetailTab = DocumentDetailTab.PRODUCTS,
     // While the parcel weight dialog is open we block additional scans so the
     // worker doesn't start the next parcel before entering the previous weight.
@@ -26,25 +30,18 @@ data class DocumentDetailUiState(
     val isSaving: Boolean = false,
     val isProcessingAction: Boolean = false,
     val errorMessage: String? = null,
-    val selectedLineId: String? = null,
-    val currentUserId: String? = null
+    val selectedLineId: String? = null
 ) {
-    // Editing a document requires two things: the document is in an in-process
-    // stage (COLLECTING / PACKING / DELIVERING) AND the current user is the
-    // one who holds the lock. The ownership check matters for the administrator
-    // role, which receives every document — including those being processed by
-    // other workers. For collectors/couriers the server already filters by
-    // role, so the ownership check is redundant but harmless.
+    // Per CLAUDE.md "Server-Driven Architecture": the app does not make
+    // authorization decisions locally. The server already filters the sync
+    // payload by role and gates the lock — if a document is in-process and
+    // in the local cache, the server has accepted this user as its owner.
+    // Scans and saves hit the server, which rejects anything it doesn't
+    // authorize.
 
-    /** Editable only when the document is in-process AND owned by the current user. */
+    /** Editable when the document is in an in-process state (COLLECTING / PACKING / DELIVERING). */
     val canEdit: Boolean
-        get() {
-            val doc = document ?: return false
-            if (!DocumentState.isInProcess(doc.state)) return false
-            val owner = doc.assignedUserId ?: return false
-            val me = currentUserId ?: return false
-            return owner == me
-        }
+        get() = document?.state?.let { DocumentState.isInProcess(it) } ?: false
 
     /** Takeable when the document is in a stage start state (LOADED / PACK / DELIVERY). */
     val canTakeIntoWork: Boolean
