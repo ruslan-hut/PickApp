@@ -10,25 +10,22 @@ import ua.com.programmer.pick.data.local.database.entity.DocumentBoxEntity
 @Dao
 interface DocumentBoxDao {
 
-    @Query("SELECT * FROM document_boxes WHERE id = :id")
-    suspend fun getDocumentBoxById(id: String): DocumentBoxEntity?
+    @Query("SELECT * FROM document_boxes WHERE document_id = :documentId AND box_number = :boxNumber")
+    suspend fun getDocumentBox(documentId: String, boxNumber: Int): DocumentBoxEntity?
 
     // Sort parcels first (is_parcel DESC) so the Boxes tab can render
     // delivery places above packages without a client-side sort pass.
-    @Query("SELECT * FROM document_boxes WHERE document_id = :documentId ORDER BY is_parcel DESC, packed_at ASC")
+    @Query("SELECT * FROM document_boxes WHERE document_id = :documentId ORDER BY is_parcel DESC, box_number ASC")
     fun getBoxesByDocumentId(documentId: String): Flow<List<DocumentBoxEntity>>
 
-    @Query("SELECT * FROM document_boxes WHERE document_id = :documentId ORDER BY is_parcel DESC, packed_at ASC")
+    @Query("SELECT * FROM document_boxes WHERE document_id = :documentId ORDER BY is_parcel DESC, box_number ASC")
     suspend fun getBoxesByDocumentIdOnce(documentId: String): List<DocumentBoxEntity>
 
     @Query("SELECT COUNT(*) FROM document_boxes WHERE document_id = :documentId AND is_parcel = 1")
     fun getParcelCountByDocument(documentId: String): Flow<Int>
 
-    @Query("DELETE FROM document_boxes WHERE id = :id")
-    suspend fun deleteDocumentBoxById(id: String)
-
-    @Query("SELECT * FROM document_boxes WHERE barcode = :barcode AND document_id = :documentId")
-    suspend fun getBoxByBarcodeAndDocument(barcode: String, documentId: String): DocumentBoxEntity?
+    @Query("DELETE FROM document_boxes WHERE document_id = :documentId AND box_number = :boxNumber")
+    suspend fun deleteDocumentBox(documentId: String, boxNumber: Int)
 
     @Query("SELECT COUNT(*) FROM document_boxes WHERE document_id = :documentId")
     fun getBoxCountByDocument(documentId: String): Flow<Int>
@@ -45,9 +42,9 @@ interface DocumentBoxDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDocumentBoxes(documentBoxes: List<DocumentBoxEntity>)
 
-    @Query("DELETE FROM document_boxes WHERE id IN (:ids)")
-    suspend fun deleteDocumentBoxesByIds(ids: List<String>)
-
     @Query("DELETE FROM document_boxes WHERE document_id = :documentId")
     suspend fun deleteBoxesByDocumentId(documentId: String)
+
+    @Query("DELETE FROM document_boxes WHERE document_id = :documentId AND box_number NOT IN (:keep)")
+    suspend fun deleteBoxesNotIn(documentId: String, keep: List<Int>)
 }

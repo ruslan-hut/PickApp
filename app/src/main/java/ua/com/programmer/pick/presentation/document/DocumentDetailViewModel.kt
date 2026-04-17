@@ -716,12 +716,12 @@ class DocumentDetailViewModel @Inject constructor(
     }
 
     /** Swipe-to-delete handler: remove a previously-added box during PACKING. */
-    fun removeBox(documentBoxId: String) {
+    fun removeBox(boxNumber: Int) {
         if (!_uiState.value.isPackStage) return
         val docId = currentDocumentId ?: return
         viewModelScope.launch {
             val result = try {
-                syncOrchestrator.sendBoxRemove(docId, documentBoxId)
+                syncOrchestrator.sendBoxRemove(docId, boxNumber)
             } catch (e: Exception) {
                 AppLog.e("DocumentDetailViewModel", "sendBoxRemove failed", e)
                 _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.BOX_REMOVE_FAILED))

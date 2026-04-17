@@ -70,7 +70,7 @@ class MessageParser @Inject constructor(
         private const val FIELD_WEIGHT = "weight"
         private const val FIELD_BOX_ID = "box_id"
         private const val FIELD_BOX = "box"
-        private const val FIELD_DOCUMENT_BOX_ID = "document_box_id"
+        private const val FIELD_BOX_NUMBER = "box_number"
         private const val FIELD_OFFLINE_SEQ = "offline_seq"
         private const val FIELD_CLIENT_TS = "client_ts"
         private const val FIELD_WAS_NOOP = "was_noop"
@@ -245,7 +245,7 @@ class MessageParser @Inject constructor(
 
             is SyncMessage.BoxRemove -> JsonObject().apply {
                 addProperty(FIELD_DOCUMENT_ID, message.documentId)
-                addProperty(FIELD_DOCUMENT_BOX_ID, message.documentBoxId)
+                addProperty(FIELD_BOX_NUMBER, message.boxNumber)
             }
 
             is SyncMessage.BoxLookup -> JsonObject().apply {
@@ -456,7 +456,7 @@ class MessageParser @Inject constructor(
             id = id,
             timestamp = timestamp,
             success = payload?.get(FIELD_SUCCESS)?.asBoolean ?: false,
-            documentBoxId = payload?.get(FIELD_DOCUMENT_BOX_ID)?.asString,
+            boxNumber = payload?.get(FIELD_BOX_NUMBER)?.asInt,
             error = payload?.get(FIELD_ERROR)?.asString
         )
     }

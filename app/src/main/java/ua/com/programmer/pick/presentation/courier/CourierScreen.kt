@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -57,12 +58,13 @@ fun CourierScreen(
     val uiState by viewModel.uiState.collectAsState()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
     val context = LocalContext.current
+    val resources = LocalResources.current
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
                 is CourierEvent.ShowMessage -> {
-                    Toast.makeText(context, context.getString(event.messageResId), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, resources.getString(event.messageResId), Toast.LENGTH_SHORT).show()
                 }
                 is CourierEvent.AllBoxesConfirmed -> { /* Could navigate back or refresh */ }
             }
@@ -131,7 +133,7 @@ fun CourierScreen(
                 ) {
                     items(
                         items = uiState.boxes,
-                        key = { it.id }
+                        key = { "${it.documentId}_${it.boxNumber}" }
                     ) { box ->
                         CourierBoxItem(box = box, mode = uiState.mode)
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))

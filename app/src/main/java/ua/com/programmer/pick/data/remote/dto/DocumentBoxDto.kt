@@ -2,15 +2,12 @@ package ua.com.programmer.pick.data.remote.dto
 
 import com.google.gson.annotations.SerializedName
 
-// Matches the server's DocumentBoxSyncDto. is_parcel is denormalized from the
-// master Box. packed_by/at replace the legacy collected_by/at fields since boxing
-// now happens during the PACK stage.
+// Matches the server's DocumentBoxSyncDto. Boxes are embedded inside DocumentDto.boxes.
+// box_number is the in-document primary key, assigned by the server on BOX_ADD.
+// is_parcel is denormalized from the master Box.
 data class DocumentBoxDto(
-    @SerializedName("id")
-    val id: String,
-
-    @SerializedName("document_id")
-    val documentId: String,
+    @SerializedName("box_number")
+    val boxNumber: Int,
 
     @SerializedName("box_id")
     val boxId: String,
@@ -44,10 +41,4 @@ data class DocumentBoxDto(
 
     @SerializedName("delivered_at")
     val deliveredAt: Long? = null,
-
-    @SerializedName("last_modified")
-    val lastModified: Long,
-
-    @SerializedName("version")
-    val version: Int
 )

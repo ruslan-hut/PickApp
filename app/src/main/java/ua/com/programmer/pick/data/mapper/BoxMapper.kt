@@ -35,10 +35,10 @@ fun BoxEntity.toDomain(): Box {
     )
 }
 
-fun DocumentBoxDto.toEntity(): DocumentBoxEntity {
+fun DocumentBoxDto.toEntity(documentId: String): DocumentBoxEntity {
     return DocumentBoxEntity(
-        id = id,
         documentId = documentId,
+        boxNumber = boxNumber,
         boxId = boxId,
         barcode = barcode,
         isParcel = isParcel,
@@ -50,15 +50,13 @@ fun DocumentBoxDto.toEntity(): DocumentBoxEntity {
         pickedUpAt = pickedUpAt,
         deliveredBy = deliveredBy,
         deliveredAt = deliveredAt,
-        lastModified = lastModified,
-        version = version
     )
 }
 
 fun DocumentBoxEntity.toDomain(): DocumentBox {
     return DocumentBox(
-        id = id,
         documentId = documentId,
+        boxNumber = boxNumber,
         boxId = boxId,
         barcode = barcode,
         isParcel = isParcel,
@@ -70,8 +68,6 @@ fun DocumentBoxEntity.toDomain(): DocumentBox {
         pickedUpAt = pickedUpAt,
         deliveredBy = deliveredBy,
         deliveredAt = deliveredAt,
-        lastModified = lastModified,
-        version = version
     )
 }
 

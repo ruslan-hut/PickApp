@@ -357,7 +357,7 @@ fun DocumentDetailScreen(
                                         documentBoxes = uiState.documentBoxes,
                                         boxNamesById = uiState.boxNamesById,
                                         canRemove = uiState.isPackStage,
-                                        onRemove = { docBoxId -> viewModel.removeBox(docBoxId) }
+                                        onRemove = { boxNumber -> viewModel.removeBox(boxNumber) }
                                     )
                                 }
 
@@ -710,7 +710,7 @@ private fun BoxesTab(
     documentBoxes: List<DocumentBox>,
     boxNamesById: Map<String, String>,
     canRemove: Boolean,
-    onRemove: (String) -> Unit,
+    onRemove: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val parcelCount = documentBoxes.count { it.isParcel }
@@ -741,7 +741,7 @@ private fun BoxesTab(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(vertical = 8.dp)
         ) {
-            items(items = documentBoxes, key = { it.id }) { box ->
+            items(items = documentBoxes, key = { "${it.documentId}_${it.boxNumber}" }) { box ->
                 val name = boxNamesById[box.boxId]
                 if (canRemove) {
                     // Swipe-to-delete with no confirmation dialog — matches the
@@ -751,7 +751,7 @@ private fun BoxesTab(
                     val dismissState = rememberSwipeToDismissBoxState(
                         confirmValueChange = { value ->
                             if (value != SwipeToDismissBoxValue.Settled) {
-                                onRemove(box.id)
+                                onRemove(box.boxNumber)
                                 true
                             } else {
                                 false

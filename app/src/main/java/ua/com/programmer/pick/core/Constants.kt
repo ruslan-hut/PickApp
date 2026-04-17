@@ -12,9 +12,8 @@ object Constants {
         const val WAREHOUSES = "warehouses"
         const val DOCUMENTS = "documents"
         const val BOXES = "boxes"
-        const val DOCUMENT_BOXES = "document_boxes"
 
-        val ALL = listOf(USERS, PRODUCTS, CLIENTS, WAREHOUSES, DOCUMENTS, BOXES, DOCUMENT_BOXES)
+        val ALL = listOf(USERS, PRODUCTS, CLIENTS, WAREHOUSES, DOCUMENTS, BOXES)
     }
 
     // Database

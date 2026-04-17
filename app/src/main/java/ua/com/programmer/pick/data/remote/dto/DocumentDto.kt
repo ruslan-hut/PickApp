@@ -70,7 +70,10 @@ data class DocumentDto(
     val version: Int,
 
     @SerializedName("lines")
-    val lines: List<DocumentLineDto>? = null
+    val lines: List<DocumentLineDto>? = null,
+
+    @SerializedName("boxes")
+    val boxes: List<DocumentBoxDto>? = null
 )
 
 /**

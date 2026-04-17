@@ -404,13 +404,13 @@ sealed class SyncMessage {
 
     /**
      * Worker removes a previously-added box while the document is still in PACKING.
-     * documentBoxId is the DocumentBox instance's internal id (hex) returned from BOX_ADD_RESULT.
+     * boxNumber is the in-document sequence assigned by the server on BOX_ADD.
      */
     data class BoxRemove(
         override val id: String,
         override val timestamp: String,
         val documentId: String,
-        val documentBoxId: String
+        val boxNumber: Int
     ) : SyncMessage() {
         override val type = MessageType.BOX_REMOVE
     }
@@ -419,7 +419,7 @@ sealed class SyncMessage {
         override val id: String,
         override val timestamp: String,
         val success: Boolean,
-        val documentBoxId: String? = null,
+        val boxNumber: Int? = null,
         val error: String? = null
     ) : SyncMessage() {
         override val type = MessageType.BOX_REMOVE_RESULT

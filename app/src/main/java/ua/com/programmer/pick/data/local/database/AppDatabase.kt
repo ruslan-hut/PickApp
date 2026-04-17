@@ -48,7 +48,7 @@ import ua.com.programmer.pick.data.local.database.entity.WarehouseLocationEntity
         DocumentBoxEntity::class,
         DebugJournalEntity::class
     ],
-    version = 13, // Version 13: pack-stage boxing — is_parcel on boxes/document_boxes, collected_by/at renamed to packed_by/at
+    version = 14, // Version 14: boxes embedded on server-side Document.Boxes; local document_boxes table rebuilt around (document_id, box_number) composite PK
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -211,6 +211,40 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_clients_external_id ON clients (external_id)")
                 db.execSQL("ALTER TABLE warehouses ADD COLUMN external_id TEXT")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_warehouses_external_id ON warehouses (external_id)")
+            }
+        }
+
+        // Server-side boxes moved from a standalone collection into Document.Boxes
+        // as an embedded array keyed by (document_id, box_number). The local cache
+        // mirrors this: drop the single-row-PK id/last_modified/version columns and
+        // rebuild around the (document_id, box_number) composite. Existing rows are
+        // discarded — the next sync rebuilds from the authoritative server payload.
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS document_boxes")
+                db.execSQL("""
+                    CREATE TABLE document_boxes (
+                        document_id TEXT NOT NULL,
+                        box_number INTEGER NOT NULL,
+                        box_id TEXT NOT NULL,
+                        barcode TEXT NOT NULL,
+                        is_parcel INTEGER NOT NULL DEFAULT 0,
+                        weight INTEGER NOT NULL,
+                        status TEXT NOT NULL,
+                        packed_by TEXT,
+                        packed_at INTEGER,
+                        picked_up_by TEXT,
+                        picked_up_at INTEGER,
+                        delivered_by TEXT,
+                        delivered_at INTEGER,
+                        PRIMARY KEY (document_id, box_number),
+                        FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_document_boxes_document_id ON document_boxes (document_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_document_boxes_barcode ON document_boxes (barcode)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_document_boxes_box_id ON document_boxes (box_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_document_boxes_is_parcel ON document_boxes (is_parcel)")
             }
         }
 

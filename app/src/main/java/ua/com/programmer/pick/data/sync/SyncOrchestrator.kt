@@ -549,33 +549,46 @@ class SyncOrchestrator @Inject constructor(
         )
         if (result?.success == true && result.box != null) {
             val dto: DocumentBoxDto = gson.fromJson(result.box, DocumentBoxDto::class.java)
-            applyDocumentBoxSync(com.google.gson.JsonArray().apply { add(result.box) }, deletedIds = null)
-            AppLog.d(TAG, "BOX_ADD success, upserted ${dto.id} locally")
+            // Translate ERP external_ids back to local row ids (same rules as
+            // batch sync ingest), then upsert so the observing UI reflects the
+            // new box before the next delta tick.
+            val boxIdMap = resolveExternalBoxIds(listOf(dto))
+            val userIdMap = resolveExternalUserIdsForBoxes(listOf(dto))
+            val entity = dto.toEntity(documentRoomId).let { e ->
+                e.copy(
+                    boxId = boxIdMap[e.boxId] ?: e.boxId,
+                    packedBy = e.packedBy?.let { userIdMap[it] ?: it },
+                    pickedUpBy = e.pickedUpBy?.let { userIdMap[it] ?: it },
+                    deliveredBy = e.deliveredBy?.let { userIdMap[it] ?: it },
+                )
+            }
+            documentBoxDao.insertDocumentBox(entity)
+            AppLog.d(TAG, "BOX_ADD success, upserted box_number=${dto.boxNumber} locally")
         }
         return result
     }
 
     /**
      * Remove a previously-added box while the document is still in PACKING.
-     * Uses the DocumentBox's local/server id (hex) returned by BOX_ADD_RESULT.
+     * The server identifies the box by its in-document box_number.
      */
     suspend fun sendBoxRemove(
         documentRoomId: String,
-        documentBoxId: String
+        boxNumber: Int
     ): SyncMessage.BoxRemoveResult? {
         val externalId = toExternalDocumentId(documentRoomId)
         val message = SyncMessage.BoxRemove(
             id = messageParser.generateMessageId(),
             timestamp = messageParser.getCurrentTimestamp(),
             documentId = externalId,
-            documentBoxId = documentBoxId
+            boxNumber = boxNumber
         )
         val result = webSocketManager.sendAndAwait(
             message,
             SyncMessage.BoxRemoveResult::class.java
         )
         if (result?.success == true) {
-            documentBoxDao.deleteDocumentBoxById(documentBoxId)
+            documentBoxDao.deleteDocumentBox(documentRoomId, boxNumber)
         }
         return result
     }
@@ -1179,7 +1192,6 @@ class SyncOrchestrator @Inject constructor(
             Constants.SyncEntity.CLIENTS -> applyClientSync(data, deletedIds)
             Constants.SyncEntity.WAREHOUSES -> applyWarehouseSync(data, deletedIds)
             Constants.SyncEntity.BOXES -> applyBoxSync(data, deletedIds)
-            Constants.SyncEntity.DOCUMENT_BOXES -> applyDocumentBoxSync(data, deletedIds)
         }
     }
 
@@ -1240,6 +1252,13 @@ class SyncOrchestrator @Inject constructor(
         // only used for display. See CLAUDE.md "Server-Driven Architecture".
         val productIdMap = resolveExternalProductIds(documents)
 
+        // Boxes ride inside each DocumentDto. Resolve master-box and user
+        // external_ids once across the whole batch so translation is a
+        // map lookup per row.
+        val allBoxes = documents.flatMap { it.boxes ?: emptyList() }
+        val boxIdMap = resolveExternalBoxIds(allBoxes)
+        val userIdMap = resolveExternalUserIdsForBoxes(allBoxes)
+
         documents.forEach { dto ->
             val existing = documentDao.getDocumentById(dto.id)
             if (existing != null && existing.isDirty) {
@@ -1254,6 +1273,23 @@ class SyncOrchestrator @Inject constructor(
                             translateLineEntity(documentMapper.toLineEntity(it), productIdMap)
                         }
                         documentLineDao.insertLines(lineEntities)
+                    }
+                    if (dto.boxes != null) {
+                        val boxEntities = dto.boxes.map { boxDto ->
+                            val e = boxDto.toEntity(dto.id)
+                            e.copy(
+                                boxId = boxIdMap[e.boxId] ?: e.boxId,
+                                packedBy = e.packedBy?.let { userIdMap[it] ?: it },
+                                pickedUpBy = e.pickedUpBy?.let { userIdMap[it] ?: it },
+                                deliveredBy = e.deliveredBy?.let { userIdMap[it] ?: it },
+                            )
+                        }
+                        if (boxEntities.isEmpty()) {
+                            documentBoxDao.deleteBoxesByDocumentId(dto.id)
+                        } else {
+                            documentBoxDao.deleteBoxesNotIn(dto.id, boxEntities.map { it.boxNumber })
+                            documentBoxDao.insertDocumentBoxes(boxEntities)
+                        }
                     }
                     // Recalculate totals from synced lines
                     val totalPlanned = documentLineDao.getTotalPlannedQuantity(dto.id) ?: 0.0
@@ -1276,6 +1312,25 @@ class SyncOrchestrator @Inject constructor(
                     translateLineEntity(documentMapper.toLineEntity(it), productIdMap)
                 }
                 documentLineDao.insertLines(lineEntities)
+            }
+
+            // Replace boxes — server sends the complete set.
+            if (dto.boxes != null) {
+                val boxEntities = dto.boxes.map { boxDto ->
+                    val e = boxDto.toEntity(dto.id)
+                    e.copy(
+                        boxId = boxIdMap[e.boxId] ?: e.boxId,
+                        packedBy = e.packedBy?.let { userIdMap[it] ?: it },
+                        pickedUpBy = e.pickedUpBy?.let { userIdMap[it] ?: it },
+                        deliveredBy = e.deliveredBy?.let { userIdMap[it] ?: it },
+                    )
+                }
+                if (boxEntities.isEmpty()) {
+                    documentBoxDao.deleteBoxesByDocumentId(dto.id)
+                } else {
+                    documentBoxDao.deleteBoxesNotIn(dto.id, boxEntities.map { it.boxNumber })
+                    documentBoxDao.insertDocumentBoxes(boxEntities)
+                }
             }
 
             // Recalculate totals from lines
@@ -1488,39 +1543,6 @@ class SyncOrchestrator @Inject constructor(
 
         deletedIds?.takeIf { it.isNotEmpty() }?.let { ids ->
             boxDao.deleteBoxesByIds(ids)
-        }
-    }
-
-    private suspend fun applyDocumentBoxSync(
-        data: com.google.gson.JsonElement,
-        deletedIds: List<String>?
-    ) {
-        if (data.isJsonArray) {
-            val type = object : TypeToken<List<DocumentBoxDto>>() {}.type
-            val documentBoxes: List<DocumentBoxDto> = gson.fromJson(data, type)
-
-            AppLog.i(TAG, "Sync document_boxes: ${documentBoxes.size} upsert, ${deletedIds?.size ?: 0} delete")
-
-            // v2 backend translation: box_id, collected_by, picked_up_by and
-            // delivered_by now arrive as ERP external_ids. Translate back to
-            // local internal IDs (see resolveExternalProductIds for rationale).
-            val boxIdMap = resolveExternalBoxIds(documentBoxes)
-            val userIdMap = resolveExternalUserIdsForBoxes(documentBoxes)
-
-            val entities = documentBoxes.map { dto ->
-                val entity = dto.toEntity()
-                entity.copy(
-                    boxId = boxIdMap[entity.boxId] ?: entity.boxId,
-                    packedBy = entity.packedBy?.let { userIdMap[it] ?: it },
-                    pickedUpBy = entity.pickedUpBy?.let { userIdMap[it] ?: it },
-                    deliveredBy = entity.deliveredBy?.let { userIdMap[it] ?: it }
-                )
-            }
-            documentBoxDao.insertDocumentBoxes(entities)
-        }
-
-        deletedIds?.takeIf { it.isNotEmpty() }?.let { ids ->
-            documentBoxDao.deleteDocumentBoxesByIds(ids)
         }
     }
 

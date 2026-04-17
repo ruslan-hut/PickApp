@@ -4,10 +4,14 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
-import androidx.room.PrimaryKey
 
+// Local cache of boxes embedded in Document.Boxes on the server. The logical primary
+// key is (document_id, box_number) — box_number is the server-assigned per-document
+// sequence. Rebuilt from DocumentDto.boxes on every sync, so losing a row locally
+// is self-healing.
 @Entity(
     tableName = "document_boxes",
+    primaryKeys = ["document_id", "box_number"],
     foreignKeys = [
         ForeignKey(
             entity = DocumentEntity::class,
@@ -24,12 +28,11 @@ import androidx.room.PrimaryKey
     ]
 )
 data class DocumentBoxEntity(
-    @PrimaryKey
-    @ColumnInfo(name = "id")
-    val id: String,
-
     @ColumnInfo(name = "document_id")
     val documentId: String,
+
+    @ColumnInfo(name = "box_number")
+    val boxNumber: Int,
 
     @ColumnInfo(name = "box_id")
     val boxId: String,
@@ -65,10 +68,4 @@ data class DocumentBoxEntity(
 
     @ColumnInfo(name = "delivered_at")
     val deliveredAt: Long? = null,
-
-    @ColumnInfo(name = "last_modified")
-    val lastModified: Long,
-
-    @ColumnInfo(name = "version")
-    val version: Int
 )
