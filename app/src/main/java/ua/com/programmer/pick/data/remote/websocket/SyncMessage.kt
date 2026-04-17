@@ -83,11 +83,15 @@ sealed class SyncMessage {
     }
 
     /**
-     * Server keep-alive pong response
+     * Server keep-alive pong response. Carries the per-device debug-journal
+     * flag so admin-side toggles propagate within a ping interval (~30s)
+     * without requiring re-login. Null = the server didn't include the field
+     * (older server build); leave the local flag as-is.
      */
     data class Pong(
         override val id: String,
-        override val timestamp: String
+        override val timestamp: String,
+        val debugJournalEnabled: Boolean? = null
     ) : SyncMessage() {
         override val type = MessageType.PONG
     }

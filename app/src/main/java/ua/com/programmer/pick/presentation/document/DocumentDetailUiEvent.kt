@@ -19,6 +19,7 @@ enum class ToastMessage(@StringRes val resId: Int) {
     ERROR_TAKE_INTO_WORK(R.string.error_take_into_work),
     ERROR_PACKAGE_DOCUMENT(R.string.error_package_document),
     ERROR_COMPLETE_DOCUMENT(R.string.error_complete_document),
+    DOCUMENT_GONE_ON_SERVER(R.string.document_gone_on_server),
     ERROR_RELEASE_DOCUMENT(R.string.error_release_document),
     DOCUMENT_ALREADY_TAKEN(R.string.document_already_taken),
     DOCUMENT_TAKEN_BY_OTHER(R.string.document_taken_by_other),

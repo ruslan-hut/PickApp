@@ -39,6 +39,14 @@ interface OutgoingOperationRepository {
     suspend fun deleteFailedOperations(maxRetries: Int)
 
     suspend fun deleteAllOperations()
+
+    /**
+     * Drop every pending/retrying/processing operation tied to the given entity.
+     * Used when the server signals the entity is gone (e.g. STAGE_COMPLETE returns
+     * "document not found"), so the resync loop stops retrying lost work.
+     * Returns the number of operations deleted.
+     */
+    suspend fun deletePendingOperationsForEntity(entityId: String): Int
 }
 
 data class OutgoingOperation(

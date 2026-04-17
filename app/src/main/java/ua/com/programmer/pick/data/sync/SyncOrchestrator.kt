@@ -107,6 +107,17 @@ data class StageCompleteResult(
 )
 
 /**
+ * Thrown when the server reports the document no longer exists during an
+ * operation we expected to complete. Distinguishes a transient/timeout error
+ * from a permanent one so the UI can navigate the user away instead of
+ * looping retries against a phantom document.
+ */
+class DocumentMissingOnServerException(val documentId: String, message: String) : Exception(message)
+
+private fun isDocumentMissingError(error: String?): Boolean =
+    error != null && error.contains("document not found", ignoreCase = true)
+
+/**
  * Coordinates all synchronization operations via WebSocket:
  * - Incoming data from WebSocket (sync data, push notifications)
  * - Outgoing operations (document lock, update, complete)
@@ -143,6 +154,7 @@ class SyncOrchestrator @Inject constructor(
         private const val SYNC_TIMEOUT_MS = 60_000L
         private const val MAX_QUEUE_RETRIES = 5
         private const val DOCUMENT_PRODUCTS_TIMEOUT_MS = 10_000L
+        private const val IN_PROCESS_FLUSH_INTERVAL_MS = 60_000L
     }
 
     private val scope = CoroutineScope(ioDispatcher)
@@ -219,9 +231,16 @@ class SyncOrchestrator @Inject constructor(
                         requestDeltaSync()
                         processPendingOperations()
 
-                        // Best-effort: flush any queued debug journal events
+                        // Best-effort: flush any queued debug journal events.
+                        // Read the flag fresh from DataStore (not the StateFlow)
+                        // because UserRepositoryImpl persists the new flag value
+                        // on the same login coroutine; the StateFlow may not
+                        // have caught up by the time this collector fires.
                         scope.launch {
-                            try { debugJournalUploader.flush() } catch (_: Exception) {}
+                            try {
+                                val enabled = appPreferences.debugJournalEnabled.first()
+                                if (enabled) debugJournalUploader.flush()
+                            } catch (_: Exception) {}
                         }
 
                         // Documents are loaded via delta sync for all roles.
@@ -278,6 +297,33 @@ class SyncOrchestrator @Inject constructor(
                 })
             }
             .launchIn(scope)
+
+        // Flush whenever the debug-journal flag is (or becomes) true. StateFlow
+        // dedups so this only fires on initial collection and on each
+        // false→true transition — covering the case where the server flips the
+        // flag mid-session via PONG and we want to ship buffered events
+        // immediately, without waiting for the 60s tick below.
+        debugJournal.enabled
+            .onEach { enabled ->
+                if (enabled) {
+                    AppLog.i(TAG, "debug-journal enabled observed → flushing")
+                    try { debugJournalUploader.flush() } catch (_: Exception) {}
+                }
+            }
+            .launchIn(scope)
+
+        // Periodic in-process flush. Survives OEM task killing on Xiaomi /
+        // Huawei / Oppo / Vivo etc. that suppress WorkManager periodic jobs —
+        // as long as the app process is alive (which is the only time events
+        // are being produced anyway), this loop keeps the journal flowing.
+        // The WorkManager DebugJournalWorker remains as a safety net for cases
+        // where the process is short-lived.
+        scope.launch {
+            while (true) {
+                delay(IN_PROCESS_FLUSH_INTERVAL_MS)
+                try { debugJournalUploader.flush() } catch (_: Exception) {}
+            }
+        }
     }
 
     private fun connectWebSocket() {
@@ -847,37 +893,75 @@ class SyncOrchestrator @Inject constructor(
             payload = response?.let { mapOf("success" to it.success, "state" to it.state, "error" to it.error) }
         )
 
-        return if (response != null) {
-            val result = StageCompleteResult(
-                success = response.success,
-                documentId = response.documentId,
-                stage = response.stage,
-                state = response.state,
-                version = response.version,
-                error = response.error
+        if (response == null) {
+            return Result.Error(Exception("Complete request timeout"))
+        }
+
+        val result = StageCompleteResult(
+            success = response.success,
+            documentId = response.documentId,
+            stage = response.stage,
+            state = response.state,
+            version = response.version,
+            error = response.error
+        )
+
+        if (response.success) {
+            debugJournal.log(
+                eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_DELETED_LOCAL,
+                message = "local document purged after completion",
+                documentId = documentId,
+                stage = stage
             )
+            // Remove the completed document locally — the server no longer
+            // includes it in this user's document set after stage completion.
+            documentLineDao.deleteLinesByDocumentId(documentId)
+            documentDao.deleteDocument(documentId)
 
-            if (response.success) {
-                debugJournal.log(
-                    eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_DELETED_LOCAL,
-                    message = "local document purged after completion",
-                    documentId = documentId,
-                    stage = stage
-                )
-                // Remove the completed document locally — the server no longer
-                // includes it in this user's document set after stage completion.
-                documentLineDao.deleteLinesByDocumentId(documentId)
-                documentDao.deleteDocument(documentId)
-
-                // Refresh document list to get the next document from server
-                scope.launch {
-                    requestDocumentListRefresh()
-                }
+            // Refresh document list to get the next document from server
+            scope.launch {
+                requestDocumentListRefresh()
             }
 
-            Result.Success(result)
-        } else {
-            Result.Error(Exception("Complete request timeout"))
+            return Result.Success(result)
+        }
+
+        // Server explicitly rejected the completion. The previous code returned
+        // Result.Success here, so callers (ViewModel) showed a "completed" toast
+        // even on rejection — see incident with doc 01-10.04.26. Always surface
+        // a rejection as Result.Error.
+        if (isDocumentMissingError(response.error)) {
+            // The document is gone on the server (e.g. ERP issued GONE while the
+            // worker was offline). Stop the resync/retry loop by purging local
+            // state and any queued operations bound to it; further retries can
+            // never succeed and would just spam the journal.
+            purgeMissingDocument(documentId, stage)
+            return Result.Error(
+                DocumentMissingOnServerException(documentId, response.error ?: "document not found")
+            )
+        }
+
+        return Result.Error(Exception(response.error ?: "Server rejected complete"))
+    }
+
+    /**
+     * Drop the local copy of a document the server has confirmed is missing,
+     * along with any pending sync operations queued against it. Called when a
+     * STAGE_COMPLETE (or queued retry of it) returns "document not found".
+     */
+    private suspend fun purgeMissingDocument(documentId: String, stage: String) {
+        debugJournal.log(
+            eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_DELETED_LOCAL,
+            message = "local document purged: server reports it as missing",
+            documentId = documentId,
+            stage = stage,
+            severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN
+        )
+        documentLineDao.deleteLinesByDocumentId(documentId)
+        documentDao.deleteDocument(documentId)
+        outgoingOperationRepository.deletePendingOperationsForEntity(documentId)
+        scope.launch {
+            requestDocumentListRefresh()
         }
     }
 
@@ -1614,6 +1698,12 @@ class SyncOrchestrator @Inject constructor(
                             operation.id, response.error ?: "Server rejected complete"
                         )
                         AppLog.w(TAG, "Queued STAGE_COMPLETE rejected for ${operation.entityId}: ${response.error}")
+                        if (isDocumentMissingError(response.error)) {
+                            // Server says the document no longer exists — drop the
+                            // local copy and any other queued ops for it, otherwise
+                            // resyncDirtyDocuments keeps the loop alive.
+                            purgeMissingDocument(operation.entityId, "")
+                        }
                     }
                 } else {
                     outgoingOperationRepository.markOperationFailed(operation.id, "Complete request timeout")

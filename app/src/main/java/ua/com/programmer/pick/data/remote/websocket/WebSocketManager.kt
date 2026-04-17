@@ -481,7 +481,21 @@ class WebSocketManager @Inject constructor(
             val credentials = appPreferences.getUserCredentialsSync()
             if (credentials != null) {
                 AppLog.d(TAG, "Attempting auto-login with stored credentials")
-                loginUser(credentials.first, credentials.second)
+                val result = loginUser(credentials.first, credentials.second)
+                // Manual login goes through UserRepositoryImpl which persists the
+                // debug flag from the server. Auto-login bypasses that path, so
+                // without this branch the local flag would only ever update when
+                // the user explicitly logs out and in again — defeating the point
+                // of a server-controlled toggle. Persist here too.
+                if (result.success) {
+                    result.debugJournalEnabled?.let { flag ->
+                        try {
+                            appPreferences.setDebugJournalEnabled(flag)
+                        } catch (e: Exception) {
+                            AppLog.w(TAG, "Failed to persist debug flag from auto-login: ${e.message}")
+                        }
+                    }
+                }
             } else {
                 AppLog.d(TAG, "No stored credentials for auto-login")
             }
@@ -491,7 +505,7 @@ class WebSocketManager @Inject constructor(
     private fun handleIncomingMessage(message: SyncMessage) {
         when (message) {
             is SyncMessage.Pong -> {
-                handlePong()
+                handlePong(message)
             }
             is SyncMessage.UserLoginResult -> {
                 // Handle login result - try to resolve pending response
@@ -618,10 +632,27 @@ class WebSocketManager @Inject constructor(
         }
     }
 
-    private fun handlePong() {
+    private fun handlePong(message: SyncMessage.Pong) {
         lastPongReceived = System.currentTimeMillis()
         pongTimeoutJob?.cancel()
         AppLog.d(TAG, "PONG received")
+
+        // Server piggybacks the per-device debug-journal toggle here so a
+        // support flip propagates within ~30s without re-login. Only write
+        // when the value actually flipped — DataStore writes shouldn't churn
+        // every keepalive. Null = older server build, leave local flag alone.
+        message.debugJournalEnabled?.let { serverFlag ->
+            if (serverFlag != debugJournal.enabled.value) {
+                AppLog.i(TAG, "PONG: debug_journal flag changed -> $serverFlag")
+                scope.launch {
+                    try {
+                        appPreferences.setDebugJournalEnabled(serverFlag)
+                    } catch (e: Exception) {
+                        AppLog.w(TAG, "Failed to persist debug flag from PONG: ${e.message}")
+                    }
+                }
+            }
+        }
     }
 
     // ============================================

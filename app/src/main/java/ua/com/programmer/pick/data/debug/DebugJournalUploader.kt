@@ -37,16 +37,36 @@ class DebugJournalUploader @Inject constructor(
      * uploaded. Safe to call concurrently (mutex-guarded).
      */
     suspend fun flush(): Int = mutex.withLock {
-        if (!journal.enabled.value) return 0
-        if (!webSocketManager.isConnected() || !webSocketManager.isUserAuthenticated()) return 0
+        // Promote skip reasons to INFO so logcat reveals why a device isn't
+        // shipping events — silent zero-returns made past investigations
+        // (e.g. only 2/5 devices uploading) hard to diagnose remotely.
+        if (!journal.enabled.value) {
+            AppLog.i(TAG, "flush skipped: debug journal disabled")
+            return 0
+        }
+        if (!webSocketManager.isConnected()) {
+            AppLog.i(TAG, "flush skipped: WS not connected")
+            return 0
+        }
+        if (!webSocketManager.isUserAuthenticated()) {
+            AppLog.i(TAG, "flush skipped: user not authenticated")
+            return 0
+        }
 
         var totalUploaded = 0
         try {
             while (true) {
                 val batch = dao.getUnuploadedBatch(Constants.DebugJournal.UPLOAD_BATCH)
-                if (batch.isEmpty()) break
+                if (batch.isEmpty()) {
+                    if (totalUploaded == 0) AppLog.i(TAG, "flush: no unuploaded events")
+                    break
+                }
 
-                val tenantId = appPreferences.getTenantIdSync() ?: return totalUploaded
+                val tenantId = appPreferences.getTenantIdSync()
+                if (tenantId == null) {
+                    AppLog.i(TAG, "flush stopped: no tenant_id in preferences (uploaded so far=$totalUploaded)")
+                    return totalUploaded
+                }
                 val deviceId = appPreferences.getDeviceIdSync()
 
                 val message = SyncMessage.DebugEventBatch(
@@ -82,10 +102,12 @@ class DebugJournalUploader @Inject constructor(
                     if (accepted.size < batch.size) {
                         // Server rejected some — bump attempts on the rest and stop
                         dao.incrementAttempts(batchIds - accepted.toSet())
+                        AppLog.w(TAG, "flush: server accepted ${accepted.size}/${batch.size}, rest will retry")
                         break
                     }
                 } else {
                     dao.incrementAttempts(batchIds)
+                    AppLog.w(TAG, "flush: batch rejected (response=${response?.success}, error=${response?.error}, batch_size=${batch.size})")
                     break
                 }
 
@@ -94,6 +116,9 @@ class DebugJournalUploader @Inject constructor(
             }
         } catch (e: Exception) {
             AppLog.w(TAG, "Debug journal upload failed: ${e.message}")
+        }
+        if (totalUploaded > 0) {
+            AppLog.i(TAG, "flush: uploaded=$totalUploaded events")
         }
         totalUploaded
     }

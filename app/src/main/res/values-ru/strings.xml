@@ -78,6 +78,7 @@
     <string name="document_completed">Документ завершён</string>
     <string name="error_take_into_work">Не удалось взять документ в работу</string>
     <string name="error_complete_document">Не удалось завершить документ</string>
+    <string name="document_gone_on_server">Документ больше недоступен на сервере. Ваши изменения не удалось сохранить.</string>
     <string name="document_already_taken">Документ уже обрабатывается</string>
     <string name="document_released">Документ освобождён</string>
     <string name="error_release_document">Не удалось освободить документ</string>

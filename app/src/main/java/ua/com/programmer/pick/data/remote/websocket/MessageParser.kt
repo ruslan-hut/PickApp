@@ -114,7 +114,7 @@ class MessageParser @Inject constructor(
             val payload = jsonObject.get(FIELD_PAYLOAD)?.asJsonObject
 
             when (typeStr.uppercase()) {
-                MessageType.PONG.name -> parsePong(id, timestamp)
+                MessageType.PONG.name -> parsePong(id, timestamp, payload)
                 MessageType.USER_LOGIN_RESULT.name -> parseUserLoginResult(id, timestamp, payload)
                 MessageType.SYNC_DATA.name -> parseSyncData(id, timestamp, payload)
                 MessageType.SYNC_COMPLETE.name -> parseSyncComplete(id, timestamp, payload)
@@ -292,8 +292,13 @@ class MessageParser @Inject constructor(
     // Parse Methods
     // ============================================
 
-    private fun parsePong(id: String, timestamp: String): SyncMessage.Pong {
-        return SyncMessage.Pong(id = id, timestamp = timestamp)
+    private fun parsePong(id: String, timestamp: String, payload: JsonObject?): SyncMessage.Pong {
+        // Field is absent on older server builds — keep nullable so the receiver
+        // can distinguish "server says off" from "server didn't say".
+        val debugFlag = payload?.get(FIELD_DEBUG_JOURNAL_ENABLED)?.let {
+            if (it.isJsonNull) null else it.asBoolean
+        }
+        return SyncMessage.Pong(id = id, timestamp = timestamp, debugJournalEnabled = debugFlag)
     }
 
     private fun parseUserLoginResult(id: String, timestamp: String, payload: JsonObject?): SyncMessage.UserLoginResult {

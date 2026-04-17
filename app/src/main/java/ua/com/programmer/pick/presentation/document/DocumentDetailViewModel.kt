@@ -23,6 +23,7 @@ import ua.com.programmer.pick.data.local.database.dao.ProductImageDao
 import ua.com.programmer.pick.core.util.Result
 import ua.com.programmer.pick.data.debug.DebugEventType
 import ua.com.programmer.pick.data.debug.DebugJournal
+import ua.com.programmer.pick.data.sync.DocumentMissingOnServerException
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.domain.model.DocumentLine
 import ua.com.programmer.pick.domain.model.DocumentState
@@ -456,7 +457,16 @@ class DocumentDetailViewModel @Inject constructor(
                     }
                     is Result.Error -> {
                         _uiState.update { it.copy(isProcessingAction = false) }
-                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_COMPLETE_DOCUMENT))
+                        if (result.exception is DocumentMissingOnServerException) {
+                            // Server purged the document (e.g. ERP issued GONE while we
+                            // were offline). Orchestrator already wiped local copy and
+                            // pending ops; navigate the user back so they don't keep
+                            // re-pressing complete on a phantom doc.
+                            _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_GONE_ON_SERVER))
+                            _uiEvents.emit(DocumentDetailUiEvent.NavigateBack)
+                        } else {
+                            _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_COMPLETE_DOCUMENT))
+                        }
                     }
                     else -> _uiState.update { it.copy(isProcessingAction = false) }
                 }

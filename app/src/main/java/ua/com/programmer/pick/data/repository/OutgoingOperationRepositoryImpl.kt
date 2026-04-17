@@ -135,6 +135,10 @@ class OutgoingOperationRepositoryImpl @Inject constructor(
         outgoingOperationDao.deleteAllOperations()
     }
 
+    override suspend fun deletePendingOperationsForEntity(entityId: String): Int = withContext(ioDispatcher) {
+        outgoingOperationDao.deletePendingOperationsForEntity(entityId)
+    }
+
     private fun OutgoingOperationEntity.toDomain(): OutgoingOperation {
         return OutgoingOperation(
             id = id,
