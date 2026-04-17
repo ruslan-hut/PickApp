@@ -31,9 +31,14 @@ enum class MessageType {
     STAGE_LOCK_RESULT,
     STAGE_COMPLETE_RESULT,
 
-    // Box scanning
-    BOX_SCAN,
-    BOX_SCAN_RESULT,
+    // Pack-stage box operations (worker adds/removes boxes on a document in PACKING state)
+    BOX_ADD,
+    BOX_ADD_RESULT,
+    BOX_REMOVE,
+    BOX_REMOVE_RESULT,
+    // Client fallback when a scanned barcode is not in the local catalog
+    BOX_LOOKUP,
+    BOX_LOOKUP_RESULT,
 
     // Courier box operations
     BOX_PICKUP_CONFIRM,
@@ -366,33 +371,81 @@ sealed class SyncMessage {
     }
 
     // ============================================
-    // Box Scanning Messages
+    // Pack-stage Box Messages
     // ============================================
 
     /**
-     * Client scans a box barcode during collection
+     * Worker scans a box barcode during the PACK stage to link it to a document.
+     * Parcel boxes require weight > 0; for packages the server forces weight = 0.
      */
-    data class BoxScan(
+    data class BoxAdd(
         override val id: String,
         override val timestamp: String,
         val documentId: String,
         val barcode: String,
         val weight: Int
     ) : SyncMessage() {
-        override val type = MessageType.BOX_SCAN
+        override val type = MessageType.BOX_ADD
     }
 
     /**
-     * Server response for box scan
+     * Server response for BOX_ADD. On success, `box` carries the full DocumentBox
+     * DTO so the client can render it immediately without a round-trip sync.
      */
-    data class BoxScanResult(
+    data class BoxAddResult(
         override val id: String,
         override val timestamp: String,
         val success: Boolean,
-        val boxId: String? = null,
+        val box: JsonElement? = null,
         val error: String? = null
     ) : SyncMessage() {
-        override val type = MessageType.BOX_SCAN_RESULT
+        override val type = MessageType.BOX_ADD_RESULT
+    }
+
+    /**
+     * Worker removes a previously-added box while the document is still in PACKING.
+     * documentBoxId is the DocumentBox instance's internal id (hex) returned from BOX_ADD_RESULT.
+     */
+    data class BoxRemove(
+        override val id: String,
+        override val timestamp: String,
+        val documentId: String,
+        val documentBoxId: String
+    ) : SyncMessage() {
+        override val type = MessageType.BOX_REMOVE
+    }
+
+    data class BoxRemoveResult(
+        override val id: String,
+        override val timestamp: String,
+        val success: Boolean,
+        val documentBoxId: String? = null,
+        val error: String? = null
+    ) : SyncMessage() {
+        override val type = MessageType.BOX_REMOVE_RESULT
+    }
+
+    /**
+     * Client fallback when a scanned barcode misses the local box catalog.
+     * The server resolves it against the master catalog and, on a hit, returns
+     * the full BoxDto so the client can cache it and continue the add flow.
+     */
+    data class BoxLookup(
+        override val id: String,
+        override val timestamp: String,
+        val barcode: String
+    ) : SyncMessage() {
+        override val type = MessageType.BOX_LOOKUP
+    }
+
+    data class BoxLookupResult(
+        override val id: String,
+        override val timestamp: String,
+        val success: Boolean,
+        val box: JsonElement? = null,
+        val error: String? = null
+    ) : SyncMessage() {
+        override val type = MessageType.BOX_LOOKUP_RESULT
     }
 
     // ============================================

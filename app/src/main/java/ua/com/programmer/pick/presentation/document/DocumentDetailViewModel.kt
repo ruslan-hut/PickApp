@@ -20,11 +20,17 @@ import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.scanner.BarcodeService
 import ua.com.programmer.pick.core.scanner.ScannedBarcode
 import ua.com.programmer.pick.data.local.database.dao.ProductImageDao
+import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.core.util.Result
 import ua.com.programmer.pick.data.debug.DebugEventType
 import ua.com.programmer.pick.data.debug.DebugJournal
+import ua.com.programmer.pick.data.mapper.toDocumentBoxDomainList
+import ua.com.programmer.pick.data.mapper.toDomain
 import ua.com.programmer.pick.data.sync.DocumentMissingOnServerException
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
+import ua.com.programmer.pick.data.local.database.dao.BoxDao
+import ua.com.programmer.pick.data.local.database.dao.DocumentBoxDao
+import ua.com.programmer.pick.domain.model.Box
 import ua.com.programmer.pick.domain.model.DocumentLine
 import ua.com.programmer.pick.domain.model.DocumentState
 import ua.com.programmer.pick.domain.model.ProductImage
@@ -41,6 +47,9 @@ class DocumentDetailViewModel @Inject constructor(
     private val productRepository: ProductRepository,
     private val syncOrchestrator: SyncOrchestrator,
     private val debugJournal: DebugJournal,
+    private val boxDao: BoxDao,
+    private val documentBoxDao: DocumentBoxDao,
+    private val appPreferences: AppPreferences,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -58,16 +67,28 @@ class DocumentDetailViewModel @Inject constructor(
     val uiEvents = _uiEvents.asSharedFlow()
 
     private var currentDocumentId: String? = null
+    private var boxesSubscriptionJob: kotlinx.coroutines.Job? = null
 
     init {
         // Subscribe to barcode scans once when ViewModel is created
         subscribeToScans()
+        // Track the logged-in user so the UI can distinguish "this document is
+        // locked by me" from "locked by someone else" — the admin role sees
+        // both and must not be treated as the lock owner.
+        appPreferences.currentUserId
+            .onEach { userId -> _uiState.update { it.copy(currentUserId = userId) } }
+            .launchIn(viewModelScope)
     }
 
     fun load(documentId: String) {
-        // Reset state completely when loading a different document
+        // Reset state completely when loading a different document. Preserve
+        // currentUserId across the reset — it's a session-scoped value, not
+        // tied to any particular document.
         if (currentDocumentId != documentId) {
-            _uiState.value = DocumentDetailUiState(isLoading = true)
+            _uiState.value = DocumentDetailUiState(
+                isLoading = true,
+                currentUserId = _uiState.value.currentUserId
+            )
         } else {
             _uiState.update { it.copy(isLoading = true) }
         }
@@ -101,6 +122,16 @@ class DocumentDetailViewModel @Inject constructor(
 
                 // Reload images after sync completes (products may arrive after initial load)
                 reloadImagesAfterSync(productIds)
+
+                // Resubscribe to the document_boxes flow. The DAO query sorts
+                // parcels first (ORDER BY is_parcel DESC) so the UI can render
+                // the list directly without a client-side sort pass.
+                boxesSubscriptionJob?.cancel()
+                boxesSubscriptionJob = documentBoxDao.getBoxesByDocumentId(documentId)
+                    .onEach { entities ->
+                        _uiState.update { it.copy(documentBoxes = entities.toDocumentBoxDomainList()) }
+                    }
+                    .launchIn(viewModelScope)
 
             } catch (_: Exception) {
                 _uiState.update { it.copy(errorMessage = ERROR_LOADING_DOCUMENT, isLoading = false) }
@@ -157,8 +188,33 @@ class DocumentDetailViewModel @Inject constructor(
             return
         }
 
+        // Block scans while the parcel-weight dialog is open — the worker must
+        // finish entering the previous parcel's weight before starting the next
+        // scan. This protects against a rapid-fire scanner double-read.
+        if (_uiState.value.isAwaitingWeight) {
+            AppLog.d("DocumentDetailViewModel", "scan suppressed: parcel weight dialog open")
+            return
+        }
+
         // Determine identifier to search for
         val identifier = scanned.productId ?: scanned.productCode ?: scanned.gs1Data?.getProductBarcode() ?: scanned.rawValue
+
+        // Pack stage: try box catalog first, then fall back to product flow.
+        // During PACKING the products list is read-only, so a product barcode
+        // here only surfaces a "not in document" alert instead of incrementing
+        // any line.
+        if (_uiState.value.isPackStage) {
+            if (handleBoxScanAttempt(identifier)) return
+            // Box not found → try product lookup for user feedback only.
+            val productLine = _uiState.value.lines.firstOrNull { it.productCode == identifier || it.productId == identifier }
+            if (productLine != null) {
+                _uiState.update { it.copy(selectedLineId = productLine.id) }
+                _uiEvents.emit(DocumentDetailUiEvent.ShowBarcodeAlert(BarcodeAlertType.PRODUCT_ALREADY_COMPLETED))
+            } else {
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.BOX_NOT_FOUND))
+            }
+            return
+        }
 
         when (doc.type) {
             DOCUMENT_TYPE_INVENTORY -> {
@@ -575,5 +631,120 @@ class DocumentDetailViewModel @Inject constructor(
     private fun notifyDocumentLinesChanged() {
         val docId = currentDocumentId ?: return
         syncOrchestrator.scheduleDocumentSync(docId)
+    }
+
+    // ============================================
+    // Pack-stage box operations
+    // ============================================
+
+    /**
+     * Switch the visible content area between Products and Boxes.
+     * Purely presentation — no server traffic.
+     */
+    fun setActiveTab(tab: DocumentDetailTab) {
+        _uiState.update { it.copy(activeTab = tab) }
+    }
+
+    /**
+     * Resolve a scanned barcode against the box catalog.
+     * Returns true if the barcode was recognised as a box (result: parcel
+     * weight dialog opened OR package added immediately). Returns false when
+     * the barcode is not a box — caller falls back to the product flow.
+     */
+    private suspend fun handleBoxScanAttempt(barcode: String): Boolean {
+        // 1. Local cache first (every sync pulls boxes; usually hits).
+        var box: Box? = boxDao.getBoxByBarcode(barcode)?.toDomain()
+        if (box == null) {
+            // 2. Server fallback — the catalog may have grown since the last sync.
+            val result = try {
+                syncOrchestrator.sendBoxLookup(barcode)
+            } catch (e: Exception) {
+                AppLog.w("DocumentDetailViewModel", "box lookup failed: ${e.message}")
+                null
+            }
+            if (result?.success != true) return false
+            box = boxDao.getBoxByBarcode(barcode)?.toDomain() ?: return false
+        }
+
+        if (box.isParcel) {
+            // Open the modal weight dialog — no BOX_ADD is sent until the worker
+            // confirms. New scans are suspended via isAwaitingWeight.
+            _uiState.update { it.copy(pendingWeightBox = box) }
+        } else {
+            // Packages carry no weight — add immediately.
+            submitBoxAdd(box, weightGrams = 0)
+        }
+        return true
+    }
+
+    /** Confirm the parcel weight dialog and send BOX_ADD. Called from the UI. */
+    fun confirmParcelWeight(weightGrams: Int) {
+        val box = _uiState.value.pendingWeightBox ?: return
+        if (weightGrams <= 0) return
+        _uiState.update { it.copy(pendingWeightBox = null) }
+        viewModelScope.launch { submitBoxAdd(box, weightGrams) }
+    }
+
+    /** Cancel the parcel weight dialog — no BOX_ADD is sent. */
+    fun cancelParcelWeight() {
+        _uiState.update { it.copy(pendingWeightBox = null) }
+    }
+
+    private suspend fun submitBoxAdd(box: Box, weightGrams: Int) {
+        val docId = currentDocumentId ?: return
+        val result = try {
+            syncOrchestrator.sendBoxAdd(docId, box.barcode, weightGrams)
+        } catch (e: Exception) {
+            AppLog.e("DocumentDetailViewModel", "sendBoxAdd failed", e)
+            _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.BOX_ADD_FAILED))
+            return
+        }
+        if (result?.success != true) {
+            AppLog.w("DocumentDetailViewModel", "BOX_ADD rejected: ${result?.error}")
+            _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.BOX_ADD_FAILED))
+            return
+        }
+        // Success path: SyncOrchestrator has already upserted the DocumentBox
+        // locally, so the documentBoxes flow will push the new row into the UI.
+        debugJournal.log(
+            eventType = DebugEventType.BOX_ADD,
+            message = "box added during pack",
+            documentId = docId,
+            payload = mapOf("barcode" to box.barcode, "is_parcel" to box.isParcel, "weight" to weightGrams)
+        )
+    }
+
+    /** Swipe-to-delete handler: remove a previously-added box during PACKING. */
+    fun removeBox(documentBoxId: String) {
+        if (!_uiState.value.isPackStage) return
+        val docId = currentDocumentId ?: return
+        viewModelScope.launch {
+            val result = try {
+                syncOrchestrator.sendBoxRemove(docId, documentBoxId)
+            } catch (e: Exception) {
+                AppLog.e("DocumentDetailViewModel", "sendBoxRemove failed", e)
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.BOX_REMOVE_FAILED))
+                return@launch
+            }
+            if (result?.success != true) {
+                AppLog.w("DocumentDetailViewModel", "BOX_REMOVE rejected: ${result?.error}")
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.BOX_REMOVE_FAILED))
+            }
+        }
+    }
+
+    /**
+     * Pack-stage completion guard: the server rejects a STAGE_COMPLETE(pack)
+     * without at least one parcel. Surface this to the UI before dispatching
+     * so the worker gets an immediate error instead of a WS round-trip.
+     */
+    fun completePackStage() {
+        if (!_uiState.value.canCompletePack) {
+            viewModelScope.launch {
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.PACK_REQUIRES_PARCEL))
+            }
+            return
+        }
+        completeDocument()
     }
 }

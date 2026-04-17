@@ -2,6 +2,9 @@ package ua.com.programmer.pick.data.remote.dto
 
 import com.google.gson.annotations.SerializedName
 
+// Matches the server's DocumentBoxSyncDto. is_parcel is denormalized from the
+// master Box. packed_by/at replace the legacy collected_by/at fields since boxing
+// now happens during the PACK stage.
 data class DocumentBoxDto(
     @SerializedName("id")
     val id: String,
@@ -15,17 +18,20 @@ data class DocumentBoxDto(
     @SerializedName("barcode")
     val barcode: String,
 
+    @SerializedName("is_parcel")
+    val isParcel: Boolean = false,
+
     @SerializedName("weight")
     val weight: Int,
 
     @SerializedName("status")
     val status: String,
 
-    @SerializedName("collected_by")
-    val collectedBy: String? = null,
+    @SerializedName("packed_by")
+    val packedBy: String? = null,
 
-    @SerializedName("collected_at")
-    val collectedAt: Long? = null,
+    @SerializedName("packed_at")
+    val packedAt: Long? = null,
 
     @SerializedName("picked_up_by")
     val pickedUpBy: String? = null,

@@ -24,6 +24,11 @@ data class BoxDto(
     @SerializedName("height")
     val height: Int,
 
+    // Declared by ERP: true = parcel (delivery place, weight required on add),
+    // false = package (nests inside a parcel during pack).
+    @SerializedName("is_parcel")
+    val isParcel: Boolean = false,
+
     @SerializedName("is_active")
     val isActive: Boolean = true
 )

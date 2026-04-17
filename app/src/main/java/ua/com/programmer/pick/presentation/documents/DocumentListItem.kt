@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -174,11 +175,12 @@ private fun DocumentStateBadge(
     state: DocumentState,
     modifier: Modifier = Modifier
 ) {
+    val white = Color.White
     val (labelRes, backgroundColor, contentColor) = when (state) {
         DocumentState.LOADED -> Triple(
             R.string.document_state_loaded,
-            MaterialTheme.colorScheme.primaryContainer,
-            MaterialTheme.colorScheme.onPrimaryContainer
+            Color(0xFF757575),
+            white
         )
         DocumentState.COLLECTING -> Triple(
             R.string.document_state_in_progress,
@@ -192,8 +194,8 @@ private fun DocumentStateBadge(
         )
         DocumentState.PACK -> Triple(
             R.string.document_state_pack,
-            MaterialTheme.colorScheme.primaryContainer,
-            MaterialTheme.colorScheme.onPrimaryContainer
+            Color(0xFF2E7D32),
+            white
         )
         DocumentState.PACKING -> Triple(
             R.string.document_state_packing,
@@ -202,23 +204,23 @@ private fun DocumentStateBadge(
         )
         DocumentState.PACKED -> Triple(
             R.string.document_state_packed,
-            MaterialTheme.colorScheme.secondaryContainer,
-            MaterialTheme.colorScheme.onSecondaryContainer
+            Color(0xFF1B5E20),
+            white
         )
         DocumentState.DELIVERY -> Triple(
             R.string.document_state_delivery,
-            MaterialTheme.colorScheme.primaryContainer,
-            MaterialTheme.colorScheme.onPrimaryContainer
+            Color(0xFF1976D2),
+            white
         )
         DocumentState.DELIVERING -> Triple(
             R.string.document_state_delivering,
-            MaterialTheme.colorScheme.secondaryContainer,
-            MaterialTheme.colorScheme.onSecondaryContainer
+            MaterialTheme.colorScheme.tertiaryContainer,
+            MaterialTheme.colorScheme.onTertiaryContainer
         )
         DocumentState.DELIVERED -> Triple(
             R.string.document_state_delivered,
-            MaterialTheme.colorScheme.secondaryContainer,
-            MaterialTheme.colorScheme.onSecondaryContainer
+            Color(0xFF0D47A1),
+            white
         )
         DocumentState.SENT -> Triple(
             R.string.document_state_sent,

@@ -24,7 +24,11 @@ enum class ToastMessage(@StringRes val resId: Int) {
     DOCUMENT_ALREADY_TAKEN(R.string.document_already_taken),
     DOCUMENT_TAKEN_BY_OTHER(R.string.document_taken_by_other),
     CANNOT_EDIT_DOCUMENT(R.string.cannot_edit_document),
-    CANNOT_RELEASE_DOCUMENT(R.string.cannot_release_document)
+    CANNOT_RELEASE_DOCUMENT(R.string.cannot_release_document),
+    BOX_NOT_FOUND(R.string.box_not_found),
+    BOX_ADD_FAILED(R.string.error_add_box),
+    BOX_REMOVE_FAILED(R.string.error_remove_box),
+    PACK_REQUIRES_PARCEL(R.string.pack_requires_parcel)
 }
 
 enum class BarcodeAlertType(@StringRes val resId: Int) {

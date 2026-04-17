@@ -523,26 +523,82 @@ class SyncOrchestrator @Inject constructor(
     }
 
     /**
-     * Send a BOX_SCAN message to the server. Translates the Room document id
-     * to its ERP external_id so callers never touch the wire format.
+     * Add a box to a document during the PACK stage. Translates the Room document
+     * id to its ERP external_id so callers stay in domain terms.
+     *
+     * On success the server returns the full DocumentBox DTO; it is upserted
+     * locally with cross-reference translation so the observing UI reflects the
+     * new box without waiting for the next delta tick.
      */
-    suspend fun sendBoxScan(
+    suspend fun sendBoxAdd(
         documentRoomId: String,
         barcode: String,
         weight: Int
-    ): SyncMessage.BoxScanResult? {
+    ): SyncMessage.BoxAddResult? {
         val externalId = toExternalDocumentId(documentRoomId)
-        val message = SyncMessage.BoxScan(
+        val message = SyncMessage.BoxAdd(
             id = messageParser.generateMessageId(),
             timestamp = messageParser.getCurrentTimestamp(),
             documentId = externalId,
             barcode = barcode,
             weight = weight
         )
-        return webSocketManager.sendAndAwait(
+        val result = webSocketManager.sendAndAwait(
             message,
-            SyncMessage.BoxScanResult::class.java
+            SyncMessage.BoxAddResult::class.java
         )
+        if (result?.success == true && result.box != null) {
+            val dto: DocumentBoxDto = gson.fromJson(result.box, DocumentBoxDto::class.java)
+            applyDocumentBoxSync(com.google.gson.JsonArray().apply { add(result.box) }, deletedIds = null)
+            AppLog.d(TAG, "BOX_ADD success, upserted ${dto.id} locally")
+        }
+        return result
+    }
+
+    /**
+     * Remove a previously-added box while the document is still in PACKING.
+     * Uses the DocumentBox's local/server id (hex) returned by BOX_ADD_RESULT.
+     */
+    suspend fun sendBoxRemove(
+        documentRoomId: String,
+        documentBoxId: String
+    ): SyncMessage.BoxRemoveResult? {
+        val externalId = toExternalDocumentId(documentRoomId)
+        val message = SyncMessage.BoxRemove(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp(),
+            documentId = externalId,
+            documentBoxId = documentBoxId
+        )
+        val result = webSocketManager.sendAndAwait(
+            message,
+            SyncMessage.BoxRemoveResult::class.java
+        )
+        if (result?.success == true) {
+            documentBoxDao.deleteDocumentBoxById(documentBoxId)
+        }
+        return result
+    }
+
+    /**
+     * Server-side catalog fallback for an unknown barcode. Caches the returned
+     * BoxDto locally so the next scan resolves in the offline cache.
+     */
+    suspend fun sendBoxLookup(barcode: String): SyncMessage.BoxLookupResult? {
+        val message = SyncMessage.BoxLookup(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp(),
+            barcode = barcode
+        )
+        val result = webSocketManager.sendAndAwait(
+            message,
+            SyncMessage.BoxLookupResult::class.java
+        )
+        if (result?.success == true && result.box != null) {
+            val dto: BoxDto = gson.fromJson(result.box, BoxDto::class.java)
+            boxDao.insertBox(dto.toEntity())
+        }
+        return result
     }
 
     // ============================================
@@ -1468,7 +1524,7 @@ class SyncOrchestrator @Inject constructor(
                 val entity = dto.toEntity()
                 entity.copy(
                     boxId = boxIdMap[entity.boxId] ?: entity.boxId,
-                    collectedBy = entity.collectedBy?.let { userIdMap[it] ?: it },
+                    packedBy = entity.packedBy?.let { userIdMap[it] ?: it },
                     pickedUpBy = entity.pickedUpBy?.let { userIdMap[it] ?: it },
                     deliveredBy = entity.deliveredBy?.let { userIdMap[it] ?: it }
                 )
@@ -1492,7 +1548,7 @@ class SyncOrchestrator @Inject constructor(
     private suspend fun resolveExternalUserIdsForBoxes(boxes: List<DocumentBoxDto>): Map<String, String> {
         val externalIds = boxes
             .asSequence()
-            .flatMap { sequenceOf(it.collectedBy, it.pickedUpBy, it.deliveredBy) }
+            .flatMap { sequenceOf(it.packedBy, it.pickedUpBy, it.deliveredBy) }
             .filterNotNull()
             .filter { it.isNotBlank() }
             .toSet()

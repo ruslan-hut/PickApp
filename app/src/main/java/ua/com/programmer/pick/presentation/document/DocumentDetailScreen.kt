@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,10 +16,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,14 +31,25 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.rememberTopAppBarState
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,12 +63,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import ua.com.programmer.pick.R
-import ua.com.programmer.pick.domain.model.DocumentState
+import ua.com.programmer.pick.domain.model.Box as DomainBox
+import ua.com.programmer.pick.domain.model.DocumentBox
 import ua.com.programmer.pick.presentation.common.EmptyState
 import ua.com.programmer.pick.presentation.common.PickAppBar
 import ua.com.programmer.pick.presentation.common.PickElevatedCard
@@ -72,12 +88,14 @@ fun DocumentDetailScreen(
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val context = LocalContext.current
+    val resources = LocalResources.current
     var barcodeAlert by remember { mutableStateOf<BarcodeAlertType?>(null) }
     // Dialog: ask user whether to save before leaving
     var showSaveOnBackDialog by remember { mutableStateOf(false) }
     // Dialog: confirm complete when there are incomplete lines (save/complete action)
     var showCompleteConfirm by remember { mutableStateOf(false) }
+    // Dialog: confirm pack completion with parcel/package counts
+    var showPackCompleteConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(documentId) {
         viewModel.load(documentId)
@@ -87,7 +105,7 @@ fun DocumentDetailScreen(
         viewModel.uiEvents.collect { event ->
             when (event) {
                 is DocumentDetailUiEvent.ShowToast -> {
-                    val message = context.getString(event.messageType.resId)
+                    val message = resources.getString(event.messageType.resId)
                     snackbarHostState.showSnackbar(message)
                 }
                 is DocumentDetailUiEvent.ShowBarcodeAlert -> {
@@ -131,6 +149,31 @@ fun DocumentDetailScreen(
                 viewModel.tryReleaseDocument()
             },
             onDismiss = { showSaveOnBackDialog = false }
+        )
+    }
+
+    // Parcel weight dialog — shown while a parcel scan is waiting for its weight.
+    // Blocks further scans until the worker either confirms or cancels.
+    uiState.pendingWeightBox?.let { pending ->
+        ParcelWeightDialog(
+            box = pending,
+            onConfirm = { weight -> viewModel.confirmParcelWeight(weight) },
+            onDismiss = { viewModel.cancelParcelWeight() }
+        )
+    }
+
+    // Pack-stage completion dialog — confirms parcel/package counts and lets
+    // the worker back out without sending STAGE_COMPLETE.
+    if (showPackCompleteConfirm) {
+        PackCompleteDialog(
+            parcelCount = uiState.parcelCount,
+            packageCount = uiState.packageCount,
+            canComplete = uiState.canCompletePack,
+            onConfirm = {
+                showPackCompleteConfirm = false
+                viewModel.completePackStage()
+            },
+            onDismiss = { showPackCompleteConfirm = false }
         )
     }
 
@@ -191,13 +234,18 @@ fun DocumentDetailScreen(
                         } else {
                             IconButton(
                                 onClick = {
-                                    val incompleteCount = uiState.lines.count {
-                                        it.plannedQuantity > 0 && it.actualQuantity < it.plannedQuantity
-                                    }
-                                    if (incompleteCount == 0) {
-                                        viewModel.saveAndComplete()
+                                    if (uiState.isPackStage) {
+                                        // Pack stage has its own confirm dialog showing parcel counts.
+                                        showPackCompleteConfirm = true
                                     } else {
-                                        showCompleteConfirm = true
+                                        val incompleteCount = uiState.lines.count {
+                                            it.plannedQuantity > 0 && it.actualQuantity < it.plannedQuantity
+                                        }
+                                        if (incompleteCount == 0) {
+                                            viewModel.saveAndComplete()
+                                        } else {
+                                            showCompleteConfirm = true
+                                        }
                                     }
                                 }
                             ) {
@@ -278,63 +326,101 @@ fun DocumentDetailScreen(
                     }
 
                     uiState.document != null -> {
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(vertical = 8.dp)
-                        ) {
-                        // Document header card
-                        item {
-                            DocumentHeaderCard(
-                                clientName = uiState.document?.clientName ?: "",
-                                warehouseName = uiState.document?.warehouseName ?: "",
-                                totalPlanned = uiState.document?.totalPlanned ?: 0.0,
-                                totalActual = uiState.document?.totalActual ?: 0.0,
-                                linesTotal = uiState.lines.size,
-                                linesCompleted = uiState.lines.count {
-                                    it.actualQuantity >= it.plannedQuantity
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            // Tab bar — only when the document has reached the pack stage.
+                            // Before PACK there are no boxes to show; after PACK the tab
+                            // stays for read-only inspection through deliver.
+                            if (uiState.showBoxesTab) {
+                                val tabs = listOf(
+                                    DocumentDetailTab.PRODUCTS to stringResource(R.string.tab_products),
+                                    DocumentDetailTab.BOXES to stringResource(
+                                        R.string.tab_boxes
+                                    ) + " (" + uiState.documentBoxes.size + ")"
+                                )
+                                TabRow(
+                                    selectedTabIndex = tabs.indexOfFirst { it.first == uiState.activeTab }
+                                        .coerceAtLeast(0)
+                                ) {
+                                    tabs.forEach { (tab, label) ->
+                                        Tab(
+                                            selected = uiState.activeTab == tab,
+                                            onClick = { viewModel.setActiveTab(tab) },
+                                            text = { Text(label) }
+                                        )
+                                    }
                                 }
-                            )
-                        }
-
-                        // Lines section header
-                        item {
-                            SectionHeader(
-                                title = stringResource(R.string.document_lines),
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
-                        }
-
-                        if (uiState.lines.isEmpty()) {
-                            item {
-                                EmptyState(
-                                    message = stringResource(R.string.no_lines_description),
-                                    icon = R.drawable.outline_inventory_2_24
-                                )
                             }
-                        } else {
-                            items(
-                                items = uiState.lines,
-                                key = { it.id }
-                            ) { line ->
-                                DocumentLineRow(
-                                    line = line,
-                                    productImage = uiState.productImages[line.productId],
-                                    onQuantityChange = { lineId, qty ->
-                                        viewModel.updateLineQuantity(lineId, qty)
-                                    },
-                                    isSelected = uiState.selectedLineId == line.id,
-                                    canEdit = uiState.canEdit
-                                )
-                            }
-                        }
 
-                        item {
-                            Spacer(modifier = Modifier.height(16.dp))
+                            when {
+                                uiState.showBoxesTab && uiState.activeTab == DocumentDetailTab.BOXES -> {
+                                    BoxesTab(
+                                        documentBoxes = uiState.documentBoxes,
+                                        canRemove = uiState.isPackStage,
+                                        onRemove = { docBoxId -> viewModel.removeBox(docBoxId) }
+                                    )
+                                }
+
+                                else -> {
+                                    LazyColumn(
+                                        state = listState,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentPadding = PaddingValues(vertical = 8.dp)
+                                    ) {
+                                        item {
+                                            DocumentHeaderCard(
+                                                clientName = uiState.document?.clientName ?: "",
+                                                warehouseName = uiState.document?.warehouseName ?: "",
+                                                totalPlanned = uiState.document?.totalPlanned ?: 0.0,
+                                                totalActual = uiState.document?.totalActual ?: 0.0,
+                                                linesTotal = uiState.lines.size,
+                                                linesCompleted = uiState.lines.count {
+                                                    it.actualQuantity >= it.plannedQuantity
+                                                }
+                                            )
+                                        }
+
+                                        item {
+                                            SectionHeader(
+                                                title = stringResource(R.string.document_lines),
+                                                modifier = Modifier.padding(top = 8.dp)
+                                            )
+                                        }
+
+                                        if (uiState.lines.isEmpty()) {
+                                            item {
+                                                EmptyState(
+                                                    message = stringResource(R.string.no_lines_description),
+                                                    icon = R.drawable.outline_inventory_2_24
+                                                )
+                                            }
+                                        } else {
+                                            items(
+                                                items = uiState.lines,
+                                                key = { it.id }
+                                            ) { line ->
+                                                DocumentLineRow(
+                                                    line = line,
+                                                    productImage = uiState.productImages[line.productId],
+                                                    onQuantityChange = { lineId, qty ->
+                                                        viewModel.updateLineQuantity(lineId, qty)
+                                                    },
+                                                    isSelected = uiState.selectedLineId == line.id,
+                                                    // Line editing is allowed only during COLLECTING — during PACKING the
+                                                    // product list is strictly read-only per the server-owned invariant.
+                                                    canEdit = uiState.canEditLines
+                                                )
+                                            }
+                                        }
+
+                                        item {
+                                            Spacer(modifier = Modifier.height(16.dp))
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-            }
             }
         }
     }
@@ -596,6 +682,262 @@ private fun CompleteConfirmDialog(
         },
         confirmButton = {
             TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.yes))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.no))
+            }
+        }
+    )
+}
+
+// ============================================
+// Pack-stage: Boxes tab + parcel weight dialog + pack completion dialog
+// ============================================
+
+/**
+ * Boxes tab content — a flat list of DocumentBox rows sorted parcels-first
+ * (the underlying DAO query applies ORDER BY is_parcel DESC). Parcel rows
+ * are visually accented to signal their status as delivery places. In PACKING
+ * state swipe-to-delete calls BOX_REMOVE; otherwise rows are read-only.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BoxesTab(
+    documentBoxes: List<DocumentBox>,
+    canRemove: Boolean,
+    onRemove: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val parcelCount = documentBoxes.count { it.isParcel }
+    val packageCount = documentBoxes.size - parcelCount
+
+    Column(modifier = modifier.fillMaxSize()) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surfaceContainer
+        ) {
+            Text(
+                text = stringResource(R.string.pack_summary_fmt, parcelCount, packageCount),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+        }
+
+        if (documentBoxes.isEmpty()) {
+            EmptyState(
+                message = stringResource(R.string.scan_box_barcode),
+                icon = R.drawable.outline_inventory_2_24
+            )
+            return
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(vertical = 8.dp)
+        ) {
+            items(items = documentBoxes, key = { it.id }) { box ->
+                if (canRemove) {
+                    // Swipe-to-delete with no confirmation dialog — matches the
+                    // worker's requested flow. Any direction triggers removal.
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = { value ->
+                            if (value != SwipeToDismissBoxValue.Settled) {
+                                onRemove(box.id)
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    )
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        backgroundContent = {
+                            Surface(
+                                modifier = Modifier.fillMaxSize(),
+                                color = MaterialTheme.colorScheme.errorContainer
+                            ) {}
+                        }
+                    ) {
+                        DocumentBoxRow(box = box)
+                    }
+                } else {
+                    DocumentBoxRow(box = box)
+                }
+            }
+            item { Spacer(modifier = Modifier.height(16.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun DocumentBoxRow(box: DocumentBox, modifier: Modifier = Modifier) {
+    val accentColor = if (box.isParcel) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.outlineVariant
+    }
+    PickElevatedCard(
+        modifier = modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+        containerColor = if (box.isParcel) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    width = if (box.isParcel) 2.dp else 0.dp,
+                    color = accentColor,
+                    shape = CardShape
+                )
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = if (box.isParcel) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.outline
+                        }
+                    ) {
+                        Text(
+                            text = stringResource(
+                                if (box.isParcel) R.string.parcel_badge else R.string.package_badge
+                            ).uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (box.isParcel) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                MaterialTheme.colorScheme.surface
+                            },
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = box.barcode,
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = box.status,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (box.isParcel) {
+                Text(
+                    text = stringResource(R.string.box_weight_fmt, box.weight),
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Parcel weight entry dialog. Modal — the screen blocks new scans while this
+ * is open so the next parcel barcode cannot race ahead of the current one.
+ * Grams only (integer), matches the server-side unit.
+ */
+@Composable
+private fun ParcelWeightDialog(
+    box: DomainBox,
+    onConfirm: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var input by remember { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+    val weight = input.toIntOrNull() ?: 0
+    val canSubmit = weight > 0
+
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.parcel_weight_title)) },
+        text = {
+            Column {
+                Text(
+                    text = box.barcode,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { new -> input = new.filter { it.isDigit() } },
+                    label = { Text(stringResource(R.string.parcel_weight_hint)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = { if (canSubmit) onConfirm(weight) }
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester)
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { if (canSubmit) onConfirm(weight) }, enabled = canSubmit) {
+                Text(stringResource(R.string.ok))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.no))
+            }
+        }
+    )
+}
+
+/**
+ * Pack-stage completion confirmation. Surfaces the parcel/package counts so
+ * the worker sees what they're about to ship. The confirm button is disabled
+ * when no parcel is present — the server rejects that case anyway (the
+ * STAGE_COMPLETE guard requires ≥1 parcel), but gating locally saves a round
+ * trip and avoids a confusing error toast.
+ */
+@Composable
+private fun PackCompleteDialog(
+    parcelCount: Int,
+    packageCount: Int,
+    canComplete: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.complete_pack_title)) },
+        text = {
+            Column {
+                Text(stringResource(R.string.complete_pack_message, parcelCount, packageCount))
+                if (!canComplete) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.pack_requires_parcel),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = canComplete) {
                 Text(stringResource(R.string.yes))
             }
         },

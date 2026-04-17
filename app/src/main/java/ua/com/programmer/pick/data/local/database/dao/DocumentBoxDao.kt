@@ -13,11 +13,19 @@ interface DocumentBoxDao {
     @Query("SELECT * FROM document_boxes WHERE id = :id")
     suspend fun getDocumentBoxById(id: String): DocumentBoxEntity?
 
-    @Query("SELECT * FROM document_boxes WHERE document_id = :documentId")
+    // Sort parcels first (is_parcel DESC) so the Boxes tab can render
+    // delivery places above packages without a client-side sort pass.
+    @Query("SELECT * FROM document_boxes WHERE document_id = :documentId ORDER BY is_parcel DESC, packed_at ASC")
     fun getBoxesByDocumentId(documentId: String): Flow<List<DocumentBoxEntity>>
 
-    @Query("SELECT * FROM document_boxes WHERE document_id = :documentId")
+    @Query("SELECT * FROM document_boxes WHERE document_id = :documentId ORDER BY is_parcel DESC, packed_at ASC")
     suspend fun getBoxesByDocumentIdOnce(documentId: String): List<DocumentBoxEntity>
+
+    @Query("SELECT COUNT(*) FROM document_boxes WHERE document_id = :documentId AND is_parcel = 1")
+    fun getParcelCountByDocument(documentId: String): Flow<Int>
+
+    @Query("DELETE FROM document_boxes WHERE id = :id")
+    suspend fun deleteDocumentBoxById(id: String)
 
     @Query("SELECT * FROM document_boxes WHERE barcode = :barcode AND document_id = :documentId")
     suspend fun getBoxByBarcodeAndDocument(barcode: String, documentId: String): DocumentBoxEntity?

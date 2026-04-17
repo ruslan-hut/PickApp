@@ -213,18 +213,29 @@
     <string name="error_requesting_document">Failed to request document</string>
     <string name="current_document">Current Document</string>
 
-    <!-- Box Scanning -->
-    <string name="box_scanning">Box Scanning</string>
+    <!-- Pack-stage Box operations -->
     <string name="scan_box_barcode">Scan box barcode</string>
     <string name="enter_weight">Enter weight (g)</string>
+    <string name="parcel_weight_title">Parcel weight</string>
+    <string name="parcel_weight_hint">Weight in grams</string>
     <string name="add_box">Add Box</string>
     <string name="linked_boxes">Linked Boxes</string>
     <string name="box_added">Box added</string>
     <string name="box_not_found">Box not found in catalog</string>
     <string name="box_scan_error">Box scan failed</string>
+    <string name="error_add_box">Failed to add box</string>
+    <string name="error_remove_box">Failed to remove box</string>
+    <string name="pack_requires_parcel">Pack requires at least one parcel</string>
     <string name="boxes_count_fmt">%1$d boxes</string>
     <string name="box_weight_fmt">%1$dg</string>
     <string name="complete_collection">Complete Collection</string>
+    <string name="tab_products">Products</string>
+    <string name="tab_boxes">Boxes</string>
+    <string name="parcel_badge">Parcel</string>
+    <string name="package_badge">Package</string>
+    <string name="pack_summary_fmt">%1$d parcels · %2$d packages</string>
+    <string name="complete_pack_title">Complete packing?</string>
+    <string name="complete_pack_message">Complete packing with %1$d parcels and %2$d packages?</string>
 
     <!-- Courier -->
     <string name="courier_pickup">Pickup</string>

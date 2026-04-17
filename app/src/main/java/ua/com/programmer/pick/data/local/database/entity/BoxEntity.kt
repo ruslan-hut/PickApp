@@ -9,7 +9,8 @@ import androidx.room.PrimaryKey
     tableName = "boxes",
     indices = [
         Index(value = ["barcode"], unique = true),
-        Index(value = ["external_id"])
+        Index(value = ["external_id"]),
+        Index(value = ["is_parcel"])
     ]
 )
 data class BoxEntity(
@@ -34,6 +35,11 @@ data class BoxEntity(
 
     @ColumnInfo(name = "height")
     val height: Int,
+
+    // Declared by ERP via `is_parcel`. Parcels count as delivery places;
+    // packages nest inside a parcel during pack.
+    @ColumnInfo(name = "is_parcel", defaultValue = "0")
+    val isParcel: Boolean = false,
 
     @ColumnInfo(name = "is_active")
     val isActive: Boolean = true

@@ -11,6 +11,8 @@ object DebugEventType {
     // "Fact: 484" but DB summed to 467) would otherwise go unnoticed.
     const val LINE_EDIT_FAILED = "LINE_EDIT_FAILED"
     const val LINE_CREATE = "LINE_CREATE"
+    const val BOX_ADD = "BOX_ADD"
+    const val BOX_REMOVE = "BOX_REMOVE"
     const val SYNC_SCHEDULED = "SYNC_SCHEDULED"
     const val SYNC_FIRED = "SYNC_FIRED"
     const val SYNC_FLUSHED = "SYNC_FLUSHED"

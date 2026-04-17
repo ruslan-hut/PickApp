@@ -213,18 +213,29 @@
     <string name="error_requesting_document">Помилка запиту документа</string>
     <string name="current_document">Поточний документ</string>
 
-    <!-- Box Scanning -->
-    <string name="box_scanning">Сканування коробок</string>
+    <!-- Pack-stage Box operations -->
     <string name="scan_box_barcode">Скануйте штрих-код коробки</string>
     <string name="enter_weight">Введіть вагу (г)</string>
+    <string name="parcel_weight_title">Вага посилки</string>
+    <string name="parcel_weight_hint">Вага, грами</string>
     <string name="add_box">Додати коробку</string>
     <string name="linked_boxes">Прив\'язані коробки</string>
     <string name="box_added">Коробку додано</string>
     <string name="box_not_found">Коробку не знайдено в каталозі</string>
     <string name="box_scan_error">Помилка сканування коробки</string>
+    <string name="error_add_box">Не вдалося додати коробку</string>
+    <string name="error_remove_box">Не вдалося видалити коробку</string>
+    <string name="pack_requires_parcel">Потрібна хоча б одна посилка для завершення пакування</string>
     <string name="boxes_count_fmt">%1$d коробок</string>
     <string name="box_weight_fmt">%1$dг</string>
     <string name="complete_collection">Завершити збирання</string>
+    <string name="tab_products">Товари</string>
+    <string name="tab_boxes">Коробки</string>
+    <string name="parcel_badge">Посилка</string>
+    <string name="package_badge">Упаковка</string>
+    <string name="pack_summary_fmt">%1$d посилок · %2$d упаковок</string>
+    <string name="complete_pack_title">Завершити пакування?</string>
+    <string name="complete_pack_message">Завершити пакування: %1$d посилок та %2$d упаковок?</string>
 
     <!-- Courier -->
     <string name="courier_pickup">Забирання</string>

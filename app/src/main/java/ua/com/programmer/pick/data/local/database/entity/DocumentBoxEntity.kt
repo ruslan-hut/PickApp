@@ -19,7 +19,8 @@ import androidx.room.PrimaryKey
     indices = [
         Index(value = ["document_id"]),
         Index(value = ["barcode"]),
-        Index(value = ["box_id"])
+        Index(value = ["box_id"]),
+        Index(value = ["is_parcel"])
     ]
 )
 data class DocumentBoxEntity(
@@ -36,17 +37,22 @@ data class DocumentBoxEntity(
     @ColumnInfo(name = "barcode")
     val barcode: String,
 
+    // Denormalized from the master Box at add-time (PACK stage).
+    // Parcels are delivery places with required weight; packages have weight = 0.
+    @ColumnInfo(name = "is_parcel", defaultValue = "0")
+    val isParcel: Boolean = false,
+
     @ColumnInfo(name = "weight")
     val weight: Int,
 
     @ColumnInfo(name = "status")
     val status: String,
 
-    @ColumnInfo(name = "collected_by")
-    val collectedBy: String? = null,
+    @ColumnInfo(name = "packed_by")
+    val packedBy: String? = null,
 
-    @ColumnInfo(name = "collected_at")
-    val collectedAt: Long? = null,
+    @ColumnInfo(name = "packed_at")
+    val packedAt: Long? = null,
 
     @ColumnInfo(name = "picked_up_by")
     val pickedUpBy: String? = null,

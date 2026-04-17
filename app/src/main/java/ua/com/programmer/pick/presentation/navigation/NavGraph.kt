@@ -41,7 +41,6 @@ import ua.com.programmer.pick.presentation.home.HomeScreen
 import ua.com.programmer.pick.presentation.home.HomeViewModel
 import ua.com.programmer.pick.presentation.debug.DebugJournalScreen
 import ua.com.programmer.pick.presentation.profile.ProfileScreen
-import ua.com.programmer.pick.presentation.collector.BoxScanningScreen
 import ua.com.programmer.pick.presentation.courier.CourierScreen
 import ua.com.programmer.pick.presentation.settings.ScannerSettingsScreen
 import ua.com.programmer.pick.presentation.settings.ScannerTestScreen
@@ -183,17 +182,6 @@ fun PickNavGraph(
             ) { backStackEntry ->
                 val documentId = backStackEntry.arguments?.getString(Screen.DOCUMENT_ID_ARG) ?: ""
                 DocumentDetailScreen(
-                    documentId = documentId,
-                    onNavigateBack = { navController.popBackStack() }
-                )
-            }
-
-            composable(
-                route = Screen.BoxScanning.route,
-                arguments = listOf(navArgument(Screen.DOCUMENT_ID_ARG) { defaultValue = "" })
-            ) { backStackEntry ->
-                val documentId = backStackEntry.arguments?.getString(Screen.DOCUMENT_ID_ARG) ?: ""
-                BoxScanningScreen(
                     documentId = documentId,
                     onNavigateBack = { navController.popBackStack() }
                 )

@@ -48,7 +48,7 @@ import ua.com.programmer.pick.data.local.database.entity.WarehouseLocationEntity
         DocumentBoxEntity::class,
         DebugJournalEntity::class
     ],
-    version = 12, // Version 12: external_id columns on clients and warehouses (v2 sync translation)
+    version = 13, // Version 13: pack-stage boxing — is_parcel on boxes/document_boxes, collected_by/at renamed to packed_by/at
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -142,6 +142,61 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_products_external_id ON products (external_id)")
                 db.execSQL("ALTER TABLE users ADD COLUMN external_id TEXT")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_users_external_id ON users (external_id)")
+            }
+        }
+
+        // Pack-stage boxing: boxes now carry `is_parcel` (ERP declares delivery
+        // places vs packages). DocumentBox.collected_* fields are renamed to
+        // packed_* to reflect that boxing happens during the PACK stage; the
+        // initial status is `PACKED` instead of `COLLECTED`.
+        // SQLite on minSdk 24 predates RENAME COLUMN, so document_boxes is
+        // rebuilt via the canonical create-copy-drop-rename pattern.
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // boxes: new column + index
+                db.execSQL("ALTER TABLE boxes ADD COLUMN is_parcel INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_boxes_is_parcel ON boxes (is_parcel)")
+
+                // document_boxes: rebuild table, migrating column renames + status value.
+                db.execSQL("""
+                    CREATE TABLE document_boxes_new (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        document_id TEXT NOT NULL,
+                        box_id TEXT NOT NULL,
+                        barcode TEXT NOT NULL,
+                        is_parcel INTEGER NOT NULL DEFAULT 0,
+                        weight INTEGER NOT NULL,
+                        status TEXT NOT NULL,
+                        packed_by TEXT,
+                        packed_at INTEGER,
+                        picked_up_by TEXT,
+                        picked_up_at INTEGER,
+                        delivered_by TEXT,
+                        delivered_at INTEGER,
+                        last_modified INTEGER NOT NULL,
+                        version INTEGER NOT NULL,
+                        FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("""
+                    INSERT INTO document_boxes_new (
+                        id, document_id, box_id, barcode, is_parcel, weight, status,
+                        packed_by, packed_at, picked_up_by, picked_up_at,
+                        delivered_by, delivered_at, last_modified, version
+                    )
+                    SELECT
+                        id, document_id, box_id, barcode, 0 AS is_parcel, weight,
+                        CASE WHEN status = 'COLLECTED' THEN 'PACKED' ELSE status END AS status,
+                        collected_by, collected_at, picked_up_by, picked_up_at,
+                        delivered_by, delivered_at, last_modified, version
+                    FROM document_boxes
+                """.trimIndent())
+                db.execSQL("DROP TABLE document_boxes")
+                db.execSQL("ALTER TABLE document_boxes_new RENAME TO document_boxes")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_document_boxes_document_id ON document_boxes (document_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_document_boxes_barcode ON document_boxes (barcode)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_document_boxes_box_id ON document_boxes (box_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_document_boxes_is_parcel ON document_boxes (is_parcel)")
             }
         }
 

@@ -16,6 +16,7 @@ fun BoxDto.toEntity(): BoxEntity {
         length = length,
         width = width,
         height = height,
+        isParcel = isParcel,
         isActive = isActive
     )
 }
@@ -29,6 +30,7 @@ fun BoxEntity.toDomain(): Box {
         length = length,
         width = width,
         height = height,
+        isParcel = isParcel,
         isActive = isActive
     )
 }
@@ -39,10 +41,11 @@ fun DocumentBoxDto.toEntity(): DocumentBoxEntity {
         documentId = documentId,
         boxId = boxId,
         barcode = barcode,
+        isParcel = isParcel,
         weight = weight,
         status = status,
-        collectedBy = collectedBy,
-        collectedAt = collectedAt,
+        packedBy = packedBy,
+        packedAt = packedAt,
         pickedUpBy = pickedUpBy,
         pickedUpAt = pickedUpAt,
         deliveredBy = deliveredBy,
@@ -58,10 +61,11 @@ fun DocumentBoxEntity.toDomain(): DocumentBox {
         documentId = documentId,
         boxId = boxId,
         barcode = barcode,
+        isParcel = isParcel,
         weight = weight,
         status = status,
-        collectedBy = collectedBy,
-        collectedAt = collectedAt,
+        packedBy = packedBy,
+        packedAt = packedAt,
         pickedUpBy = pickedUpBy,
         pickedUpAt = pickedUpAt,
         deliveredBy = deliveredBy,
