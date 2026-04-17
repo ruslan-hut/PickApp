@@ -59,11 +59,16 @@ interface DocumentLineDao {
     @Update
     suspend fun updateLine(line: DocumentLineEntity)
 
+    // Returns the number of rows affected. Zero means the lineId did not match
+    // any row (e.g. the UI is holding a stale id because a sync replaced the
+    // line set underneath it). Callers MUST check this — Room does not raise an
+    // error for a no-op UPDATE, and silently-dropped edits are exactly how the
+    // "UI shows 484 but server stored 467" drift happens.
     @Query("UPDATE document_lines SET actual_quantity = :actualQuantity, is_dirty = 1 WHERE id = :lineId")
-    suspend fun updateActualQuantity(lineId: String, actualQuantity: Double)
+    suspend fun updateActualQuantity(lineId: String, actualQuantity: Double): Int
 
     @Query("UPDATE document_lines SET actual_quantity = actual_quantity + :delta, is_dirty = 1 WHERE id = :lineId")
-    suspend fun incrementActualQuantity(lineId: String, delta: Double)
+    suspend fun incrementActualQuantity(lineId: String, delta: Double): Int
 
     @Query("UPDATE document_lines SET is_completed = :isCompleted, is_dirty = 1 WHERE id = :lineId")
     suspend fun updateLineCompleted(lineId: String, isCompleted: Boolean)

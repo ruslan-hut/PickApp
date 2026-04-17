@@ -185,26 +185,20 @@ class DocumentDetailViewModel @Inject constructor(
                 if (existingLine != null) {
                     // Increment existing line quantity
                     val newQty = existingLine.actualQuantity + 1.0
-                    _uiState.update { current ->
-                        val updated = current.lines.map {
-                            if (it.id == existingLine.id) it.copy(actualQuantity = newQty) else it
-                        }
-                        val newTotalActual = updated.sumOf { it.actualQuantity }
-                        val updatedDocument = current.document?.copy(totalActual = newTotalActual)
-                        current.copy(document = updatedDocument, lines = updated, selectedLineId = existingLine.id)
-                    }
+                    applyLineQtyOptimistically(existingLine.id, newQty)
 
-                    // Persist change
-                    try {
-                        documentRepository.incrementLineQuantity(existingLine.id, 1.0)
-                        notifyDocumentLinesChanged()
-                    } catch (_: Exception) {
-                        try {
-                            documentRepository.updateLine(existingLine.id, newQty, null)
-                            notifyDocumentLinesChanged()
-                        } catch (_: Exception) {
+                    // Persist change — and revert the optimistic update if the DB
+                    // rejects it. Without this the UI drifts silently above what
+                    // the server ever sees.
+                    val result = documentRepository.incrementLineQuantity(existingLine.id, 1.0)
+                    when (result) {
+                        is Result.Success -> notifyDocumentLinesChanged()
+                        is Result.Error -> {
+                            applyLineQtyOptimistically(existingLine.id, existingLine.actualQuantity)
+                            logLineEditFailure(existingLine.id, newQty, result, "inventory scan")
                             _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
                         }
+                        else -> Unit
                     }
                 } else {
                     // Add new line for this product
@@ -295,32 +289,29 @@ class DocumentDetailViewModel @Inject constructor(
                         line.actualQuantity + 1.0
                     }
 
-                    // Update UI immediately
-                    _uiState.update { current ->
-                        val updated = current.lines.map { if (it.id == line.id) it.copy(actualQuantity = newQty) else it }
-                        val newTotalActual = updated.sumOf { it.actualQuantity }
-                        val updatedDocument = current.document?.copy(totalActual = newTotalActual)
-                        current.copy(document = updatedDocument, lines = updated, selectedLineId = line.id)
-                    }
+                    // Update UI immediately (optimistic).
+                    applyLineQtyOptimistically(line.id, newQty, selectLineId = true)
 
-                    // Persist change
+                    // Persist change — revert the optimistic update if the DB
+                    // rejects it (stale line id after resync, or real IO error).
                     val delta = newQty - line.actualQuantity
-                    try {
-                        documentRepository.incrementLineQuantity(line.id, delta)
-                        debugJournal.log(
-                            eventType = DebugEventType.LINE_EDIT,
-                            message = "line increment from barcode scan",
-                            documentId = docId,
-                            payload = mapOf("line_id" to line.id, "delta" to delta, "new_qty" to newQty, "barcode" to identifier)
-                        )
-                        notifyDocumentLinesChanged()
-                    } catch (_: Exception) {
-                        try {
-                            documentRepository.updateLine(line.id, newQty, null)
+                    val result = documentRepository.incrementLineQuantity(line.id, delta)
+                    when (result) {
+                        is Result.Success -> {
+                            debugJournal.log(
+                                eventType = DebugEventType.LINE_EDIT,
+                                message = "line increment from barcode scan",
+                                documentId = docId,
+                                payload = mapOf("line_id" to line.id, "delta" to delta, "new_qty" to newQty, "barcode" to identifier)
+                            )
                             notifyDocumentLinesChanged()
-                        } catch (_: Exception) {
+                        }
+                        is Result.Error -> {
+                            applyLineQtyOptimistically(line.id, line.actualQuantity)
+                            logLineEditFailure(line.id, newQty, result, "barcode scan", extra = mapOf("barcode" to identifier))
                             _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
                         }
+                        else -> Unit
                     }
                 } else {
                     AppLog.d("DocumentDetailViewModel", "handleScannedBarcode: line not found")
@@ -338,6 +329,11 @@ class DocumentDetailViewModel @Inject constructor(
             return
         }
 
+        // Snapshot the prior value so we can roll back the optimistic UI
+        // update if the persist step fails. Without this, a failed save
+        // leaves the UI showing a higher "Fact" total than the DB/server.
+        val priorQty = _uiState.value.lines.find { it.id == lineId }?.actualQuantity
+
         viewModelScope.launch {
             _uiState.update { current ->
                 val updated = current.lines.map { if (it.id == lineId) it.copy(actualQuantity = newQuantity) else it }
@@ -347,20 +343,80 @@ class DocumentDetailViewModel @Inject constructor(
                 current.copy(document = updatedDocument, lines = updated, isSaving = true, selectedLineId = null)
             }
 
-            try {
-                documentRepository.updateLine(lineId, newQuantity, null)
-                debugJournal.log(
-                    eventType = DebugEventType.LINE_EDIT,
-                    message = "manual quantity edit",
-                    documentId = currentDocumentId,
-                    payload = mapOf("line_id" to lineId, "new_qty" to newQuantity)
-                )
-                _uiState.update { it.copy(isSaving = false) }
-                notifyDocumentLinesChanged()
-            } catch (ex: Exception) {
-                _uiState.update { it.copy(isSaving = false, errorMessage = (ex.message ?: ToastMessage.ERROR_SAVING) as String?) }
+            val result = documentRepository.updateLine(lineId, newQuantity, null)
+            when (result) {
+                is Result.Success -> {
+                    debugJournal.log(
+                        eventType = DebugEventType.LINE_EDIT,
+                        message = "manual quantity edit",
+                        documentId = currentDocumentId,
+                        payload = mapOf("line_id" to lineId, "new_qty" to newQuantity)
+                    )
+                    _uiState.update { it.copy(isSaving = false) }
+                    notifyDocumentLinesChanged()
+                }
+                is Result.Error -> {
+                    if (priorQty != null) {
+                        applyLineQtyOptimistically(lineId, priorQty)
+                    }
+                    _uiState.update { it.copy(isSaving = false) }
+                    logLineEditFailure(lineId, newQuantity, result, "manual edit")
+                    _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
+                }
+                else -> _uiState.update { it.copy(isSaving = false) }
             }
         }
+    }
+
+    /**
+     * Apply a line quantity change to the in-memory UI state, recomputing the
+     * document's `totalActual` from the resulting line set. Used both for the
+     * initial optimistic update and for the revert on save failure.
+     */
+    private fun applyLineQtyOptimistically(
+        lineId: String,
+        newQty: Double,
+        selectLineId: Boolean = false
+    ) {
+        _uiState.update { current ->
+            val updated = current.lines.map {
+                if (it.id == lineId) it.copy(actualQuantity = newQty) else it
+            }
+            val newTotalActual = updated.sumOf { it.actualQuantity }
+            val updatedDocument = current.document?.copy(totalActual = newTotalActual)
+            current.copy(
+                document = updatedDocument,
+                lines = updated,
+                selectedLineId = if (selectLineId) lineId else current.selectedLineId
+            )
+        }
+    }
+
+    private suspend fun logLineEditFailure(
+        lineId: String,
+        attemptedQty: Double,
+        error: Result.Error,
+        source: String,
+        extra: Map<String, Any?> = emptyMap()
+    ) {
+        val payload = buildMap<String, Any?> {
+            put("line_id", lineId)
+            put("attempted_qty", attemptedQty)
+            put("source", source)
+            put("reason", error.message ?: error.exception.message ?: "unknown")
+            putAll(extra)
+        }
+        debugJournal.log(
+            eventType = DebugEventType.LINE_EDIT_FAILED,
+            message = "line edit not persisted; UI reverted",
+            documentId = currentDocumentId,
+            severity = DebugJournal.SEVERITY_ERROR,
+            payload = payload
+        )
+        AppLog.w(
+            "DocumentDetailViewModel",
+            "line edit failed: line=$lineId qty=$attemptedQty source=$source reason=${error.message ?: error.exception.message}"
+        )
     }
 
     fun takeIntoWork() {

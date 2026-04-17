@@ -6,6 +6,10 @@ package ua.com.programmer.pick.data.debug
  */
 object DebugEventType {
     const val LINE_EDIT = "LINE_EDIT"
+    // Persist step of a line edit failed — the optimistic UI update was reverted
+    // and nothing was sent to the server. Captures the case where UI drift (e.g.
+    // "Fact: 484" but DB summed to 467) would otherwise go unnoticed.
+    const val LINE_EDIT_FAILED = "LINE_EDIT_FAILED"
     const val LINE_CREATE = "LINE_CREATE"
     const val SYNC_SCHEDULED = "SYNC_SCHEDULED"
     const val SYNC_FIRED = "SYNC_FIRED"

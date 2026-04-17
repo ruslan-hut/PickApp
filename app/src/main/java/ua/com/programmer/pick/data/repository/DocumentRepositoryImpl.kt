@@ -133,7 +133,13 @@ class DocumentRepositoryImpl @Inject constructor(
 
     override suspend fun updateLine(lineId: String, actualQuantity: Double, notes: String?): Result<Unit> = withContext(ioDispatcher) {
         try {
-            documentLineDao.updateActualQuantity(lineId, actualQuantity)
+            val rows = documentLineDao.updateActualQuantity(lineId, actualQuantity)
+            if (rows == 0) {
+                return@withContext Result.Error(
+                    StaleLineIdException(lineId),
+                    "Line $lineId no longer exists in local DB"
+                )
+            }
             notes?.let { documentLineDao.updateLineNotes(lineId, it) }
             updateDocumentTotals(lineId)
             Result.Success(Unit)
@@ -144,7 +150,13 @@ class DocumentRepositoryImpl @Inject constructor(
 
     override suspend fun incrementLineQuantity(lineId: String, delta: Double): Result<Unit> = withContext(ioDispatcher) {
         try {
-            documentLineDao.incrementActualQuantity(lineId, delta)
+            val rows = documentLineDao.incrementActualQuantity(lineId, delta)
+            if (rows == 0) {
+                return@withContext Result.Error(
+                    StaleLineIdException(lineId),
+                    "Line $lineId no longer exists in local DB"
+                )
+            }
             updateDocumentTotals(lineId)
             Result.Success(Unit)
         } catch (e: Exception) {
@@ -218,3 +230,10 @@ class DocumentRepositoryImpl @Inject constructor(
         documentDao.updateTotalPlanned(line.documentId, totalPlanned, now)
     }
 }
+
+// Signals that a line edit targeted an id that no longer exists locally — almost
+// always because a resync (deleteLinesByDocumentId + insertLines) replaced the
+// line set under the UI's feet. The VM uses this to distinguish "save lost the
+// row" (must revert optimistic UI + surface to user) from a generic DB failure.
+class StaleLineIdException(val lineId: String) :
+    RuntimeException("Stale line id: $lineId")
