@@ -16,6 +16,7 @@ enum class ToastMessage(@StringRes val resId: Int) {
     DOCUMENT_PACKAGED(R.string.document_packaged),
     DOCUMENT_COMPLETED(R.string.document_completed),
     DOCUMENT_RELEASED(R.string.document_released),
+    DOCUMENT_PAUSED(R.string.document_paused),
     ERROR_TAKE_INTO_WORK(R.string.error_take_into_work),
     ERROR_PACKAGE_DOCUMENT(R.string.error_package_document),
     ERROR_COMPLETE_DOCUMENT(R.string.error_complete_document),

@@ -595,6 +595,44 @@ class DocumentDetailViewModel @Inject constructor(
     fun saveAndComplete() = completeDocument()
 
     /**
+     * Pause work on the document: unlock the current stage so the document
+     * reverts to the stage-start state (progress preserved via dirty-flag
+     * re-sync) and the worker keeps it in their queue. Emits a toast and
+     * navigates back on success.
+     */
+    fun pauseDocument() {
+        if (_uiState.value.isProcessingAction) return
+
+        val documentId = currentDocumentId ?: return
+        val currentState = _uiState.value.document?.state ?: return
+        val stage = DocumentState.stageOf(currentState) ?: return
+        if (!DocumentState.isInProcess(currentState)) return
+
+        _uiState.update { it.copy(isProcessingAction = true) }
+
+        viewModelScope.launch {
+            try {
+                when (syncOrchestrator.unlockFromStage(documentId, stage)) {
+                    is Result.Success -> {
+                        _uiState.update { it.copy(isProcessingAction = false) }
+                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_PAUSED))
+                        _uiEvents.emit(DocumentDetailUiEvent.NavigateBack)
+                    }
+                    is Result.Error -> {
+                        _uiState.update { it.copy(isProcessingAction = false) }
+                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.CANNOT_RELEASE_DOCUMENT))
+                    }
+                    else -> _uiState.update { it.copy(isProcessingAction = false) }
+                }
+            } catch (e: Exception) {
+                AppLog.e("DocumentDetailViewModel", "pauseDocument failed", e)
+                _uiState.update { it.copy(isProcessingAction = false) }
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.CANNOT_RELEASE_DOCUMENT))
+            }
+        }
+    }
+
+    /**
      * Ask the server to release (unlock) the document so the user can navigate back.
      */
     fun tryReleaseDocument() {

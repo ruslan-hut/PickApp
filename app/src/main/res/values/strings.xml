@@ -89,6 +89,10 @@
     <string name="save_document_dialog_message">Do you want to save and complete the document before leaving?</string>
     <string name="cannot_release_document">Cannot release document: server denied the request</string>
     <string name="save_complete_cd">Save and complete document</string>
+    <string name="pause_document_cd">Pause work</string>
+    <string name="pause_document_dialog_title">Pause work?</string>
+    <string name="pause_document_dialog_message">Save the progress and exit?</string>
+    <string name="document_paused">Work paused</string>
     <string name="document_state_loaded">New</string>
     <string name="document_state_in_progress">Collecting</string>
     <string name="document_state_completed">Collected</string>

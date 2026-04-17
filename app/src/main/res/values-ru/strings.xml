@@ -89,6 +89,10 @@
     <string name="save_document_dialog_message">Сохранить и завершить документ перед выходом?</string>
     <string name="cannot_release_document">Невозможно освободить документ: сервер отклонил запрос</string>
     <string name="save_complete_cd">Сохранить и завершить документ</string>
+    <string name="pause_document_cd">Приостановить работу</string>
+    <string name="pause_document_dialog_title">Приостановить работу?</string>
+    <string name="pause_document_dialog_message">Сохранить прогресс и выйти?</string>
+    <string name="document_paused">Работа приостановлена</string>
     <string name="document_state_loaded">Новый</string>
     <string name="document_state_in_progress">Сборка</string>
     <string name="document_state_completed">Собран</string>

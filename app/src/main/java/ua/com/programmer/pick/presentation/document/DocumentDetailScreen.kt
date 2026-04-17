@@ -2,6 +2,7 @@ package ua.com.programmer.pick.presentation.document
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.border
@@ -60,6 +61,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -67,6 +69,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.delay
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.domain.model.Box as DomainBox
 import ua.com.programmer.pick.domain.model.DocumentBox
@@ -96,6 +99,8 @@ fun DocumentDetailScreen(
     var showCompleteConfirm by remember { mutableStateOf(false) }
     // Dialog: confirm pack completion with parcel/package counts
     var showPackCompleteConfirm by remember { mutableStateOf(false) }
+    // Dialog: confirm pause — save progress and exit without completing the stage
+    var showPauseConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(documentId) {
         viewModel.load(documentId)
@@ -177,6 +182,17 @@ fun DocumentDetailScreen(
         )
     }
 
+    // "Pause work?" confirmation — explicit exit with progress preserved
+    if (showPauseConfirm) {
+        PauseConfirmDialog(
+            onConfirm = {
+                showPauseConfirm = false
+                viewModel.pauseDocument()
+            },
+            onDismiss = { showPauseConfirm = false }
+        )
+    }
+
     // "Incomplete lines — proceed?" dialog shown before save/complete
     if (showCompleteConfirm) {
         val incompleteCount = uiState.lines.count {
@@ -232,6 +248,13 @@ fun DocumentDetailScreen(
                                 strokeWidth = 2.dp
                             )
                         } else {
+                            IconButton(onClick = { showPauseConfirm = true }) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_pause_24),
+                                    contentDescription = stringResource(R.string.pause_document_cd),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
                             IconButton(
                                 onClick = {
                                     if (uiState.isPackStage) {
@@ -667,6 +690,32 @@ private fun SaveOnBackDialog(
 }
 
 @Composable
+private fun PauseConfirmDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(stringResource(R.string.pause_document_dialog_title))
+        },
+        text = {
+            Text(stringResource(R.string.pause_document_dialog_message))
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.yes))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.no))
+            }
+        }
+    )
+}
+
+@Composable
 private fun CompleteConfirmDialog(
     incompleteCount: Int,
     totalCount: Int,
@@ -744,35 +793,74 @@ private fun BoxesTab(
             items(items = documentBoxes, key = { "${it.documentId}_${it.boxNumber}" }) { box ->
                 val name = boxNamesById[box.boxId]
                 if (canRemove) {
-                    // Swipe-to-delete with no confirmation dialog — matches the
-                    // worker's requested flow. The dismiss background reveals
-                    // only once the user starts swiping; otherwise it stays
-                    // invisible so the resting card has no red halo.
+                    // Swipe triggers the remove request but never confirms the
+                    // dismissal locally — the card snaps back, and the row only
+                    // disappears once the server-confirmed delete clears it from
+                    // the DAO. The `submitted` guard is required because
+                    // confirmValueChange is re-evaluated throughout the drag
+                    // while we keep rejecting the target; without it a single
+                    // swipe emits dozens of BOX_REMOVE messages.
+                    var submitted by remember { mutableStateOf(false) }
+                    LaunchedEffect(submitted) {
+                        if (submitted) {
+                            delay(1500L)
+                            submitted = false
+                        }
+                    }
                     val dismissState = rememberSwipeToDismissBoxState(
                         confirmValueChange = { value ->
-                            if (value != SwipeToDismissBoxValue.Settled) {
+                            if (value != SwipeToDismissBoxValue.Settled && !submitted) {
+                                submitted = true
                                 onRemove(box.boxNumber)
-                                true
-                            } else {
-                                false
                             }
+                            false
                         }
                     )
-                    val isSwiping = dismissState.targetValue != SwipeToDismissBoxValue.Settled
+                    // The red "delete slot" surface is always rendered as
+                    // background — SwipeToDismissBox only exposes it while the
+                    // card is displaced, so it appears the moment the user
+                    // starts dragging. targetValue cannot be used as a drag
+                    // signal here because confirmValueChange=false keeps it
+                    // pinned to Settled throughout the gesture.
+                    // The row fades while the BOX_REMOVE is in flight so the
+                    // pending state is visible after release.
+                    val rowAlpha by animateFloatAsState(
+                        targetValue = if (submitted) 0.4f else 1f,
+                        label = "boxRowAlpha"
+                    )
                     Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
                         SwipeToDismissBox(
                             state = dismissState,
                             backgroundContent = {
-                                if (isSwiping) {
-                                    Surface(
-                                        modifier = Modifier.fillMaxSize(),
-                                        color = MaterialTheme.colorScheme.errorContainer,
-                                        shape = CardShape
-                                    ) {}
+                                Surface(
+                                    modifier = Modifier.fillMaxSize(),
+                                    color = MaterialTheme.colorScheme.errorContainer,
+                                    shape = CardShape
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 20.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.outline_delete_24),
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onErrorContainer
+                                        )
+                                        Icon(
+                                            painter = painterResource(R.drawable.outline_delete_24),
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onErrorContainer
+                                        )
+                                    }
                                 }
                             }
                         ) {
-                            DocumentBoxRow(box = box, name = name)
+                            Box(modifier = Modifier.alpha(rowAlpha)) {
+                                DocumentBoxRow(box = box, name = name)
+                            }
                         }
                     }
                 } else {
