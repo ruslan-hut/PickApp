@@ -825,26 +825,25 @@ class SyncOrchestrator @Inject constructor(
 
         val externalId = toExternalDocumentId(documentId)
 
+        // Offline / send-failure path: do NOT queue a stored snapshot. Each
+        // queued DOCUMENT_UPDATE used to carry a frozen copy of all lines; when
+        // connectivity came back, processPendingOperations replayed them in
+        // order, so an early snapshot taken before any scans (total_actual = 0)
+        // would overwrite the server's current totals before the fresh snapshot
+        // arrived. Document/line is_dirty flags already drive
+        // resyncDirtyDocuments(), which reads the current Room state — that
+        // path is authoritative and always up-to-date, so the queue is
+        // redundant for this operation type.
         if (!webSocketManager.isConnected()) {
-            AppLog.d(TAG, "WebSocket not connected, queueing update operation for document: $documentId")
+            AppLog.d(TAG, "WebSocket not connected; relying on dirty-flag re-sync for document: $documentId")
             debugJournal.log(
                 eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_UPDATE_QUEUED,
-                message = "WS offline; queued document update",
+                message = "WS offline; deferred to dirty re-sync",
                 documentId = documentId,
                 severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN,
                 payload = mapOf("line_count" to lines.size)
             )
-            outgoingOperationRepository.queueOperation(
-                operationType = OperationType.DOCUMENT_UPDATE,
-                entityType = EntityType.DOCUMENT,
-                entityId = documentId,
-                payload = gson.toJson(mapOf(
-                    "document_id" to externalId,
-                    "state" to state,
-                    "lines" to lines
-                ))
-            )
-            return Result.Error(Exception("WebSocket not connected, operation queued"))
+            return Result.Error(Exception("WebSocket not connected, deferred to dirty re-sync"))
         }
 
         val message = SyncMessage.DocumentUpdate(
@@ -870,27 +869,15 @@ class SyncOrchestrator @Inject constructor(
             )
             Result.Success(Unit)
         } else {
-            // WebSocket send failed (connection dropped between check and send) —
-            // queue the operation for retry instead of silently losing it.
-            AppLog.w(TAG, "WebSocket send failed for document $documentId, queueing for retry")
+            AppLog.w(TAG, "WebSocket send failed for document $documentId; deferred to dirty re-sync")
             debugJournal.log(
                 eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_UPDATE_QUEUED,
-                message = "WS send failed; queued for retry",
+                message = "WS send failed; deferred to dirty re-sync",
                 documentId = documentId,
                 severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN,
                 payload = mapOf("line_count" to lines.size)
             )
-            outgoingOperationRepository.queueOperation(
-                operationType = OperationType.DOCUMENT_UPDATE,
-                entityType = EntityType.DOCUMENT,
-                entityId = documentId,
-                payload = gson.toJson(mapOf(
-                    "document_id" to externalId,
-                    "state" to state,
-                    "lines" to lines
-                ))
-            )
-            Result.Error(Exception("WebSocket send failed, operation queued for retry"))
+            Result.Error(Exception("WebSocket send failed, deferred to dirty re-sync"))
         }
     }
 
@@ -1767,7 +1754,9 @@ class SyncOrchestrator @Inject constructor(
                 }
             }
             else -> {
-                // Fire-and-forget for DOCUMENT_UPDATE, DOCUMENT_UNLOCK, etc.
+                // Fire-and-forget for DOCUMENT_UNLOCK etc.
+                // (DOCUMENT_UPDATE is no longer queued — buildMessageFromOperation
+                // returns null for it, so it never reaches this branch.)
                 val sent = webSocketManager.sendMessage(message)
                 if (sent) {
                     outgoingOperationRepository.markOperationCompleted(operation.id)
@@ -1815,29 +1804,13 @@ class SyncOrchestrator @Inject constructor(
                     SyncMessage.StageComplete(id = id, timestamp = timestamp, documentId = documentId, stage = stage)
                 }
                 OperationType.DOCUMENT_UPDATE -> {
-                    val documentId = payloadJson.get("document_id")?.asString
-                    val state = payloadJson.get("state")?.asString
-                    val linesJson = payloadJson.get("lines")?.asJsonArray
-                    if (documentId == null || state == null || linesJson == null) {
-                        AppLog.e(TAG, "Missing required fields in DOCUMENT_UPDATE payload (documentId=$documentId, state=$state, lines=${linesJson != null})")
-                        return null
-                    }
-                    val lines = linesJson.map { lineElement ->
-                        val lineObj = lineElement.asJsonObject
-                        DocumentLineUpdate(
-                            lineNumber = lineObj.get("lineNumber")?.asInt ?: 0,
-                            actualQuantity = lineObj.get("actualQuantity")?.asDouble ?: 0.0,
-                            batchNumber = lineObj.get("batchNumber")?.asString,
-                            isCompleted = lineObj.get("isCompleted")?.asBoolean ?: false
-                        )
-                    }
-                    SyncMessage.DocumentUpdate(
-                        id = id,
-                        timestamp = timestamp,
-                        documentId = documentId,
-                        state = state,
-                        lines = lines
-                    )
+                    // DOCUMENT_UPDATE is no longer queued (see updateDocument()).
+                    // Legacy entries from older app versions carry stale line
+                    // snapshots; dropping them prevents replaying zero totals
+                    // over server state. Dirty flags + resyncDirtyDocuments()
+                    // cover the offline case with fresh Room data.
+                    AppLog.w(TAG, "Dropping legacy queued DOCUMENT_UPDATE for ${operation.entityId}; dirty re-sync will handle it")
+                    null
                 }
                 else -> {
                     AppLog.w(TAG, "Unsupported operation type for offline queue: ${operation.operationType}")
