@@ -249,7 +249,10 @@ class DocumentDetailViewModel @Inject constructor(
                     // the server ever sees.
                     val result = documentRepository.incrementLineQuantity(existingLine.id, 1.0)
                     when (result) {
-                        is Result.Success -> notifyDocumentLinesChanged()
+                        is Result.Success -> {
+                            maybeAutoMarkCompleted(existingLine.id, newQty)
+                            notifyDocumentLinesChanged()
+                        }
                         is Result.Error -> {
                             applyLineQtyOptimistically(existingLine.id, existingLine.actualQuantity)
                             logLineEditFailure(existingLine.id, newQty, result, "inventory scan")
@@ -361,6 +364,7 @@ class DocumentDetailViewModel @Inject constructor(
                                 documentId = docId,
                                 payload = mapOf("line_id" to line.id, "delta" to delta, "new_qty" to newQty, "barcode" to identifier)
                             )
+                            maybeAutoMarkCompleted(line.id, newQty)
                             notifyDocumentLinesChanged()
                         }
                         is Result.Error -> {
@@ -410,6 +414,7 @@ class DocumentDetailViewModel @Inject constructor(
                         payload = mapOf("line_id" to lineId, "new_qty" to newQuantity)
                     )
                     _uiState.update { it.copy(isSaving = false) }
+                    maybeAutoMarkCompleted(lineId, newQuantity)
                     notifyDocumentLinesChanged()
                 }
                 is Result.Error -> {
@@ -423,6 +428,64 @@ class DocumentDetailViewModel @Inject constructor(
                 else -> _uiState.update { it.copy(isSaving = false) }
             }
         }
+    }
+
+    /**
+     * Flip `is_completed` to true when the actual quantity reaches plan. We never
+     * auto-unset — clearing the mark requires an explicit swipe-left. Planned=0
+     * lines only auto-mark once the user actually scans or types something (>0),
+     * so acknowledgement still represents a deliberate action.
+     */
+    private fun maybeAutoMarkCompleted(lineId: String, newQuantity: Double) {
+        val line = _uiState.value.lines.find { it.id == lineId } ?: return
+        if (line.isCompleted) return
+        if (newQuantity <= 0.0) return
+        if (newQuantity < line.plannedQuantity) return
+        setLineCompleted(lineId, true)
+    }
+
+    /**
+     * Toggle `is_completed` for a single line. Called by the swipe gesture and
+     * by the auto-mark path. Updates the in-memory state optimistically; on a
+     * DB write failure the UI is reverted so it doesn't diverge from storage.
+     */
+    fun setLineCompleted(lineId: String, isCompleted: Boolean) {
+        val prior = _uiState.value.lines.find { it.id == lineId }?.isCompleted
+        if (prior == isCompleted) return
+
+        _uiState.update { current ->
+            val updated = current.lines.map {
+                if (it.id == lineId) it.copy(isCompleted = isCompleted) else it
+            }
+            current.copy(lines = updated)
+        }
+
+        viewModelScope.launch {
+            when (val result = documentRepository.updateLineCompleted(lineId, isCompleted)) {
+                is Result.Error -> {
+                    if (prior != null) {
+                        _uiState.update { current ->
+                            val reverted = current.lines.map {
+                                if (it.id == lineId) it.copy(isCompleted = prior) else it
+                            }
+                            current.copy(lines = reverted)
+                        }
+                    }
+                    AppLog.w(
+                        "DocumentDetailViewModel",
+                        "setLineCompleted failed: line=$lineId target=$isCompleted reason=${result.message}"
+                    )
+                    _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
+                }
+                is Result.Success -> notifyDocumentLinesChanged()
+                else -> Unit
+            }
+        }
+    }
+
+    /** Clear the unchecked-lines warning after the blocking dialog is dismissed. */
+    fun dismissUncheckedWarning() {
+        _uiState.update { it.copy(firstUncheckedLineId = null, uncheckedLineCount = 0) }
     }
 
     /**
@@ -557,6 +620,23 @@ class DocumentDetailViewModel @Inject constructor(
         val stage = DocumentState.stageOf(currentState) ?: return
 
         if (!DocumentState.isInProcess(currentState)) return
+
+        // Collector must acknowledge every line before finishing. Other stages
+        // (PACKING, DELIVERING, etc.) have their own completion rules and are
+        // not affected by is_completed.
+        if (currentState == DocumentState.COLLECTING) {
+            val lines = _uiState.value.lines
+            val unchecked = lines.filter { !it.isCompleted }
+            if (unchecked.isNotEmpty()) {
+                _uiState.update {
+                    it.copy(
+                        firstUncheckedLineId = unchecked.first().id,
+                        uncheckedLineCount = unchecked.size
+                    )
+                }
+                return
+            }
+        }
 
         viewModelScope.launch {
             _uiState.update { it.copy(isProcessingAction = true) }

@@ -95,8 +95,6 @@ fun DocumentDetailScreen(
     var barcodeAlert by remember { mutableStateOf<BarcodeAlertType?>(null) }
     // Dialog: ask user whether to save before leaving
     var showSaveOnBackDialog by remember { mutableStateOf(false) }
-    // Dialog: confirm complete when there are incomplete lines (save/complete action)
-    var showCompleteConfirm by remember { mutableStateOf(false) }
     // Dialog: confirm pack completion with parcel/package counts
     var showPackCompleteConfirm by remember { mutableStateOf(false) }
     // Dialog: confirm pause — save progress and exit without completing the stage
@@ -135,19 +133,14 @@ fun DocumentDetailScreen(
         )
     }
 
-    // "Save document?" dialog shown when user tries to go back
+    // "Save document?" dialog shown when user tries to go back. The VM is the
+    // single gate on whether the stage can complete — if any line is still
+    // unacknowledged, it refuses and surfaces the blocking warning instead.
     if (showSaveOnBackDialog) {
         SaveOnBackDialog(
             onSave = {
                 showSaveOnBackDialog = false
-                val incompleteCount = uiState.lines.count {
-                    it.plannedQuantity > 0 && it.actualQuantity < it.plannedQuantity
-                }
-                if (incompleteCount == 0) {
-                    viewModel.saveAndComplete()
-                } else {
-                    showCompleteConfirm = true
-                }
+                viewModel.saveAndComplete()
             },
             onDiscard = {
                 showSaveOnBackDialog = false
@@ -193,19 +186,20 @@ fun DocumentDetailScreen(
         )
     }
 
-    // "Incomplete lines — proceed?" dialog shown before save/complete
-    if (showCompleteConfirm) {
-        val incompleteCount = uiState.lines.count {
-            it.plannedQuantity > 0 && it.actualQuantity < it.plannedQuantity
+    // Blocking "unacknowledged lines" dialog — surfaced by the VM when the
+    // collector tries to finish with any line still marked not-done. Scrolls
+    // the list to the first offender so the fix is one tap away.
+    if (uiState.firstUncheckedLineId != null) {
+        val firstId = uiState.firstUncheckedLineId
+        LaunchedEffect(firstId) {
+            val idx = uiState.lines.indexOfFirst { it.id == firstId }
+            if (idx >= 0) {
+                listState.animateScrollToItem(idx + 2)
+            }
         }
-        CompleteConfirmDialog(
-            incompleteCount = incompleteCount,
-            totalCount = uiState.lines.count { it.plannedQuantity > 0 },
-            onConfirm = {
-                showCompleteConfirm = false
-                viewModel.saveAndComplete()
-            },
-            onDismiss = { showCompleteConfirm = false }
+        UncheckedLinesDialog(
+            count = uiState.uncheckedLineCount,
+            onDismiss = { viewModel.dismissUncheckedWarning() }
         )
     }
 
@@ -261,14 +255,9 @@ fun DocumentDetailScreen(
                                         // Pack stage has its own confirm dialog showing parcel counts.
                                         showPackCompleteConfirm = true
                                     } else {
-                                        val incompleteCount = uiState.lines.count {
-                                            it.plannedQuantity > 0 && it.actualQuantity < it.plannedQuantity
-                                        }
-                                        if (incompleteCount == 0) {
-                                            viewModel.saveAndComplete()
-                                        } else {
-                                            showCompleteConfirm = true
-                                        }
+                                        // VM refuses and surfaces the blocking warning when any
+                                        // line is still unacknowledged; otherwise it proceeds.
+                                        viewModel.saveAndComplete()
                                     }
                                 }
                             ) {
@@ -311,9 +300,7 @@ fun DocumentDetailScreen(
                         totalPlanned = uiState.document?.totalPlanned ?: 0.0,
                         totalActual = uiState.document?.totalActual ?: 0.0,
                         linesTotal = uiState.lines.size,
-                        linesCompleted = uiState.lines.count {
-                            it.actualQuantity >= it.plannedQuantity
-                        }
+                        linesCompleted = uiState.lines.count { it.isCompleted }
                     )
                 }
             }
@@ -397,9 +384,7 @@ fun DocumentDetailScreen(
                                                 totalPlanned = uiState.document?.totalPlanned ?: 0.0,
                                                 totalActual = uiState.document?.totalActual ?: 0.0,
                                                 linesTotal = uiState.lines.size,
-                                                linesCompleted = uiState.lines.count {
-                                                    it.actualQuantity >= it.plannedQuantity
-                                                }
+                                                linesCompleted = uiState.lines.count { it.isCompleted }
                                             )
                                         }
 
@@ -427,6 +412,9 @@ fun DocumentDetailScreen(
                                                     productImage = uiState.productImages[line.productId],
                                                     onQuantityChange = { lineId, qty ->
                                                         viewModel.updateLineQuantity(lineId, qty)
+                                                    },
+                                                    onToggleCompleted = { lineId, completed ->
+                                                        viewModel.setLineCompleted(lineId, completed)
                                                     },
                                                     isSelected = uiState.selectedLineId == line.id,
                                                     // Line editing is allowed only during COLLECTING — during PACKING the
@@ -716,28 +704,21 @@ private fun PauseConfirmDialog(
 }
 
 @Composable
-private fun CompleteConfirmDialog(
-    incompleteCount: Int,
-    totalCount: Int,
-    onConfirm: () -> Unit,
+private fun UncheckedLinesDialog(
+    count: Int,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(stringResource(R.string.complete_document_confirm_title))
+            Text(stringResource(R.string.unchecked_lines_dialog_title))
         },
         text = {
-            Text(stringResource(R.string.complete_document_remain_fmt, incompleteCount, totalCount))
+            Text(stringResource(R.string.unchecked_lines_dialog_message_fmt, count))
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(stringResource(R.string.yes))
-            }
-        },
-        dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.no))
+                Text(stringResource(R.string.ok))
             }
         }
     )

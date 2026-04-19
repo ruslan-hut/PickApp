@@ -18,13 +18,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -34,9 +39,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -50,34 +57,113 @@ import ua.com.programmer.pick.domain.model.ProductImage
 import ua.com.programmer.pick.presentation.common.PickOutlinedCard
 import ua.com.programmer.pick.ui.theme.CardShape
 
-@OptIn(ExperimentalGlideComposeApi::class)
+@OptIn(ExperimentalGlideComposeApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun DocumentLineRow(
     line: DocumentLine,
     productImage: ProductImage?,
     onQuantityChange: (String, Double) -> Unit,
+    onToggleCompleted: (String, Boolean) -> Unit,
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
     canEdit: Boolean = false
 ) {
     var showImagePreview by remember { mutableStateOf(false) }
 
+    val cardContent: @Composable () -> Unit = {
+        LineCardContent(
+            line = line,
+            productImage = productImage,
+            isSelected = isSelected,
+            canEdit = canEdit,
+            onQuantityChange = onQuantityChange,
+            onImagePreview = { showImagePreview = true }
+        )
+    }
+
+    if (canEdit) {
+        // Swipe right → mark acknowledged (green); swipe left → clear mark (amber).
+        // `submitted` prevents multi-fire: confirmValueChange is re-evaluated
+        // throughout the drag, so without it one gesture could emit several
+        // toggles. We always return false so the card snaps back — state flows
+        // in through the VM, not from the swipe target.
+        var submitted by remember(line.id) { mutableStateOf(false) }
+        LaunchedEffect(submitted) {
+            if (submitted) {
+                kotlinx.coroutines.delay(600L)
+                submitted = false
+            }
+        }
+        val dismissState = rememberSwipeToDismissBoxState(
+            confirmValueChange = { value ->
+                if (!submitted) {
+                    when (value) {
+                        SwipeToDismissBoxValue.StartToEnd -> {
+                            submitted = true
+                            onToggleCompleted(line.id, true)
+                        }
+                        SwipeToDismissBoxValue.EndToStart -> {
+                            submitted = true
+                            onToggleCompleted(line.id, false)
+                        }
+                        SwipeToDismissBoxValue.Settled -> Unit
+                    }
+                }
+                false
+            }
+        )
+        Box(modifier = modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            SwipeToDismissBox(
+                state = dismissState,
+                backgroundContent = {
+                    SwipeBackground(direction = dismissState.dismissDirection)
+                }
+            ) {
+                cardContent()
+            }
+        }
+    } else {
+        Box(modifier = modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            cardContent()
+        }
+    }
+
+    // Full-screen image preview dialog
+    if (showImagePreview && productImage != null) {
+        FullScreenImagePreview(
+            productImage = productImage,
+            productName = line.productName,
+            onDismiss = { showImagePreview = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalGlideComposeApi::class)
+@Composable
+private fun LineCardContent(
+    line: DocumentLine,
+    productImage: ProductImage?,
+    isSelected: Boolean,
+    canEdit: Boolean,
+    onQuantityChange: (String, Double) -> Unit,
+    onImagePreview: () -> Unit
+) {
     val progress = if (line.plannedQuantity > 0) {
         (line.actualQuantity / line.plannedQuantity).toFloat().coerceIn(0f, 1f)
     } else 0f
 
-    val isComplete = line.actualQuantity >= line.plannedQuantity
+    // Green state represents explicit acknowledgement, not raw quantity progress.
+    val isAcknowledged = line.isCompleted
 
     PickOutlinedCard(
-        modifier = modifier.padding(horizontal = 16.dp, vertical = 6.dp),
         borderColor = when {
             isSelected -> MaterialTheme.colorScheme.primary
-            isComplete -> MaterialTheme.colorScheme.secondary
+            isAcknowledged -> MaterialTheme.colorScheme.secondary
             else -> MaterialTheme.colorScheme.outlineVariant
         },
         containerColor = when {
             isSelected -> MaterialTheme.colorScheme.primaryContainer
-            isComplete -> MaterialTheme.colorScheme.secondaryContainer
+            isAcknowledged -> MaterialTheme.colorScheme.secondaryContainer
             else -> MaterialTheme.colorScheme.surface
         }
     ) {
@@ -99,16 +185,15 @@ fun DocumentLineRow(
                         modifier = Modifier
                             .size(56.dp)
                             .clip(CardShape)
-                            .clickable { showImagePreview = true }
+                            .clickable { onImagePreview() }
                     )
                 }
 
                 Column(modifier = Modifier.weight(1f)) {
-                    // Product name
                     Text(
                         text = line.productName,
                         style = MaterialTheme.typography.titleMedium,
-                        color = if (isComplete) {
+                        color = if (isAcknowledged) {
                             MaterialTheme.colorScheme.onSecondaryContainer
                         } else {
                             MaterialTheme.colorScheme.onSurface
@@ -116,14 +201,13 @@ fun DocumentLineRow(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                    // Product code
                     if (line.productCode.isNotBlank()) {
                         Text(
                             text = line.productCode,
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontFamily = ua.com.programmer.pick.ui.theme.FiraMono
                             ),
-                            color = if (isComplete) {
+                            color = if (isAcknowledged) {
                                 MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
                             } else {
                                 MaterialTheme.colorScheme.onSurfaceVariant
@@ -137,19 +221,18 @@ fun DocumentLineRow(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Progress indicator
             LinearProgressIndicator(
                 progress = { progress },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(4.dp)
                     .clip(CardShape),
-                color = if (isComplete) {
+                color = if (isAcknowledged) {
                     MaterialTheme.colorScheme.secondary
                 } else {
                     MaterialTheme.colorScheme.primary
                 },
-                trackColor = if (isComplete) {
+                trackColor = if (isAcknowledged) {
                     MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
                 } else {
                     MaterialTheme.colorScheme.surfaceVariant
@@ -158,7 +241,6 @@ fun DocumentLineRow(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Quantities row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -167,7 +249,7 @@ fun DocumentLineRow(
                 Text(
                     text = stringResource(R.string.planned, line.plannedQuantity),
                     style = MaterialTheme.typography.titleMedium,
-                    color = if (isComplete) {
+                    color = if (isAcknowledged) {
                         MaterialTheme.colorScheme.onSecondaryContainer
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
@@ -176,7 +258,6 @@ fun DocumentLineRow(
 
                 Spacer(modifier = Modifier.width(16.dp))
 
-                // Quantity stepper
                 QuantityStepper(
                     value = line.actualQuantity,
                     onChange = { newVal -> onQuantityChange(line.id, newVal) },
@@ -186,14 +267,50 @@ fun DocumentLineRow(
             }
         }
     }
+}
 
-    // Full-screen image preview dialog
-    if (showImagePreview && productImage != null) {
-        FullScreenImagePreview(
-            productImage = productImage,
-            productName = line.productName,
-            onDismiss = { showImagePreview = false }
-        )
+@Composable
+private fun SwipeBackground(direction: SwipeToDismissBoxValue) {
+    val color = when (direction) {
+        SwipeToDismissBoxValue.StartToEnd -> MaterialTheme.colorScheme.secondaryContainer
+        SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.tertiaryContainer
+        SwipeToDismissBoxValue.Settled -> Color.Transparent
+    }
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = color,
+        shape = CardShape
+    ) {
+        if (direction == SwipeToDismissBoxValue.Settled) return@Surface
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = if (direction == SwipeToDismissBoxValue.StartToEnd) {
+                Arrangement.Start
+            } else {
+                Arrangement.End
+            }
+        ) {
+            when (direction) {
+                SwipeToDismissBoxValue.StartToEnd -> {
+                    Icon(
+                        painter = painterResource(R.drawable.outline_check_circle_24),
+                        contentDescription = stringResource(R.string.line_acknowledge_action),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+                SwipeToDismissBoxValue.EndToStart -> {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(R.string.line_clear_action),
+                        tint = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
+                SwipeToDismissBoxValue.Settled -> Unit
+            }
+        }
     }
 }
 

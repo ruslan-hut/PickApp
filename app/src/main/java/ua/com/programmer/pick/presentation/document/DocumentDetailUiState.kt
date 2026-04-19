@@ -30,7 +30,12 @@ data class DocumentDetailUiState(
     val isSaving: Boolean = false,
     val isProcessingAction: Boolean = false,
     val errorMessage: String? = null,
-    val selectedLineId: String? = null
+    val selectedLineId: String? = null,
+    // When the collector presses finish but some lines are still not acknowledged,
+    // the ViewModel surfaces the id of the first unchecked line so the screen can
+    // scroll to it, and the count for the blocking warning dialog.
+    val firstUncheckedLineId: String? = null,
+    val uncheckedLineCount: Int = 0
 ) {
     // Per CLAUDE.md "Server-Driven Architecture": the app does not make
     // authorization decisions locally. The server already filters the sync
