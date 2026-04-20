@@ -227,9 +227,14 @@ class SyncOrchestrator @Inject constructor(
                             appPreferences.setAvailableDocumentTypes(json)
                         }
 
-                        // Now that user is authenticated, request sync and process pending operations
-                        requestDeltaSync()
+                        // Push local dirty state BEFORE requesting server state.
+                        // Otherwise a stale SYNC_DATA response can race ahead of
+                        // resyncDirtyDocuments and clobber in-flight edits via
+                        // applyDocumentSync's line merge. The merge itself now
+                        // preserves dirty rows, but pushing first narrows the
+                        // window further and avoids needless overwrite churn.
                         processPendingOperations()
+                        requestDeltaSync()
 
                         // Best-effort: flush any queued debug journal events.
                         // Read the flag fresh from DataStore (not the StateFlow)
@@ -1268,11 +1273,7 @@ class SyncOrchestrator @Inject constructor(
                     AppLog.i(TAG, "Server version ${dto.version} > local ${existing.version} for dirty document ${dto.id}, accepting server state")
                     documentDao.upsertDocument(documentMapper.toEntity(dto))
                     if (dto.lines != null) {
-                        documentLineDao.deleteLinesByDocumentId(dto.id)
-                        val lineEntities = dto.lines.map {
-                            translateLineEntity(documentMapper.toLineEntity(it), productIdMap)
-                        }
-                        documentLineDao.insertLines(lineEntities)
+                        mergeDocumentLines(dto.id, dto.lines, productIdMap)
                     }
                     if (dto.boxes != null) {
                         val boxEntities = dto.boxes.map { boxDto ->
@@ -1305,13 +1306,11 @@ class SyncOrchestrator @Inject constructor(
             val entity = documentMapper.toEntity(dto)
             documentDao.upsertDocument(entity)
 
-            // Replace lines — server sends the complete set
+            // Replace lines — server sends the complete set. The merge preserves
+            // any locally-dirty lines so an in-flight edit isn't overwritten by a
+            // stale server echo while a push is still outstanding.
             if (dto.lines != null) {
-                documentLineDao.deleteLinesByDocumentId(dto.id)
-                val lineEntities = dto.lines.map {
-                    translateLineEntity(documentMapper.toLineEntity(it), productIdMap)
-                }
-                documentLineDao.insertLines(lineEntities)
+                mergeDocumentLines(dto.id, dto.lines, productIdMap)
             }
 
             // Replace boxes — server sends the complete set.
@@ -1402,6 +1401,47 @@ class SyncOrchestrator @Inject constructor(
         val translatedProduct = productIdMap[entity.productId] ?: entity.productId
         if (translatedProduct == entity.productId) return entity
         return entity.copy(productId = translatedProduct)
+    }
+
+    // Replacing a document's lines with a server payload used to be a blanket
+    // deleteLinesByDocumentId + insertLines. That clobbered in-flight edits:
+    // while a reconnect push was still propagating, any SYNC_DATA echo arriving
+    // with stale server state would overwrite a dirty local qty AND reset
+    // is_dirty to false, so the pending resyncDirtyDocuments() found nothing
+    // to push and the edit was silently lost. Dirty rows are now preserved.
+    private suspend fun mergeDocumentLines(
+        documentId: String,
+        serverLineDtos: List<ua.com.programmer.pick.data.remote.dto.DocumentLineDto>,
+        productIdMap: Map<String, String>
+    ) {
+        val localById = documentLineDao.getLinesByDocumentIdSync(documentId)
+            .associateBy { it.id }
+        val serverEntities = serverLineDtos.map {
+            translateLineEntity(documentMapper.toLineEntity(it), productIdMap)
+        }
+        val serverIds = serverEntities.map { it.id }.toSet()
+
+        localById.values
+            .filter { it.id !in serverIds && !it.isDirty }
+            .forEach { documentLineDao.deleteLine(it.id) }
+
+        val merged = serverEntities.map { server ->
+            val local = localById[server.id]
+            if (local != null && local.isDirty) {
+                server.copy(
+                    actualQuantity = local.actualQuantity,
+                    isCompleted = local.isCompleted,
+                    notes = local.notes ?: server.notes,
+                    isDirty = true
+                )
+            } else server
+        }
+        documentLineDao.insertLines(merged)
+
+        val preservedDirty = merged.count { it.isDirty }
+        if (preservedDirty > 0) {
+            AppLog.i(TAG, "Merge preserved $preservedDirty dirty line(s) for document $documentId")
+        }
     }
 
     private suspend fun applyProductSync(
