@@ -1196,7 +1196,7 @@ class SyncOrchestrator @Inject constructor(
             Constants.SyncEntity.PRODUCTS -> applyProductSync(data, deletedIds)
             Constants.SyncEntity.CLIENTS -> applyClientSync(data, deletedIds)
             Constants.SyncEntity.WAREHOUSES -> applyWarehouseSync(data, deletedIds)
-            Constants.SyncEntity.BOXES -> applyBoxSync(data, deletedIds)
+            Constants.SyncEntity.BOXES -> applyBoxSync(data, deletedIds, fullSet)
         }
     }
 
@@ -1571,13 +1571,23 @@ class SyncOrchestrator @Inject constructor(
 
     private suspend fun applyBoxSync(
         data: com.google.gson.JsonElement,
-        deletedIds: List<String>?
+        deletedIds: List<String>?,
+        fullSet: Boolean
     ) {
         if (data.isJsonArray) {
             val type = object : TypeToken<List<BoxDto>>() {}.type
             val boxes: List<BoxDto> = gson.fromJson(data, type)
 
-            AppLog.i(TAG, "Sync boxes: ${boxes.size} upsert, ${deletedIds?.size ?: 0} delete")
+            AppLog.i(TAG, "Sync boxes: ${boxes.size} upsert, ${deletedIds?.size ?: 0} delete, fullSet=$fullSet")
+
+            // Boxes sync is full-authoritative: the server ships the entire
+            // active catalog on every sync so is_parcel/dimensions changes can
+            // never get stuck behind a stale cursor. Replace the local cache
+            // wholesale — otherwise rows inserted by a schema migration with
+            // default column values would persist forever.
+            if (fullSet) {
+                boxDao.deleteAllBoxes()
+            }
             boxDao.insertBoxes(boxes.map { it.toEntity() })
         }
 

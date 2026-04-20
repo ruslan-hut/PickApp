@@ -815,11 +815,23 @@ class DocumentDetailViewModel @Inject constructor(
             syncOrchestrator.sendBoxAdd(docId, box.barcode, weightGrams)
         } catch (e: Exception) {
             AppLog.e("DocumentDetailViewModel", "sendBoxAdd failed", e)
+            debugJournal.log(
+                eventType = DebugEventType.BOX_ADD,
+                message = "box add failed: ${e.message}",
+                documentId = docId,
+                payload = mapOf("barcode" to box.barcode, "is_parcel" to box.isParcel, "weight" to weightGrams)
+            )
             _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.BOX_ADD_FAILED))
             return
         }
         if (result?.success != true) {
             AppLog.w("DocumentDetailViewModel", "BOX_ADD rejected: ${result?.error}")
+            debugJournal.log(
+                eventType = DebugEventType.BOX_ADD,
+                message = "box add rejected: ${result?.error}",
+                documentId = docId,
+                payload = mapOf("barcode" to box.barcode, "is_parcel" to box.isParcel, "weight" to weightGrams)
+            )
             _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.BOX_ADD_FAILED))
             return
         }
