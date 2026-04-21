@@ -1242,9 +1242,9 @@ class SyncOrchestrator @Inject constructor(
         // drop unchanged ones. See SyncDataPayload.full_set on the server.
         if (fullSet) {
             if (receivedIds.isEmpty()) {
-                documentDao.deleteAllNonDirtyDocuments()
+                documentDao.deleteAllDocuments()
             } else {
-                documentDao.deleteNonDirtyDocumentsNotIn(receivedIds.toList())
+                documentDao.deleteDocumentsNotIn(receivedIds.toList())
             }
         }
 
