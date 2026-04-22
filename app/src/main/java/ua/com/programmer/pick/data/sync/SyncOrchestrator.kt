@@ -155,6 +155,13 @@ class SyncOrchestrator @Inject constructor(
         private const val MAX_QUEUE_RETRIES = 5
         private const val DOCUMENT_PRODUCTS_TIMEOUT_MS = 10_000L
         private const val IN_PROCESS_FLUSH_INTERVAL_MS = 60_000L
+
+        // States in which this device holds the stage lock and therefore owns
+        // the document's line actuals and box data. While the local doc sits in
+        // one of these, incoming server document payloads are suppressed for
+        // that doc (see applyDocumentSync). Mirrors the backend's in-process
+        // states that trigger `erp_sync_blocked`.
+        private val WORKER_AUTHORITATIVE_STATES = setOf("COLLECTING", "PACKING", "DELIVERING")
     }
 
     private val scope = CoroutineScope(ioDispatcher)
@@ -1266,6 +1273,46 @@ class SyncOrchestrator @Inject constructor(
 
         documents.forEach { dto ->
             val existing = documentDao.getDocumentById(dto.id)
+
+            // Worker-authoritative window. Symmetric to the backend's
+            // `erp_sync_blocked` + `preserveLineActuals` / `preserveBoxes`
+            // invariant: while this device holds the stage lock (doc is
+            // in-process locally) and the server still reports the same
+            // in-process state, the app is the source of truth for line
+            // actuals, batch/is_completed, and boxes. Any SYNC_DATA echo
+            // in this window carries either the server's stale view of our
+            // own in-flight edits or, at best, a no-op — either way, letting
+            // it replace local lines/boxes clobbers the worker's data.
+            //
+            // The earlier per-row "preserve dirty" merge was a best-effort
+            // heuristic that failed when a successful DOC_UPDATE_SENT landed
+            // just before a stale server echo: the ack path left the line's
+            // is_dirty flag untouched, but the reopened server payload still
+            // raced with the next user scan and could reset actual_quantity
+            // to 0 between keystrokes. Dropping the whole payload while
+            // locked closes that window.
+            //
+            // If the server transitions the doc OUT of this in-process state
+            // (e.g., admin force-unlock, ERROR) the dto.state will differ
+            // and we fall through to the normal merge, which correctly
+            // accepts the server's authority.
+            if (existing != null
+                && existing.state in WORKER_AUTHORITATIVE_STATES
+                && dto.state == existing.state) {
+                debugJournal.log(
+                    eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_SYNC_SUPPRESSED,
+                    message = "ignored server document payload while stage lock held",
+                    documentId = dto.id,
+                    payload = mapOf(
+                        "state" to existing.state,
+                        "server_version" to dto.version,
+                        "local_version" to existing.version,
+                        "server_line_count" to (dto.lines?.size ?: 0)
+                    )
+                )
+                return@forEach
+            }
+
             if (existing != null && existing.isDirty) {
                 // Server is authoritative for state transitions (e.g., lock released → LOADED).
                 // If the server version is newer, accept the state change and clear the dirty flag.

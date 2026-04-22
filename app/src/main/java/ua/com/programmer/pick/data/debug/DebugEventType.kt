@@ -25,6 +25,12 @@ object DebugEventType {
     const val STAGE_COMPLETE_RESULT = "STAGE_COMPLETE_RESULT"
     const val DOC_DELETED_LOCAL = "DOC_DELETED_LOCAL"
     const val RESYNC_DIRTY = "RESYNC_DIRTY"
+    // Server-sent document payload was ignored because this device holds the
+    // stage lock (document is in an in-process state locally). Symmetric to the
+    // backend's `erp_sync_blocked` invariant: while the lock is held, the app
+    // owns line actuals / batch / is_completed / boxes, and the server must not
+    // overwrite them with a stale echo. See SyncOrchestrator.applyDocumentSync.
+    const val DOC_SYNC_SUPPRESSED = "DOC_SYNC_SUPPRESSED"
     const val WS_SEND_FAIL = "WS_SEND_FAIL"
     const val WS_ACK_TIMEOUT = "WS_ACK_TIMEOUT"
     const val WS_DISCONNECT = "WS_DISCONNECT"
