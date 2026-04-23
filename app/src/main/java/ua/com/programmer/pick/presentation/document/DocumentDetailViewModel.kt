@@ -73,11 +73,17 @@ class DocumentDetailViewModel @Inject constructor(
     }
 
     fun load(documentId: String) {
+        // Every document open starts in the "unlocked" state — the worker
+        // must retake the document via STAGE_LOCK before the UI enters edit
+        // mode. Lock claims are never persisted across document open/close
+        // (see feedback memory "Document lock state is never client-persisted").
+        syncOrchestrator.clearStageLockClaim(documentId)
+
         // Reset state completely when loading a different document.
         if (currentDocumentId != documentId) {
             _uiState.value = DocumentDetailUiState(isLoading = true)
         } else {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update { it.copy(isLoading = true, hasStageLock = false) }
         }
 
         currentDocumentId = documentId
@@ -575,7 +581,11 @@ class DocumentDetailViewModel @Inject constructor(
                             "lock-result: docId=$documentId success=${data.success} lockedBy=${data.lockedBy} reloadedState=${updatedDoc?.state}"
                         )
                         _uiState.update {
-                            it.copy(document = updatedDoc, isProcessingAction = false)
+                            it.copy(
+                                document = updatedDoc,
+                                isProcessingAction = false,
+                                hasStageLock = data.success
+                            )
                         }
 
                         if (data.success) {
@@ -644,12 +654,22 @@ class DocumentDetailViewModel @Inject constructor(
             try {
                 when (val result = syncOrchestrator.completeStage(documentId, stage)) {
                     is Result.Success -> {
-                        _uiState.update { it.copy(isProcessingAction = false) }
+                        _uiState.update { it.copy(isProcessingAction = false, hasStageLock = false) }
                         _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_COMPLETED))
                         _uiEvents.emit(DocumentDetailUiEvent.NavigateBack)
                     }
                     is Result.Error -> {
-                        _uiState.update { it.copy(isProcessingAction = false) }
+                        val msg = result.message ?: result.exception.message
+                        val lostLock = msg != null && (
+                            msg.contains("FORBIDDEN", ignoreCase = true) ||
+                                msg.contains("must be locked", ignoreCase = true)
+                            )
+                        _uiState.update {
+                            it.copy(
+                                isProcessingAction = false,
+                                hasStageLock = if (lostLock) false else it.hasStageLock
+                            )
+                        }
                         if (result.exception is DocumentMissingOnServerException) {
                             // Server purged the document (e.g. ERP issued GONE while we
                             // were offline). Orchestrator already wiped local copy and
@@ -694,7 +714,7 @@ class DocumentDetailViewModel @Inject constructor(
             try {
                 when (syncOrchestrator.unlockFromStage(documentId, stage)) {
                     is Result.Success -> {
-                        _uiState.update { it.copy(isProcessingAction = false) }
+                        _uiState.update { it.copy(isProcessingAction = false, hasStageLock = false) }
                         _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_PAUSED))
                         _uiEvents.emit(DocumentDetailUiEvent.NavigateBack)
                     }
@@ -725,7 +745,7 @@ class DocumentDetailViewModel @Inject constructor(
             try {
                 when (syncOrchestrator.unlockFromStage(documentId, stage)) {
                     is Result.Success -> {
-                        _uiState.update { it.copy(isProcessingAction = false) }
+                        _uiState.update { it.copy(isProcessingAction = false, hasStageLock = false) }
                         _uiEvents.emit(DocumentDetailUiEvent.NavigateBack)
                     }
                     is Result.Error -> {
@@ -832,6 +852,14 @@ class DocumentDetailViewModel @Inject constructor(
                 documentId = docId,
                 payload = mapOf("barcode" to box.barcode, "is_parcel" to box.isParcel, "weight" to weightGrams)
             )
+            // If the server says the document is no longer locked by this
+            // user, drop the session claim so the UI flips back to "Take into
+            // work" instead of silently failing every subsequent scan.
+            val err = result?.error
+            if (err != null && (err.contains("FORBIDDEN", ignoreCase = true) ||
+                    err.contains("must be locked", ignoreCase = true))) {
+                _uiState.update { it.copy(hasStageLock = false) }
+            }
             _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.BOX_ADD_FAILED))
             return
         }

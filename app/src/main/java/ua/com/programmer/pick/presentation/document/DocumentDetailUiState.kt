@@ -35,7 +35,13 @@ data class DocumentDetailUiState(
     // the ViewModel surfaces the id of the first unchecked line so the screen can
     // scroll to it, and the count for the blocking warning dialog.
     val firstUncheckedLineId: String? = null,
-    val uncheckedLineCount: Int = 0
+    val uncheckedLineCount: Int = 0,
+    // Session-scoped stage lock claim. Always false when the screen first
+    // opens — the worker must retake the document via the server (see feedback
+    // memory "Document lock state is never client-persisted"). Flipped to true
+    // only after a successful STAGE_LOCK_RESULT, and back to false on pause,
+    // release, completion, or any server rejection that invalidates the lock.
+    val hasStageLock: Boolean = false
 ) {
     // Per CLAUDE.md "Server-Driven Architecture": the app does not make
     // authorization decisions locally. The server already filters the sync
@@ -44,13 +50,26 @@ data class DocumentDetailUiState(
     // Scans and saves hit the server, which rejects anything it doesn't
     // authorize.
 
-    /** Editable when the document is in an in-process state (COLLECTING / PACKING / DELIVERING). */
+    /**
+     * Editable only when this device actually holds a confirmed stage lock
+     * AND the server has the document in an in-process state. Requiring
+     * `hasStageLock` prevents the UI from entering the working mode based on
+     * stale local state alone — every edit session starts with an explicit
+     * server-confirmed handshake via [canTakeIntoWork] → STAGE_LOCK.
+     */
     val canEdit: Boolean
-        get() = document?.state?.let { DocumentState.isInProcess(it) } ?: false
+        get() = hasStageLock && (document?.state?.let { DocumentState.isInProcess(it) } ?: false)
 
-    /** Takeable when the document is in a stage start state (LOADED / PACK / DELIVERY). */
+    /**
+     * The "Take into work" button is shown whenever we don't hold a confirmed
+     * lock for this document. We deliberately don't gate on local state — if
+     * the server still has the doc in an in-process state (e.g. a previous
+     * session), re-locking is idempotent and correctly puts us back into
+     * edit mode; if the server has moved on, the lock request fails and the
+     * user is told why.
+     */
     val canTakeIntoWork: Boolean
-        get() = document?.state?.let { DocumentState.isStageStart(it) } ?: false
+        get() = document != null && !hasStageLock
 
     val canComplete: Boolean
         get() = canEdit
@@ -58,9 +77,9 @@ data class DocumentDetailUiState(
     val canRelease: Boolean
         get() = canEdit
 
-    /** True when the worker is actively packing (PACKING state) — box add/remove is allowed. */
+    /** True when we hold the lock and the server reports this doc as packing. */
     val isPackStage: Boolean
-        get() = document?.state == DocumentState.PACKING
+        get() = hasStageLock && document?.state == DocumentState.PACKING
 
     /**
      * Line quantities are frozen once the collector finishes. During PACKING the

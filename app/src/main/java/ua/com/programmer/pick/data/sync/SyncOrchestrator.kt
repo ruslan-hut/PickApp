@@ -118,6 +118,18 @@ private fun isDocumentMissingError(error: String?): Boolean =
     error != null && error.contains("document not found", ignoreCase = true)
 
 /**
+ * Server rejected a worker operation because the document is not locked by
+ * this user. When we see this the session claim is stale and must be dropped
+ * so the UI returns to "Take into work" and the next server snapshot is
+ * accepted instead of suppressed.
+ */
+private fun isLockDeniedError(error: String?): Boolean =
+    error != null && (
+        error.contains("FORBIDDEN", ignoreCase = true) ||
+            error.contains("must be locked", ignoreCase = true)
+    )
+
+/**
  * Coordinates all synchronization operations via WebSocket:
  * - Incoming data from WebSocket (sync data, push notifications)
  * - Outgoing operations (document lock, update, complete)
@@ -172,6 +184,17 @@ class SyncOrchestrator @Inject constructor(
     private var syncTimeoutJob: Job? = null
     private val syncReceivedCounts = mutableMapOf<String, Int>()
     private val documentSyncJobs = mutableMapOf<String, Job>()
+
+    // Session-scoped claim of stage-lock ownership. Populated only after a
+    // confirmed STAGE_LOCK_RESULT success and cleared on unlock / complete /
+    // server rejection / app process restart. Never persisted — every document
+    // open starts with no claim, and the user must re-confirm the lock with
+    // the server before any authoritative worker edits are accepted. This
+    // replaces the previous "derive lock from local document.state" approach,
+    // which could get stuck when the server and client desynced (e.g. missed
+    // STAGE_UNLOCK_RESULT), leaving the UI with no way to recover.
+    private val heldStageLocks: MutableSet<String> =
+        java.util.concurrent.ConcurrentHashMap.newKeySet()
 
 
     private var isInitialized = false
@@ -576,6 +599,8 @@ class SyncOrchestrator @Inject constructor(
             }
             documentBoxDao.insertDocumentBox(entity)
             AppLog.d(TAG, "BOX_ADD success, upserted box_number=${dto.boxNumber} locally")
+        } else if (result?.success == false && isLockDeniedError(result.error)) {
+            heldStageLocks.remove(documentRoomId)
         }
         return result
     }
@@ -601,6 +626,8 @@ class SyncOrchestrator @Inject constructor(
         )
         if (result?.success == true) {
             documentBoxDao.deleteDocumentBox(documentRoomId, boxNumber)
+        } else if (result?.success == false && isLockDeniedError(result.error)) {
+            heldStageLocks.remove(documentRoomId)
         }
         return result
     }
@@ -691,6 +718,9 @@ class SyncOrchestrator @Inject constructor(
             // diagnostic logging and error messages only.
             if (response.success) {
                 documentDao.updateDocumentStateFromServer(documentId, stageInProcessState(stage), System.currentTimeMillis())
+                heldStageLocks.add(documentId)
+            } else {
+                heldStageLocks.remove(documentId)
             }
             response.lockedBy?.let { userId ->
                 documentDao.updateAssignedUser(documentId, userId, System.currentTimeMillis())
@@ -740,15 +770,38 @@ class SyncOrchestrator @Inject constructor(
             stage = stage
         )
 
+        // Release the session claim immediately — regardless of whether the
+        // WS send succeeds, the user has expressed intent to stop editing and
+        // the UI must not continue to treat this device as the lock owner.
+        // Do NOT mutate local document.state or assignedUserId here: the server
+        // is authoritative for those and will push the post-unlock snapshot on
+        // the next SYNC_DATA. Optimistic local mutation here was the root cause
+        // of the 09-14.04.26 desync incident — if the unlock was lost or the
+        // server kept the lock held, the client's guess diverged from the
+        // server truth and the suppression guard then blocked every recovery.
+        heldStageLocks.remove(documentId)
+
         val sent = webSocketManager.sendMessage(message)
         return if (sent) {
-            documentDao.updateDocumentStateFromServer(documentId, stageStartState(stage), System.currentTimeMillis())
-            documentDao.clearAssignedUser(documentId)
             Result.Success(Unit)
         } else {
             Result.Error(Exception("Failed to send unlock request"))
         }
     }
+
+    /**
+     * Forget any session claim this device has made for `documentId`. Called by
+     * the UI whenever the user (re-)opens a document, so the worker is forced
+     * through a fresh STAGE_LOCK handshake — see feedback memory
+     * "Document lock state is never client-persisted".
+     */
+    fun clearStageLockClaim(documentId: String) {
+        heldStageLocks.remove(documentId)
+    }
+
+    /** True when this device holds a confirmed stage lock on `documentId`. */
+    fun hasStageLockClaim(documentId: String): Boolean =
+        documentId in heldStageLocks
 
     private fun stageInProcessState(stage: String): String = when (stage) {
         "collect" -> "COLLECTING"
@@ -985,6 +1038,7 @@ class SyncOrchestrator @Inject constructor(
             // includes it in this user's document set after stage completion.
             documentLineDao.deleteLinesByDocumentId(documentId)
             documentDao.deleteDocument(documentId)
+            heldStageLocks.remove(documentId)
 
             // Refresh document list to get the next document from server
             scope.launch {
@@ -1009,6 +1063,13 @@ class SyncOrchestrator @Inject constructor(
             )
         }
 
+        if (isLockDeniedError(response.error)) {
+            // The server no longer considers this device the lock owner.
+            // Drop the session claim so the suppression guard stops blocking
+            // incoming server snapshots and the UI returns to "Take into work".
+            heldStageLocks.remove(documentId)
+        }
+
         return Result.Error(Exception(response.error ?: "Server rejected complete"))
     }
 
@@ -1028,6 +1089,7 @@ class SyncOrchestrator @Inject constructor(
         documentLineDao.deleteLinesByDocumentId(documentId)
         documentDao.deleteDocument(documentId)
         outgoingOperationRepository.deletePendingOperationsForEntity(documentId)
+        heldStageLocks.remove(documentId)
         scope.launch {
             requestDocumentListRefresh()
         }
@@ -1120,25 +1182,35 @@ class SyncOrchestrator @Inject constructor(
     private suspend fun handleStageLockResult(message: SyncMessage.StageLockResult) {
         AppLog.d(TAG, "Stage lock result: ${message.documentId}, stage: ${message.stage}, success: ${message.success}")
 
+        val roomId = toRoomDocumentId(message.documentId)
         if (message.success) {
-            val roomId = toRoomDocumentId(message.documentId)
             documentDao.updateDocumentStateFromServer(roomId, stageInProcessState(message.stage), System.currentTimeMillis())
+            heldStageLocks.add(roomId)
             message.lockedBy?.let { userId ->
                 documentDao.updateAssignedUser(roomId, userId, System.currentTimeMillis())
             }
+        } else {
+            heldStageLocks.remove(roomId)
         }
     }
 
     private suspend fun handleStageCompleteResult(message: SyncMessage.StageCompleteResult) {
         AppLog.d(TAG, "Stage complete result: ${message.documentId}, stage: ${message.stage}, success: ${message.success}")
 
+        val roomId = toRoomDocumentId(message.documentId)
         if (message.success) {
             val state = message.state ?: return
-            val roomId = toRoomDocumentId(message.documentId)
             documentDao.updateDocumentStateFromServer(roomId, state, System.currentTimeMillis())
             message.version?.let { version ->
                 documentDao.updateDocumentVersion(roomId, version.toInt())
             }
+            heldStageLocks.remove(roomId)
+        } else {
+            // Any failed stage-complete is a signal the lock may no longer
+            // belong to this device (most commonly FORBIDDEN: "document must
+            // be locked by the current user"). Drop the session claim so the
+            // UI falls back to requiring a fresh STAGE_LOCK.
+            heldStageLocks.remove(roomId)
         }
     }
 
@@ -1296,7 +1368,16 @@ class SyncOrchestrator @Inject constructor(
             // (e.g., admin force-unlock, ERROR) the dto.state will differ
             // and we fall through to the normal merge, which correctly
             // accepts the server's authority.
+            // Suppression requires a confirmed, in-memory session claim of
+            // the stage lock. Deriving this from local state alone was the
+            // root cause of the 09-14.04.26 incident: local state drifted
+            // into a worker-authoritative value without the server agreeing,
+            // and every subsequent server payload was then silently dropped
+            // — the UI never recovered, and BOX_ADD kept being rejected with
+            // FORBIDDEN. Now the guard only fires while THIS device actually
+            // holds a confirmed STAGE_LOCK.
             if (existing != null
+                && dto.id in heldStageLocks
                 && existing.state in WORKER_AUTHORITATIVE_STATES
                 && dto.state == existing.state) {
                 debugJournal.log(
