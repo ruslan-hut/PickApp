@@ -194,6 +194,18 @@ private fun LineCardContent(
                 verticalAlignment = Alignment.Top,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                Text(
+                    text = "${line.lineNumber}",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontFamily = ua.com.programmer.pick.ui.theme.FiraMono
+                    ),
+                    color = when {
+                        isOverCollected -> MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.6f)
+                        isAcknowledged -> MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f)
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+
                 // Product image
                 if (productImage != null) {
                     ProductImageView(
