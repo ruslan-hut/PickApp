@@ -1380,6 +1380,31 @@ class SyncOrchestrator @Inject constructor(
                 && dto.id in heldStageLocks
                 && existing.state in WORKER_AUTHORITATIVE_STATES
                 && dto.state == existing.state) {
+                // Phantom-line heal. Quantities, is_completed, and newly-added
+                // server lines stay suppressed (see comments above) but a local
+                // non-dirty line that the server does not know about is pure
+                // drift — deleting it is safe and prevents it from persisting
+                // across the session the way it did in doc 14-21.04.26.
+                if (dto.lines != null) {
+                    val serverIds = dto.lines.map { it.id }.toSet()
+                    val localLines = documentLineDao.getLinesByDocumentIdSync(dto.id)
+                    val phantoms = localLines.filter { it.id !in serverIds && !it.isDirty }
+                    if (phantoms.isNotEmpty()) {
+                        phantoms.forEach { documentLineDao.deleteLine(it.id) }
+                        debugJournal.log(
+                            eventType = ua.com.programmer.pick.data.debug.DebugEventType.PHANTOM_LINE_PURGED,
+                            message = "removed ${phantoms.size} local-only non-dirty line(s) during suppression",
+                            documentId = dto.id,
+                            severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN,
+                            payload = mapOf(
+                                "removed_count" to phantoms.size,
+                                "removed_ids" to phantoms.map { it.id },
+                                "server_line_count" to dto.lines.size,
+                                "local_line_count_before" to localLines.size
+                            )
+                        )
+                    }
+                }
                 debugJournal.log(
                     eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_SYNC_SUPPRESSED,
                     message = "ignored server document payload while stage lock held",

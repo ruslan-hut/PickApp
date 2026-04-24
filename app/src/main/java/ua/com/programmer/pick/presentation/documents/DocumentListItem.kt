@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -32,9 +33,10 @@ import ua.com.programmer.pick.ui.theme.ChipShape
 fun DocumentListItem(
     document: Document,
     onClick: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    requiresPlan: Boolean = true
 ) {
-    val progress = if (document.totalPlanned > 0) {
+    val progress = if (requiresPlan && document.totalPlanned > 0) {
         (document.totalActual / document.totalPlanned).toFloat().coerceIn(0f, 1f)
     } else 0f
 
@@ -119,26 +121,28 @@ fun DocumentListItem(
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            if (requiresPlan) {
+                Spacer(modifier = Modifier.height(8.dp))
 
-            // Progress bar
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(CardShape),
-                color = if (isComplete) {
-                    MaterialTheme.colorScheme.secondary
-                } else {
-                    MaterialTheme.colorScheme.primary
-                },
-                trackColor = if (isComplete) {
-                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant
-                }
-            )
+                // Progress bar
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(CardShape),
+                    color = if (isComplete) {
+                        MaterialTheme.colorScheme.secondary
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                    trackColor = if (isComplete) {
+                        MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    }
+                )
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -147,15 +151,19 @@ fun DocumentListItem(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = stringResource(R.string.planned, document.totalPlanned),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (isComplete) {
-                        MaterialTheme.colorScheme.onSecondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                )
+                if (requiresPlan) {
+                    Text(
+                        text = stringResource(R.string.planned, document.totalPlanned),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isComplete) {
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                } else {
+                    Spacer(modifier = Modifier.width(0.dp))
+                }
                 Text(
                     text = stringResource(R.string.actual, document.totalActual),
                     style = MaterialTheme.typography.bodySmall,

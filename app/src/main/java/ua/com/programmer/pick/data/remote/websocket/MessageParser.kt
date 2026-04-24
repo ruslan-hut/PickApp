@@ -89,6 +89,9 @@ class MessageParser @Inject constructor(
         private const val FIELD_AVAILABLE_DOCUMENT_TYPES = "available_document_types"
         private const val FIELD_DESCRIPTION = "description"
         private const val FIELD_DOCUMENT_TYPE = "document_type"
+        private const val FIELD_ALLOWS_OVER_PLAN = "allows_over_plan"
+        private const val FIELD_ALLOWS_EXTRA_LINES = "allows_extra_lines"
+        private const val FIELD_REQUIRES_PLAN = "requires_plan"
         private const val FIELD_DEBUG_JOURNAL_ENABLED = "debug_journal_enabled"
         private const val FIELD_DEVICE_ID = "device_id"
         private const val FIELD_EVENTS = "events"
@@ -321,7 +324,10 @@ class MessageParser @Inject constructor(
             val obj = element.asJsonObject
             AvailableDocumentTypeDto(
                 code = obj.get(FIELD_CODE)?.asString ?: "",
-                description = obj.get(FIELD_DESCRIPTION)?.asString ?: ""
+                description = obj.get(FIELD_DESCRIPTION)?.asString ?: "",
+                allowsOverPlan = obj.nullableBool(FIELD_ALLOWS_OVER_PLAN),
+                allowsExtraLines = obj.nullableBool(FIELD_ALLOWS_EXTRA_LINES),
+                requiresPlan = obj.nullableBool(FIELD_REQUIRES_PLAN)
             )
         }
 
@@ -516,3 +522,6 @@ class MessageParser @Inject constructor(
      */
     fun getCurrentTimestamp(): String = ISO_8601_FORMATTER.format(Date())
 }
+
+private fun JsonObject.nullableBool(field: String): Boolean? =
+    get(field)?.takeUnless { it.isJsonNull }?.asBoolean

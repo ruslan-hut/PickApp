@@ -66,7 +66,9 @@ fun DocumentLineRow(
     onToggleCompleted: (String, Boolean) -> Unit,
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
-    canEdit: Boolean = false
+    canEdit: Boolean = false,
+    allowsOverPlan: Boolean = false,
+    requiresPlan: Boolean = true
 ) {
     var showImagePreview by remember { mutableStateOf(false) }
 
@@ -76,6 +78,8 @@ fun DocumentLineRow(
             productImage = productImage,
             isSelected = isSelected,
             canEdit = canEdit,
+            allowsOverPlan = allowsOverPlan,
+            requiresPlan = requiresPlan,
             onQuantityChange = onQuantityChange,
             onImagePreview = { showImagePreview = true }
         )
@@ -145,24 +149,37 @@ private fun LineCardContent(
     productImage: ProductImage?,
     isSelected: Boolean,
     canEdit: Boolean,
+    allowsOverPlan: Boolean,
+    requiresPlan: Boolean,
     onQuantityChange: (String, Double) -> Unit,
     onImagePreview: () -> Unit
 ) {
-    val progress = if (line.plannedQuantity > 0) {
+    val progress = if (requiresPlan && line.plannedQuantity > 0) {
         (line.actualQuantity / line.plannedQuantity).toFloat().coerceIn(0f, 1f)
     } else 0f
 
     // Green state represents explicit acknowledgement, not raw quantity progress.
     val isAcknowledged = line.isCompleted
+    // Red state flags the user that they've collected more than planned. We
+    // skip this on types where over-plan is legitimate (e.g. INCOMING_RECEIPT
+    // over-delivery) and on types that don't carry plans (inventory counts).
+    // Over-collected wins over acknowledged — shipping an over-collected line
+    // is still a problem even if the worker swiped it.
+    val isOverCollected = requiresPlan
+        && !allowsOverPlan
+        && line.plannedQuantity > 0
+        && line.actualQuantity > line.plannedQuantity
 
     PickOutlinedCard(
         borderColor = when {
             isSelected -> MaterialTheme.colorScheme.primary
+            isOverCollected -> MaterialTheme.colorScheme.error
             isAcknowledged -> MaterialTheme.colorScheme.secondary
             else -> MaterialTheme.colorScheme.outlineVariant
         },
         containerColor = when {
             isSelected -> MaterialTheme.colorScheme.primaryContainer
+            isOverCollected -> MaterialTheme.colorScheme.errorContainer
             isAcknowledged -> MaterialTheme.colorScheme.secondaryContainer
             else -> MaterialTheme.colorScheme.surface
         }
@@ -193,10 +210,10 @@ private fun LineCardContent(
                     Text(
                         text = line.productName,
                         style = MaterialTheme.typography.titleMedium,
-                        color = if (isAcknowledged) {
-                            MaterialTheme.colorScheme.onSecondaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
+                        color = when {
+                            isOverCollected -> MaterialTheme.colorScheme.onErrorContainer
+                            isAcknowledged -> MaterialTheme.colorScheme.onSecondaryContainer
+                            else -> MaterialTheme.colorScheme.onSurface
                         },
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
@@ -207,10 +224,10 @@ private fun LineCardContent(
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontFamily = ua.com.programmer.pick.ui.theme.FiraMono
                             ),
-                            color = if (isAcknowledged) {
-                                MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
+                            color = when {
+                                isOverCollected -> MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f)
+                                isAcknowledged -> MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
                             },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -219,25 +236,27 @@ private fun LineCardContent(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            if (requiresPlan) {
+                Spacer(modifier = Modifier.height(12.dp))
 
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(CardShape),
-                color = if (isAcknowledged) {
-                    MaterialTheme.colorScheme.secondary
-                } else {
-                    MaterialTheme.colorScheme.primary
-                },
-                trackColor = if (isAcknowledged) {
-                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant
-                }
-            )
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(CardShape),
+                    color = when {
+                        isOverCollected -> MaterialTheme.colorScheme.error
+                        isAcknowledged -> MaterialTheme.colorScheme.secondary
+                        else -> MaterialTheme.colorScheme.primary
+                    },
+                    trackColor = when {
+                        isOverCollected -> MaterialTheme.colorScheme.error.copy(alpha = 0.2f)
+                        isAcknowledged -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
+                        else -> MaterialTheme.colorScheme.surfaceVariant
+                    }
+                )
+            }
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -246,22 +265,30 @@ private fun LineCardContent(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = stringResource(R.string.planned, line.plannedQuantity),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (isAcknowledged) {
-                        MaterialTheme.colorScheme.onSecondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                )
+                if (requiresPlan) {
+                    Text(
+                        text = stringResource(R.string.planned, line.plannedQuantity),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = when {
+                            isOverCollected -> MaterialTheme.colorScheme.onErrorContainer
+                            isAcknowledged -> MaterialTheme.colorScheme.onSecondaryContainer
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                } else {
+                    Spacer(modifier = Modifier.width(0.dp))
+                }
 
                 Spacer(modifier = Modifier.width(16.dp))
 
                 QuantityStepper(
                     value = line.actualQuantity,
                     onChange = { newVal -> onQuantityChange(line.id, newVal) },
-                    maxValue = if (line.plannedQuantity > 0) line.plannedQuantity else Double.MAX_VALUE,
+                    maxValue = when {
+                        allowsOverPlan -> Double.MAX_VALUE
+                        line.plannedQuantity > 0 -> line.plannedQuantity
+                        else -> Double.MAX_VALUE
+                    },
                     enabled = canEdit
                 )
             }

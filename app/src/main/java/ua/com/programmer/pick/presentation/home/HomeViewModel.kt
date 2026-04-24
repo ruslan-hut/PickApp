@@ -87,7 +87,15 @@ class HomeViewModel @Inject constructor(
                     try {
                         val listType = object : TypeToken<List<AvailableDocumentTypeDto>>() {}.type
                         val dtos: List<AvailableDocumentTypeDto> = gson.fromJson(json, listType)
-                        dtos.map { AvailableDocumentType(code = it.code, description = it.description) }
+                        dtos.map {
+                            AvailableDocumentType(
+                                code = it.code,
+                                description = it.description,
+                                allowsOverPlan = it.allowsOverPlan,
+                                allowsExtraLines = it.allowsExtraLines,
+                                requiresPlan = it.requiresPlan
+                            )
+                        }
                     } catch (_: Exception) {
                         emptyList()
                     }

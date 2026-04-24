@@ -31,6 +31,10 @@ object DebugEventType {
     // owns line actuals / batch / is_completed / boxes, and the server must not
     // overwrite them with a stale echo. See SyncOrchestrator.applyDocumentSync.
     const val DOC_SYNC_SUPPRESSED = "DOC_SYNC_SUPPRESSED"
+    // Locally-only line (not in server's line set, not dirty) removed while
+    // suppression was active. Catches phantom lines leaked from prior sessions
+    // that would otherwise linger until the next unlock-driven resync.
+    const val PHANTOM_LINE_PURGED = "PHANTOM_LINE_PURGED"
     const val WS_SEND_FAIL = "WS_SEND_FAIL"
     const val WS_ACK_TIMEOUT = "WS_ACK_TIMEOUT"
     const val WS_DISCONNECT = "WS_DISCONNECT"

@@ -135,7 +135,9 @@ fun DocumentsScreen(
                             ) { doc ->
                                 DocumentListItem(
                                     document = doc,
-                                    onClick = { id -> viewModel.onDocumentClick(id, onNavigate) }
+                                    onClick = { id -> viewModel.onDocumentClick(id, onNavigate) },
+                                    requiresPlan = uiState.documentTypeConfigs[doc.type]
+                                        ?.requiresPlanOrDefault() ?: true
                                 )
                             }
                         }

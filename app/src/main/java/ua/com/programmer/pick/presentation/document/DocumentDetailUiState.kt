@@ -41,7 +41,18 @@ data class DocumentDetailUiState(
     // memory "Document lock state is never client-persisted"). Flipped to true
     // only after a successful STAGE_LOCK_RESULT, and back to false on pause,
     // release, completion, or any server rejection that invalidates the lock.
-    val hasStageLock: Boolean = false
+    val hasStageLock: Boolean = false,
+    // Resolved from the current document's type against the user's
+    // available_document_types capability flags. `true` means actual quantity
+    // may legitimately exceed plan — manual/scan caps and over-plan swipe
+    // refusals are lifted. Defaults to `false` so behavior matches pre-flags.
+    val allowsOverPlan: Boolean = false,
+    // When true, scanning a product not listed in the doc creates a new line
+    // on the fly (historical INVENTORY behavior, now ERP-configurable).
+    val allowsExtraLines: Boolean = false,
+    // When false, the type doesn't carry planned quantities — the UI hides
+    // plan labels and progress bars. Defaults to true to match pre-flags.
+    val requiresPlan: Boolean = true
 ) {
     // Per CLAUDE.md "Server-Driven Architecture": the app does not make
     // authorization decisions locally. The server already filters the sync
@@ -103,6 +114,17 @@ data class DocumentDetailUiState(
 
     val parcelCount: Int get() = documentBoxes.count { it.isParcel }
     val packageCount: Int get() = documentBoxes.count { !it.isParcel }
+
+    /**
+     * True when any line has `actual > plan` on a type that neither tolerates
+     * over-plan nor omits plans. Drives the red-highlight UX on both the line
+     * cards and the summary header. Receipts (allowsOverPlan) and stock counts
+     * (!requiresPlan) are excluded so they don't flag as errors.
+     */
+    val hasOvercollectedLine: Boolean
+        get() = requiresPlan && !allowsOverPlan && lines.any {
+            it.plannedQuantity > 0 && it.actualQuantity > it.plannedQuantity
+        }
 
     /** Pack stage can be completed only when at least one parcel has been added. */
     val canCompletePack: Boolean

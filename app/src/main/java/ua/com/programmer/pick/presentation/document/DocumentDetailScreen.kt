@@ -62,7 +62,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalResources
@@ -300,7 +299,9 @@ fun DocumentDetailScreen(
                         totalPlanned = uiState.document?.totalPlanned ?: 0.0,
                         totalActual = uiState.document?.totalActual ?: 0.0,
                         linesTotal = uiState.lines.size,
-                        linesCompleted = uiState.lines.count { it.isCompleted }
+                        linesCompleted = uiState.lines.count { it.isCompleted },
+                        requiresPlan = uiState.requiresPlan,
+                        isOverCollected = uiState.hasOvercollectedLine
                     )
                 }
             }
@@ -384,7 +385,9 @@ fun DocumentDetailScreen(
                                                 totalPlanned = uiState.document?.totalPlanned ?: 0.0,
                                                 totalActual = uiState.document?.totalActual ?: 0.0,
                                                 linesTotal = uiState.lines.size,
-                                                linesCompleted = uiState.lines.count { it.isCompleted }
+                                                linesCompleted = uiState.lines.count { it.isCompleted },
+                                                requiresPlan = uiState.requiresPlan,
+                                                isOverCollected = uiState.hasOvercollectedLine
                                             )
                                         }
 
@@ -419,7 +422,9 @@ fun DocumentDetailScreen(
                                                     isSelected = uiState.selectedLineId == line.id,
                                                     // Line editing is allowed only during COLLECTING — during PACKING the
                                                     // product list is strictly read-only per the server-owned invariant.
-                                                    canEdit = uiState.canEditLines
+                                                    canEdit = uiState.canEditLines,
+                                                    allowsOverPlan = uiState.allowsOverPlan,
+                                                    requiresPlan = uiState.requiresPlan
                                                 )
                                             }
                                         }
@@ -444,9 +449,11 @@ private fun PinnedProgressBar(
     totalActual: Double,
     linesTotal: Int,
     linesCompleted: Int,
+    requiresPlan: Boolean,
+    isOverCollected: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val progress = if (totalPlanned > 0) {
+    val progress = if (requiresPlan && totalPlanned > 0) {
         (totalActual / totalPlanned).toFloat().coerceIn(0f, 1f)
     } else 0f
 
@@ -470,7 +477,8 @@ private fun PinnedProgressBar(
                 Text(
                     text = stringResource(R.string.actual, totalActual),
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = if (isOverCollected) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = stringResource(R.string.lines_progress_fmt, linesCompleted, linesTotal),
@@ -479,21 +487,23 @@ private fun PinnedProgressBar(
                 )
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            if (requiresPlan) {
+                Spacer(modifier = Modifier.height(4.dp))
 
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(CardShape),
-                color = if (isComplete) {
-                    MaterialTheme.colorScheme.secondary
-                } else {
-                    MaterialTheme.colorScheme.primary
-                },
-                trackColor = MaterialTheme.colorScheme.surfaceVariant
-            )
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(CardShape),
+                    color = when {
+                        isOverCollected -> MaterialTheme.colorScheme.error
+                        isComplete -> MaterialTheme.colorScheme.secondary
+                        else -> MaterialTheme.colorScheme.primary
+                    },
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            }
         }
     }
 }
@@ -506,9 +516,11 @@ private fun DocumentHeaderCard(
     totalActual: Double,
     linesTotal: Int,
     linesCompleted: Int,
+    requiresPlan: Boolean,
+    isOverCollected: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val progress = if (totalPlanned > 0) {
+    val progress = if (requiresPlan && totalPlanned > 0) {
         (totalActual / totalPlanned).toFloat().coerceIn(0f, 1f)
     } else 0f
 
@@ -516,10 +528,10 @@ private fun DocumentHeaderCard(
 
     PickElevatedCard(
         modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        containerColor = if (isComplete) {
-            MaterialTheme.colorScheme.secondaryContainer
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant
+        containerColor = when {
+            isOverCollected -> MaterialTheme.colorScheme.errorContainer
+            isComplete -> MaterialTheme.colorScheme.secondaryContainer
+            else -> MaterialTheme.colorScheme.surfaceVariant
         }
     ) {
         Column(
@@ -532,10 +544,10 @@ private fun DocumentHeaderCard(
                 Text(
                     text = clientName,
                     style = MaterialTheme.typography.titleMedium,
-                    color = if (isComplete) {
-                        MaterialTheme.colorScheme.onSecondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                    color = when {
+                        isOverCollected -> MaterialTheme.colorScheme.onErrorContainer
+                        isComplete -> MaterialTheme.colorScheme.onSecondaryContainer
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
                 )
                 Spacer(modifier = Modifier.height(4.dp))
@@ -546,31 +558,33 @@ private fun DocumentHeaderCard(
                 Text(
                     text = warehouseName,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (isComplete) {
-                        MaterialTheme.colorScheme.onSecondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                    color = when {
+                        isOverCollected -> MaterialTheme.colorScheme.onErrorContainer
+                        isComplete -> MaterialTheme.colorScheme.onSecondaryContainer
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
                 )
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
             // Progress bar
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(8.dp)
-                    .clip(CardShape),
-                color = if (isComplete) {
-                    MaterialTheme.colorScheme.secondary
-                } else {
-                    MaterialTheme.colorScheme.primary
-                },
-                trackColor = MaterialTheme.colorScheme.surface
-            )
+            if (requiresPlan) {
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(CardShape),
+                    color = when {
+                        isOverCollected -> MaterialTheme.colorScheme.error
+                        isComplete -> MaterialTheme.colorScheme.secondary
+                        else -> MaterialTheme.colorScheme.primary
+                    },
+                    trackColor = MaterialTheme.colorScheme.surface
+                )
 
-            Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+            }
 
             // Stats row
             Row(
@@ -578,23 +592,25 @@ private fun DocumentHeaderCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column {
-                    Text(
-                        text = stringResource(R.string.planned, totalPlanned),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (isComplete) {
-                            MaterialTheme.colorScheme.onSecondaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        }
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
+                    if (requiresPlan) {
+                        Text(
+                            text = stringResource(R.string.planned, totalPlanned),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (isComplete) {
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                    }
                     Text(
                         text = stringResource(R.string.actual, totalActual),
                         style = MaterialTheme.typography.titleMedium,
-                        color = if (isComplete) {
-                            MaterialTheme.colorScheme.onSecondaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
+                        color = when {
+                            isOverCollected -> MaterialTheme.colorScheme.error
+                            isComplete -> MaterialTheme.colorScheme.onSecondaryContainer
+                            else -> MaterialTheme.colorScheme.onSurface
                         }
                     )
                 }
@@ -1036,22 +1052,22 @@ private fun BarcodeAlertDialog(
     alertType: BarcodeAlertType,
     onDismiss: () -> Unit
 ) {
-    val isError = alertType == BarcodeAlertType.PRODUCT_NOT_IN_DOCUMENT
-    val containerColor = if (isError) Color(0xFFD32F2F) else Color(0xFFFFC107)
-    val contentColor = if (isError) Color.White else Color(0xFF1A1A1A)
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = containerColor,
+        containerColor = MaterialTheme.colorScheme.errorContainer,
+        textContentColor = MaterialTheme.colorScheme.onErrorContainer,
         text = {
             Text(
                 text = stringResource(alertType.resId),
-                style = MaterialTheme.typography.bodyLarge,
-                color = contentColor
+                style = MaterialTheme.typography.bodyLarge
             )
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = stringResource(R.string.ok), color = contentColor)
+                Text(
+                    text = stringResource(R.string.ok),
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
             }
         }
     )

@@ -25,10 +25,12 @@ import ua.com.programmer.pick.data.debug.DebugEventType
 import ua.com.programmer.pick.data.debug.DebugJournal
 import ua.com.programmer.pick.data.mapper.toDocumentBoxDomainList
 import ua.com.programmer.pick.data.mapper.toDomain
+import ua.com.programmer.pick.data.repository.DocumentTypeConfigProvider
 import ua.com.programmer.pick.data.sync.DocumentMissingOnServerException
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.data.local.database.dao.BoxDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentBoxDao
+import ua.com.programmer.pick.domain.model.AvailableDocumentType
 import ua.com.programmer.pick.domain.model.Box
 import ua.com.programmer.pick.domain.model.DocumentLine
 import ua.com.programmer.pick.domain.model.DocumentState
@@ -48,15 +50,18 @@ class DocumentDetailViewModel @Inject constructor(
     private val debugJournal: DebugJournal,
     private val boxDao: BoxDao,
     private val documentBoxDao: DocumentBoxDao,
+    private val documentTypeConfigProvider: DocumentTypeConfigProvider,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
     companion object {
         const val ERROR_LOADING_DOCUMENT = "ERROR_LOADING_DOCUMENT"
-        // TODO(legacy): hardcoded type check — should be replaced with a server-driven
-        //  behavior flag (e.g. "allows_new_lines") once document type metadata is available.
-        private const val DOCUMENT_TYPE_INVENTORY = "INVENTORY"
     }
+
+    // Capability flags for the types this user may work with. Refreshed on every
+    // login (via AppPreferences) so ERP updates propagate without relaunch.
+    @Volatile
+    private var documentTypeConfigs: Map<String, AvailableDocumentType> = emptyMap()
 
     private val _uiState = MutableStateFlow(DocumentDetailUiState())
     val uiState: StateFlow<DocumentDetailUiState> = _uiState.asStateFlow()
@@ -70,7 +75,31 @@ class DocumentDetailViewModel @Inject constructor(
     init {
         // Subscribe to barcode scans once when ViewModel is created
         subscribeToScans()
+        subscribeToDocumentTypeConfigs()
     }
+
+    private fun subscribeToDocumentTypeConfigs() {
+        documentTypeConfigProvider.configs
+            .onEach { map ->
+                documentTypeConfigs = map
+                // Re-resolve for the currently loaded doc so flag changes
+                // (ERP pushed new config, user logged in again) propagate
+                // without requiring a screen reopen.
+                val docType = _uiState.value.document?.type ?: return@onEach
+                val cfg = documentTypeConfigs[docType]
+                _uiState.update {
+                    it.copy(
+                        allowsOverPlan = cfg?.allowsOverPlanOrDefault() ?: false,
+                        allowsExtraLines = cfg?.allowsExtraLinesOrDefault() ?: false,
+                        requiresPlan = cfg?.requiresPlanOrDefault() ?: true
+                    )
+                }
+            }
+            .launchIn(viewModelScope)
+    }
+
+    private fun resolveTypeConfig(docType: String?): AvailableDocumentType? =
+        docType?.let { documentTypeConfigs[it] }
 
     fun load(documentId: String) {
         // Every document open starts in the "unlocked" state — the worker
@@ -100,6 +129,7 @@ class DocumentDetailViewModel @Inject constructor(
                 val productIds = lines.map { it.productId }
                 val imagesMap = loadProductImages(productIds)
 
+                val cfg = resolveTypeConfig(doc?.type)
                 _uiState.update {
                     it.copy(
                         document = doc,
@@ -109,7 +139,10 @@ class DocumentDetailViewModel @Inject constructor(
                         isProcessingAction = false,
                         isSaving = false,
                         errorMessage = null,
-                        selectedLineId = null
+                        selectedLineId = null,
+                        allowsOverPlan = cfg?.allowsOverPlanOrDefault() ?: false,
+                        allowsExtraLines = cfg?.allowsExtraLinesOrDefault() ?: false,
+                        requiresPlan = cfg?.requiresPlanOrDefault() ?: true
                     )
                 }
 
@@ -223,11 +256,13 @@ class DocumentDetailViewModel @Inject constructor(
             return
         }
 
-        when (doc.type) {
-            DOCUMENT_TYPE_INVENTORY -> {
-                // For inventory: first try to find existing line, then increment or add new
+        if (_uiState.value.allowsExtraLines) {
+            // The document type permits scanning products that aren't in the
+            // pre-loaded line set — the client creates a new line on the fly.
+            // Historically hardcoded to INVENTORY; now driven by the ERP-set
+            // `allows_extra_lines` flag so receipts or counts can opt in.
 
-                // Resolve product info
+            // Resolve product info
                 val productId = scanned.productId ?: run {
                     // Try to lookup product by barcode if not already resolved
                     try {
@@ -319,10 +354,9 @@ class DocumentDetailViewModel @Inject constructor(
                         _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
                     }
                 }
-            }
-
-            else -> {
-                // Default: search line by productId first, then by productCode
+        } else {
+                // Default: line must already exist in the document; search by
+                // productId first, then by productCode.
                 var line: DocumentLine? = null
                 if (scanned.productId != null) {
                     try {
@@ -341,15 +375,18 @@ class DocumentDetailViewModel @Inject constructor(
                 AppLog.d("DocumentDetailViewModel", "handleScannedBarcode: line=$line")
 
                 if (line != null) {
-                    // Check if already fully collected
-                    if (line.plannedQuantity > 0 && line.actualQuantity >= line.plannedQuantity) {
+                    val allowOver = _uiState.value.allowsOverPlan
+                    // Block further scans once a line has reached its plan — unless the
+                    // document type legitimately allows over-plan (e.g. INCOMING_RECEIPT
+                    // over-delivery), in which case +1 keeps accumulating.
+                    if (!allowOver && line.plannedQuantity > 0 && line.actualQuantity >= line.plannedQuantity) {
                         _uiState.update { current -> current.copy(selectedLineId = line.id) }
                         _uiEvents.emit(DocumentDetailUiEvent.ShowBarcodeAlert(BarcodeAlertType.PRODUCT_ALREADY_COMPLETED))
                         return
                     }
 
-                    // Cap at planned quantity
-                    val newQty = if (line.plannedQuantity > 0) {
+                    // Cap at planned quantity (when applicable); over-plan docs are uncapped.
+                    val newQty = if (line.plannedQuantity > 0 && !allowOver) {
                         (line.actualQuantity + 1.0).coerceAtMost(line.plannedQuantity)
                     } else {
                         line.actualQuantity + 1.0
@@ -384,7 +421,6 @@ class DocumentDetailViewModel @Inject constructor(
                     AppLog.d("DocumentDetailViewModel", "handleScannedBarcode: line not found")
                     _uiEvents.emit(DocumentDetailUiEvent.ShowBarcodeAlert(BarcodeAlertType.PRODUCT_NOT_IN_DOCUMENT))
                 }
-            }
         }
     }
 
@@ -437,16 +473,19 @@ class DocumentDetailViewModel @Inject constructor(
     }
 
     /**
-     * Flip `is_completed` to true when the actual quantity reaches plan. We never
-     * auto-unset — clearing the mark requires an explicit swipe-left. Planned=0
-     * lines only auto-mark once the user actually scans or types something (>0),
-     * so acknowledgement still represents a deliberate action.
+     * Flip `is_completed` to true when the actual quantity meets or exceeds plan.
+     * For docs where `allows_over_plan` is off, the input caps elsewhere prevent
+     * `actual > plan` anyway, so `>=` collapses to exact-match there. For docs
+     * that allow over-delivery, the line auto-marks the moment the plan is
+     * reached and additional scans keep accumulating without toggling the mark
+     * back. We never auto-unset; clearing requires an explicit swipe-left.
+     * Planned=0 lines (e.g. inventory) auto-mark on any positive quantity.
      */
     private fun maybeAutoMarkCompleted(lineId: String, newQuantity: Double) {
         val line = _uiState.value.lines.find { it.id == lineId } ?: return
         if (line.isCompleted) return
         if (newQuantity <= 0.0) return
-        if (newQuantity < line.plannedQuantity) return
+        if (line.plannedQuantity > 0 && newQuantity < line.plannedQuantity) return
         setLineCompleted(lineId, true)
     }
 
@@ -454,10 +493,25 @@ class DocumentDetailViewModel @Inject constructor(
      * Toggle `is_completed` for a single line. Called by the swipe gesture and
      * by the auto-mark path. Updates the in-memory state optimistically; on a
      * DB write failure the UI is reverted so it doesn't diverge from storage.
+     *
+     * Refuses to mark an over-collected line as done — the user must correct
+     * the quantity first. Unmarking (isCompleted=false) is always allowed.
      */
     fun setLineCompleted(lineId: String, isCompleted: Boolean) {
-        val prior = _uiState.value.lines.find { it.id == lineId }?.isCompleted
+        val line = _uiState.value.lines.find { it.id == lineId } ?: return
+        val prior = line.isCompleted
         if (prior == isCompleted) return
+
+        if (isCompleted
+            && !_uiState.value.allowsOverPlan
+            && line.plannedQuantity > 0
+            && line.actualQuantity > line.plannedQuantity
+        ) {
+            viewModelScope.launch {
+                _uiEvents.emit(DocumentDetailUiEvent.ShowBarcodeAlert(BarcodeAlertType.LINE_OVERCOLLECTED))
+            }
+            return
+        }
 
         _uiState.update { current ->
             val updated = current.lines.map {
@@ -469,13 +523,11 @@ class DocumentDetailViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = documentRepository.updateLineCompleted(lineId, isCompleted)) {
                 is Result.Error -> {
-                    if (prior != null) {
-                        _uiState.update { current ->
-                            val reverted = current.lines.map {
-                                if (it.id == lineId) it.copy(isCompleted = prior) else it
-                            }
-                            current.copy(lines = reverted)
+                    _uiState.update { current ->
+                        val reverted = current.lines.map {
+                            if (it.id == lineId) it.copy(isCompleted = prior) else it
                         }
+                        current.copy(lines = reverted)
                     }
                     AppLog.w(
                         "DocumentDetailViewModel",

@@ -28,7 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.painterResource
@@ -124,12 +123,13 @@ fun QuantityStepper(
             minValue = minValue,
             maxValue = maxValue,
             onDismiss = { showDialog = false },
-            onConfirm = { accepted, enteredOver ->
+            onAccept = { accepted ->
                 onChange(accepted)
                 showDialog = false
-                if (enteredOver != null) {
-                    overflowEnteredValue = enteredOver
-                }
+            },
+            onOverflow = { entered ->
+                showDialog = false
+                overflowEnteredValue = entered
             }
         )
     }
@@ -149,8 +149,8 @@ private fun QuantityInputDialog(
     minValue: Double,
     maxValue: Double,
     onDismiss: () -> Unit,
-    // enteredOver: the originally entered value if it exceeded maxValue, null otherwise
-    onConfirm: (accepted: Double, enteredOver: Double?) -> Unit
+    onAccept: (Double) -> Unit,
+    onOverflow: (entered: Double) -> Unit
 ) {
     val initialText = formatQuantity(currentValue)
     var textFieldValue by remember {
@@ -171,9 +171,11 @@ private fun QuantityInputDialog(
         val parsed = textFieldValue.text.toIntOrNull()
         if (parsed != null) {
             val entered = parsed.toDouble()
-            val accepted = entered.coerceIn(minValue, maxValue)
-            val enteredOver = if (entered > maxValue) entered else null
-            onConfirm(accepted, enteredOver)
+            if (entered > maxValue) {
+                onOverflow(entered)
+            } else {
+                onAccept(entered.coerceAtLeast(minValue))
+            }
         }
     }
 
@@ -221,22 +223,22 @@ private fun QuantityOverflowDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFFFFC107),
+        containerColor = MaterialTheme.colorScheme.errorContainer,
+        titleContentColor = MaterialTheme.colorScheme.onErrorContainer,
+        textContentColor = MaterialTheme.colorScheme.onErrorContainer,
+        title = { Text(stringResource(R.string.quantity_overflow_title)) },
         text = {
             Text(
-                text = stringResource(
-                    R.string.quantity_overflow_fmt,
-                    entered,
-                    maxValue,
-                    entered - maxValue
-                ),
-                style = MaterialTheme.typography.bodyLarge,
-                color = Color(0xFF1A1A1A)
+                text = stringResource(R.string.quantity_overflow_fmt, entered, maxValue),
+                style = MaterialTheme.typography.bodyLarge
             )
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = stringResource(R.string.ok), color = Color(0xFF1A1A1A))
+                Text(
+                    text = stringResource(R.string.ok),
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
             }
         }
     )

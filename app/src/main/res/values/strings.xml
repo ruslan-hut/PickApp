@@ -11,7 +11,8 @@
     <string name="plus">+</string>
     <string name="minus">-</string>
     <string name="enter_quantity">Enter Quantity</string>
-    <string name="quantity_overflow_fmt">You entered %1$.0f, but planned is %2$.0f. %3$.0f was not added.</string>
+    <string name="quantity_overflow_title">Quantity exceeds plan</string>
+    <string name="quantity_overflow_fmt">Entered quantity %1$.0f is more than planned %2$.0f. Value was not changed.</string>
 
     <!-- Home -->
     <string name="title_app">Pick</string>
@@ -64,6 +65,7 @@
     <string name="error_saving">Error saving</string>
     <string name="product_not_in_document">Product not found in this document</string>
     <string name="product_already_completed">This product is already fully collected</string>
+    <string name="line_overcollected_warning">Actual quantity exceeds plan. Correct the quantity before marking the line as done.</string>
     <string name="product_not_found">Product not found in database</string>
     <string name="take_into_work">Take into Work</string>
     <string name="package_document">Package</string>

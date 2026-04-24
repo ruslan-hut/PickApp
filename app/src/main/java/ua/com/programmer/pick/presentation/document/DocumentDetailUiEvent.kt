@@ -33,8 +33,10 @@ enum class ToastMessage(@StringRes val resId: Int) {
 }
 
 enum class BarcodeAlertType(@StringRes val resId: Int) {
-    /** Scanned barcode does not match any line in the document — red */
+    /** Scanned barcode does not match any line in the document. */
     PRODUCT_NOT_IN_DOCUMENT(R.string.product_not_in_document),
-    /** Scanned product is already fully collected — yellow */
-    PRODUCT_ALREADY_COMPLETED(R.string.product_already_completed)
+    /** Scanned product is already fully collected. */
+    PRODUCT_ALREADY_COMPLETED(R.string.product_already_completed),
+    /** Swipe-right refused because actual quantity exceeds plan. */
+    LINE_OVERCOLLECTED(R.string.line_overcollected_warning)
 }

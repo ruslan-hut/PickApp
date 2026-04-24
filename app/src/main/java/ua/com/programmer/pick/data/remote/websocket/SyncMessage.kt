@@ -609,7 +609,14 @@ data class DocumentLineUpdate(
     val isCompleted: Boolean = false
 )
 
+/**
+ * Per-type capability flags sent by the server. Null means "not specified by
+ * the ERP" — the client applies its own default (see [AvailableDocumentType]).
+ */
 data class AvailableDocumentTypeDto(
     val code: String,
-    val description: String
+    val description: String,
+    val allowsOverPlan: Boolean? = null,
+    val allowsExtraLines: Boolean? = null,
+    val requiresPlan: Boolean? = null
 )

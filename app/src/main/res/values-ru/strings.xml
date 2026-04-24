@@ -11,7 +11,8 @@
     <string name="plus">+</string>
     <string name="minus">-</string>
     <string name="enter_quantity">Введите количество</string>
-    <string name="quantity_overflow_fmt">Вы ввели %1$.0f, но запланировано %2$.0f. %3$.0f не добавлено.</string>
+    <string name="quantity_overflow_title">Количество превышает план</string>
+    <string name="quantity_overflow_fmt">Введённое количество %1$.0f превышает запланированное %2$.0f. Значение не изменено.</string>
 
     <!-- Home -->
     <string name="title_app">Pick</string>
@@ -64,6 +65,7 @@
     <string name="error_saving">Ошибка сохранения</string>
     <string name="product_not_in_document">Товар не найден в этом документе</string>
     <string name="product_already_completed">Этот товар уже полностью собран</string>
+    <string name="line_overcollected_warning">Фактическое количество превышает план. Исправьте количество перед отметкой строки как выполненной.</string>
     <string name="product_not_found">Товар не найден в базе данных</string>
     <string name="take_into_work">Взять в работу</string>
     <string name="package_document">Упаковка</string>
