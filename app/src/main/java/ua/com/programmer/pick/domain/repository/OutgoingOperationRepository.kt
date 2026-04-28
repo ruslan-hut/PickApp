@@ -64,6 +64,7 @@ data class OutgoingOperation(
 enum class OperationType {
     STAGE_LOCK,
     STAGE_UNLOCK,
+    STAGE_PAUSE,
     STAGE_COMPLETE,
     DOCUMENT_UPDATE,
     BOX_ADD,

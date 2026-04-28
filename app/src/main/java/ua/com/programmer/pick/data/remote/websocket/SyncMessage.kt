@@ -24,9 +24,10 @@ enum class MessageType {
     // Document operations
     DOCUMENT_UPDATE,
 
-    // Stage operations (generalized lock/unlock/complete for any stage)
+    // Stage operations (generalized lock/unlock/pause/complete for any stage)
     STAGE_LOCK,
     STAGE_UNLOCK,
+    STAGE_PAUSE,
     STAGE_COMPLETE,
     STAGE_LOCK_RESULT,
     STAGE_COMPLETE_RESULT,
@@ -291,6 +292,24 @@ sealed class SyncMessage {
         val stage: String
     ) : SyncMessage() {
         override val type = MessageType.STAGE_UNLOCK
+    }
+
+    /**
+     * Client request to pause work on a stage: releases the lock without
+     * reverting the document state. Document stays at the in-process state
+     * (COLLECTING / PACKING) in the worker's queue. The active segment elapsed
+     * since the lock was taken is added to the document's active_work_ms by
+     * the server, so the paused interval is excluded from the worker's
+     * effective work time. Resume is the regular STAGE_LOCK on the same doc.
+     * Payload: document_id, stage. Response is a STAGE_LOCK_RESULT.
+     */
+    data class StagePause(
+        override val id: String,
+        override val timestamp: String,
+        val documentId: String,
+        val stage: String
+    ) : SyncMessage() {
+        override val type = MessageType.STAGE_PAUSE
     }
 
     /**

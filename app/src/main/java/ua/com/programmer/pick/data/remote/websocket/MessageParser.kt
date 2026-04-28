@@ -208,6 +208,11 @@ class MessageParser @Inject constructor(
                 addProperty(FIELD_STAGE, message.stage)
             }
 
+            is SyncMessage.StagePause -> JsonObject().apply {
+                addProperty(FIELD_DOCUMENT_ID, message.documentId)
+                addProperty(FIELD_STAGE, message.stage)
+            }
+
             is SyncMessage.StageComplete -> JsonObject().apply {
                 addProperty(FIELD_DOCUMENT_ID, message.documentId)
                 addProperty(FIELD_STAGE, message.stage)

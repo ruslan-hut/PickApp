@@ -747,9 +747,11 @@ class DocumentDetailViewModel @Inject constructor(
     fun saveAndComplete() = completeDocument()
 
     /**
-     * Pause work on the document: unlock the current stage so the document
-     * reverts to the stage-start state (progress preserved via dirty-flag
-     * re-sync) and the worker keeps it in their queue. Emits a toast and
+     * Pause work on the document: release the session lock while the server
+     * keeps the document at the current in-process state (COLLECTING /
+     * PACKING). The document stays in the worker's queue and the time spent
+     * paused is excluded from the worker's effective work duration. Resume is
+     * an ordinary stage lock on the same document. Emits a toast and
      * navigates back on success.
      */
     fun pauseDocument() {
@@ -764,7 +766,7 @@ class DocumentDetailViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                when (syncOrchestrator.unlockFromStage(documentId, stage)) {
+                when (syncOrchestrator.pauseStage(documentId, stage)) {
                     is Result.Success -> {
                         _uiState.update { it.copy(isProcessingAction = false, hasStageLock = false) }
                         _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_PAUSED))

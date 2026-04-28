@@ -790,6 +790,60 @@ class SyncOrchestrator @Inject constructor(
     }
 
     /**
+     * Pause work on a document's current stage. Releases the session lock but
+     * the server keeps the document at the in-process state (COLLECTING /
+     * PACKING) and in this worker's queue. Time spent paused is excluded from
+     * the worker's effective work duration on the server side.
+     *
+     * Resume is the regular [lockForStage] handshake on the same document.
+     */
+    suspend fun pauseStage(documentId: String, stage: String): Result<Unit> {
+        AppLog.d(TAG, "Pausing document $documentId at stage: $stage")
+
+        val externalId = toExternalDocumentId(documentId)
+
+        if (!webSocketManager.isConnected()) {
+            AppLog.d(TAG, "WebSocket not connected, queueing pause operation for document: $documentId")
+            outgoingOperationRepository.queueOperation(
+                operationType = OperationType.STAGE_PAUSE,
+                entityType = EntityType.DOCUMENT,
+                entityId = documentId,
+                payload = gson.toJson(mapOf("document_id" to externalId, "stage" to stage))
+            )
+            return Result.Success(Unit)
+        }
+
+        val message = SyncMessage.StagePause(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp(),
+            documentId = externalId,
+            stage = stage
+        )
+
+        debugJournal.log(
+            eventType = ua.com.programmer.pick.data.debug.DebugEventType.STAGE_PAUSE_SENT,
+            message = "stage pause sent",
+            documentId = documentId,
+            stage = stage
+        )
+
+        // Same lock-claim release semantics as unlockFromStage: the user's
+        // intent is to stop editing this device's session, regardless of how
+        // the server responds. The server is authoritative for state — do not
+        // mutate document.state locally; the next SYNC_DATA will carry the
+        // post-pause snapshot (state stays at the in-process value, locked_by
+        // null, active_work_ms incremented).
+        heldStageLocks.remove(documentId)
+
+        val sent = webSocketManager.sendMessage(message)
+        return if (sent) {
+            Result.Success(Unit)
+        } else {
+            Result.Error(Exception("Failed to send pause request"))
+        }
+    }
+
+    /**
      * Forget any session claim this device has made for `documentId`. Called by
      * the UI whenever the user (re-)opens a document, so the worker is forced
      * through a fresh STAGE_LOCK handshake — see feedback memory
@@ -2018,6 +2072,15 @@ class SyncOrchestrator @Inject constructor(
                         return null
                     }
                     SyncMessage.StageUnlock(id = id, timestamp = timestamp, documentId = documentId, stage = stage)
+                }
+                OperationType.STAGE_PAUSE -> {
+                    val documentId = payloadJson.get("document_id")?.asString
+                    val stage = payloadJson.get("stage")?.asString
+                    if (documentId == null || stage == null) {
+                        AppLog.e(TAG, "Missing document_id or stage in STAGE_PAUSE payload")
+                        return null
+                    }
+                    SyncMessage.StagePause(id = id, timestamp = timestamp, documentId = documentId, stage = stage)
                 }
                 OperationType.STAGE_COMPLETE -> {
                     val documentId = payloadJson.get("document_id")?.asString
