@@ -167,6 +167,10 @@ class SyncOrchestrator @Inject constructor(
         private const val MAX_QUEUE_RETRIES = 5
         private const val DOCUMENT_PRODUCTS_TIMEOUT_MS = 10_000L
         private const val IN_PROCESS_FLUSH_INTERVAL_MS = 60_000L
+        // While WS is wedged, emit one DOC_UPDATE_QUEUED journal row per
+        // doc per minute instead of one per debounce tick. Carries the
+        // running totals so we can see how far the offline drift went.
+        private const val QUEUED_HEARTBEAT_INTERVAL_MS = 60_000L
 
         // States in which this device holds the stage lock and therefore owns
         // the document's line actuals and box data. While the local doc sits in
@@ -196,6 +200,18 @@ class SyncOrchestrator @Inject constructor(
     private val heldStageLocks: MutableSet<String> =
         java.util.concurrent.ConcurrentHashMap.newKeySet()
 
+    // Tracks the last DOC_UPDATE_QUEUED journal-write per document so we can
+    // coalesce a long offline burst into one full row plus a periodic
+    // "still offline" heartbeat. The 05-27.04.26 incident produced 189
+    // identical-shape DOC_UPDATE_QUEUED rows in 56 minutes — they buried the
+    // signal. Keys are document ids; values are the wall-clock ms of the last
+    // journalled queue event for that doc. Cleared on a successful send.
+    private val lastQueuedJournalAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    // Wall-clock at the most recent transition into Connected. Lets us
+    // attribute reconnect-driven resyncs and emit a WS_RECONNECT event with
+    // accurate offline_ms on the next reconnect.
+    @Volatile private var lastDisconnectAt: Long = 0L
 
     private var isInitialized = false
 
@@ -228,14 +244,74 @@ class SyncOrchestrator @Inject constructor(
             }
             .launchIn(scope)
 
-        // Observe WebSocket connection state
+        // Observe WebSocket connection state. We resync dirty data on every
+        // transition into Connected — even if the userAuthState observer also
+        // catches it. Belt-and-braces: the userAuthState path only fires when
+        // auth flips NotAuthenticated → Authenticated, which can be skipped
+        // if the StateFlow was already at Authenticated when the listener
+        // attached, or if the auto-login path is bypassed for any reason.
+        // Losing the worker's offline edits because one observer didn't fire
+        // is the failure mode we're fixing.
+        var wasConnected = false
         webSocketManager.connectionState
             .onEach { connectionState ->
                 val isConnected = connectionState is ConnectionState.Connected
                 _syncState.value = _syncState.value.copy(isWebSocketConnected = isConnected)
 
-                // Note: Sync and pending operations are now triggered after user login
-                // (see userAuthState observer below)
+                if (!isConnected && wasConnected) {
+                    // Just lost connection — record the moment so the next
+                    // reconnect can journal an accurate offline duration.
+                    lastDisconnectAt = System.currentTimeMillis()
+                }
+
+                if (isConnected && !wasConnected) {
+                    // Transition into Connected. Journal a WS_RECONNECT row
+                    // with the offline duration + a snapshot of pending
+                    // work, so future post-mortems can locate the boundary
+                    // between "what the device buffered offline" and "what
+                    // the device pushed/received after coming back". The
+                    // event ties to any currently-held lock document so it
+                    // shows up in per-document filters.
+                    val offlineMs = if (lastDisconnectAt > 0) {
+                        System.currentTimeMillis() - lastDisconnectAt
+                    } else 0L
+                    scope.launch {
+                        try {
+                            val dirtyDocs = run {
+                                val byId = HashSet<String>()
+                                documentDao.getDirtyDocuments().forEach { byId.add(it.id) }
+                                documentDao.getDocumentsWithDirtyLines().forEach { byId.add(it.id) }
+                                byId
+                            }
+                            val locks = heldStageLocks.toList()
+                            val tagDoc = locks.firstOrNull() ?: dirtyDocs.firstOrNull()
+                            debugJournal.log(
+                                eventType = ua.com.programmer.pick.data.debug.DebugEventType.WS_RECONNECT,
+                                message = "ws connected" +
+                                    (if (offlineMs > 0) " after ${offlineMs}ms offline" else ""),
+                                documentId = tagDoc,
+                                payload = mapOf(
+                                    "offline_ms" to offlineMs,
+                                    "dirty_doc_count" to dirtyDocs.size,
+                                    "dirty_doc_ids" to dirtyDocs.toList(),
+                                    "held_locks" to locks,
+                                    "user_authenticated" to webSocketManager.isUserAuthenticated()
+                                )
+                            )
+                        } catch (_: Exception) {}
+                    }
+
+                    // If the user is already authenticated (e.g. fast
+                    // reconnect on the same socket without re-auth), push
+                    // dirty data immediately. The userAuthState observer
+                    // will fire its own pass when / if auto-login completes
+                    // — resyncDirtyDocuments is a no-op when there's
+                    // nothing dirty, so calling it twice is cheap.
+                    if (webSocketManager.isUserAuthenticated()) {
+                        try { resyncDirtyDocuments() } catch (_: Exception) {}
+                    }
+                }
+                wasConnected = isConnected
             }
             .launchIn(scope)
 
@@ -670,6 +746,17 @@ class SyncOrchestrator @Inject constructor(
             return Result.Error(Exception("User not authenticated"))
         }
 
+        // Push any pending dirty state for THIS document before asking the
+        // server to advance its stage. Symmetric to the flush in completeStage.
+        // Without this, advancing COLLECTING→PACKING (or any stage transition)
+        // takes the server into the new stage on the basis of whatever it
+        // last received — and the response payload (or a SYNC_DATA echo
+        // that follows) merges back over the local copy with stale totals.
+        // Best-effort: failures are logged inside performDocumentSync; if
+        // WS is wedged the lock attempt below will fail naturally.
+        try { flushDocumentSync(documentId) } catch (_: Exception) {}
+        try { resyncDirtyDocuments() } catch (_: Exception) {}
+
         val externalId = toExternalDocumentId(documentId)
         val message = SyncMessage.StageLock(
             id = messageParser.generateMessageId(),
@@ -678,11 +765,13 @@ class SyncOrchestrator @Inject constructor(
             stage = stage
         )
 
+        val sentSnapshot = stageSnapshot(documentId)
         debugJournal.log(
             eventType = ua.com.programmer.pick.data.debug.DebugEventType.STAGE_LOCK_SENT,
             message = "stage lock sent",
             documentId = documentId,
-            stage = stage
+            stage = stage,
+            payload = sentSnapshot
         )
 
         val response = webSocketManager.sendAndAwait(
@@ -697,7 +786,13 @@ class SyncOrchestrator @Inject constructor(
             stage = stage,
             severity = if (response?.success == true) ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_INFO
             else ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN,
-            payload = response?.let { mapOf("success" to it.success, "locked_by" to it.lockedBy, "error" to it.error) }
+            payload = response?.let {
+                stageSnapshot(documentId) + mapOf(
+                    "success" to it.success,
+                    "locked_by" to it.lockedBy,
+                    "error" to it.error
+                )
+            }
         )
 
         return if (response != null) {
@@ -743,6 +838,13 @@ class SyncOrchestrator @Inject constructor(
     suspend fun unlockFromStage(documentId: String, stage: String): Result<Unit> {
         AppLog.d(TAG, "Unlocking document $documentId from stage: $stage")
 
+        // Flush before unlock for the same reason as completeStage: once the
+        // lock is released, ERP is free to push and our preserveLineActuals
+        // / preserveBoxes invariant only protects what the server already has.
+        // Anything still local (debounced / queued) needs to land first.
+        try { flushDocumentSync(documentId) } catch (_: Exception) {}
+        try { resyncDirtyDocuments() } catch (_: Exception) {}
+
         val externalId = toExternalDocumentId(documentId)
 
         if (!webSocketManager.isConnected()) {
@@ -767,7 +869,8 @@ class SyncOrchestrator @Inject constructor(
             eventType = ua.com.programmer.pick.data.debug.DebugEventType.STAGE_UNLOCK_SENT,
             message = "stage unlock sent",
             documentId = documentId,
-            stage = stage
+            stage = stage,
+            payload = stageSnapshot(documentId)
         )
 
         // Release the session claim immediately — regardless of whether the
@@ -800,6 +903,10 @@ class SyncOrchestrator @Inject constructor(
     suspend fun pauseStage(documentId: String, stage: String): Result<Unit> {
         AppLog.d(TAG, "Pausing document $documentId at stage: $stage")
 
+        // Same flush rationale as unlockFromStage / completeStage.
+        try { flushDocumentSync(documentId) } catch (_: Exception) {}
+        try { resyncDirtyDocuments() } catch (_: Exception) {}
+
         val externalId = toExternalDocumentId(documentId)
 
         if (!webSocketManager.isConnected()) {
@@ -824,7 +931,8 @@ class SyncOrchestrator @Inject constructor(
             eventType = ua.com.programmer.pick.data.debug.DebugEventType.STAGE_PAUSE_SENT,
             message = "stage pause sent",
             documentId = documentId,
-            stage = stage
+            stage = stage,
+            payload = stageSnapshot(documentId)
         )
 
         // Same lock-claim release semantics as unlockFromStage: the user's
@@ -857,6 +965,32 @@ class SyncOrchestrator @Inject constructor(
     fun hasStageLockClaim(documentId: String): Boolean =
         documentId in heldStageLocks
 
+    /**
+     * Builds a snapshot of the local doc + line state for inclusion in stage
+     * action journal payloads. Captures the totals + dirty counts at the
+     * moment the action is initiated/answered so the journal shows what the
+     * worker was actually looking at when they pressed the button. Best-effort
+     * — never throws; returns an empty map on any DB error.
+     */
+    private suspend fun stageSnapshot(documentId: String): Map<String, Any?> {
+        return try {
+            val doc = documentDao.getDocumentById(documentId)
+            val lines = documentLineDao.getLinesByDocumentIdSync(documentId)
+            val dirtyLineCount = lines.count { it.isDirty }
+            val totalActual = lines.sumOf { it.actualQuantity }
+            val totalPlanned = lines.sumOf { it.plannedQuantity }
+            mapOf(
+                "local_state" to doc?.state,
+                "local_version" to (doc?.version ?: -1),
+                "doc_dirty" to (doc?.isDirty ?: false),
+                "line_count" to lines.size,
+                "dirty_line_count" to dirtyLineCount,
+                "total_actual_qty" to totalActual,
+                "total_planned_qty" to totalPlanned
+            )
+        } catch (_: Exception) { emptyMap() }
+    }
+
     private fun stageInProcessState(stage: String): String = when (stage) {
         "collect" -> "COLLECTING"
         "pack" -> "PACKING"
@@ -877,11 +1011,11 @@ class SyncOrchestrator @Inject constructor(
      * Safe to call from any scope — survives ViewModel destruction.
      */
     fun scheduleDocumentSync(documentId: String) {
-        debugJournal.log(
-            eventType = ua.com.programmer.pick.data.debug.DebugEventType.SYNC_SCHEDULED,
-            message = "debounced sync scheduled",
-            documentId = documentId
-        )
+        // Intentionally NOT journalled. Each line edit triggered one of these
+        // events; in real-world traffic that meant ~50% of journal rows were
+        // SYNC_SCHEDULED with zero diagnostic value beyond what the matching
+        // SYNC_FIRED row already carries. The signal lives in SYNC_FIRED +
+        // SYNC_FLUSHED + DOC_UPDATE_SENT/QUEUED — those are still recorded.
         documentSyncJobs[documentId]?.cancel()
         documentSyncJobs[documentId] = scope.launch {
             try {
@@ -968,13 +1102,29 @@ class SyncOrchestrator @Inject constructor(
         // redundant for this operation type.
         if (!webSocketManager.isConnected()) {
             AppLog.d(TAG, "WebSocket not connected; relying on dirty-flag re-sync for document: $documentId")
-            debugJournal.log(
-                eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_UPDATE_QUEUED,
-                message = "WS offline; deferred to dirty re-sync",
-                documentId = documentId,
-                severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN,
-                payload = mapOf("line_count" to lines.size)
-            )
+            // Coalesce: log the first one fully, then a 60s heartbeat. A
+            // long offline session previously emitted hundreds of identical
+            // rows (189 in the 05-27.04.26 incident); the heartbeat keeps
+            // the running total visible without burying the rest of the
+            // journal.
+            val now = System.currentTimeMillis()
+            val last = lastQueuedJournalAt[documentId]
+            if (last == null || now - last >= QUEUED_HEARTBEAT_INTERVAL_MS) {
+                debugJournal.log(
+                    eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_UPDATE_QUEUED,
+                    message = if (last == null) "WS offline; deferred to dirty re-sync"
+                              else "WS still offline; running totals snapshot",
+                    documentId = documentId,
+                    severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN,
+                    payload = mapOf(
+                        "line_count" to lines.size,
+                        "total_actual_qty" to lines.sumOf { it.actualQuantity },
+                        "state" to state,
+                        "first_in_burst" to (last == null)
+                    )
+                )
+                lastQueuedJournalAt[documentId] = now
+            }
             return Result.Error(Exception("WebSocket not connected, deferred to dirty re-sync"))
         }
 
@@ -988,6 +1138,9 @@ class SyncOrchestrator @Inject constructor(
 
         val sent = webSocketManager.sendMessage(message)
         return if (sent) {
+            // Send succeeded → reset the offline-coalesce window so the next
+            // disconnect starts fresh and emits a full row.
+            lastQueuedJournalAt.remove(documentId)
             debugJournal.log(
                 eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_UPDATE_SENT,
                 message = "document update sent",
@@ -1002,13 +1155,27 @@ class SyncOrchestrator @Inject constructor(
             Result.Success(Unit)
         } else {
             AppLog.w(TAG, "WebSocket send failed for document $documentId; deferred to dirty re-sync")
-            debugJournal.log(
-                eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_UPDATE_QUEUED,
-                message = "WS send failed; deferred to dirty re-sync",
-                documentId = documentId,
-                severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN,
-                payload = mapOf("line_count" to lines.size)
-            )
+            // Same coalescing rule as the offline branch above: only log the
+            // first failure of a burst; subsequent failures within the
+            // heartbeat window are noise.
+            val now = System.currentTimeMillis()
+            val last = lastQueuedJournalAt[documentId]
+            if (last == null || now - last >= QUEUED_HEARTBEAT_INTERVAL_MS) {
+                debugJournal.log(
+                    eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_UPDATE_QUEUED,
+                    message = if (last == null) "WS send failed; deferred to dirty re-sync"
+                              else "WS send still failing; running totals snapshot",
+                    documentId = documentId,
+                    severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN,
+                    payload = mapOf(
+                        "line_count" to lines.size,
+                        "total_actual_qty" to lines.sumOf { it.actualQuantity },
+                        "state" to state,
+                        "first_in_burst" to (last == null)
+                    )
+                )
+                lastQueuedJournalAt[documentId] = now
+            }
             Result.Error(Exception("WebSocket send failed, deferred to dirty re-sync"))
         }
     }
@@ -1024,6 +1191,12 @@ class SyncOrchestrator @Inject constructor(
         // Without this, completing within the 500ms debounce window would
         // race against (and lose) the most recent line edits.
         flushDocumentSync(documentId)
+        // Belt-and-braces: push every locally-dirty doc/line in case some
+        // never made it on the offline-queue path (DOC_UPDATE_QUEUED leaves
+        // no queue entry — only the line/doc dirty flags). Without this, a
+        // long offline session that ended right before STAGE_COMPLETE would
+        // commit the server transition against stale totals.
+        try { resyncDirtyDocuments() } catch (_: Exception) {}
 
         val externalId = toExternalDocumentId(documentId)
 
@@ -1050,7 +1223,7 @@ class SyncOrchestrator @Inject constructor(
             message = "stage complete sent",
             documentId = documentId,
             stage = stage,
-            payload = mapOf("message_id" to message.id)
+            payload = stageSnapshot(documentId) + mapOf("message_id" to message.id)
         )
 
         val response = webSocketManager.sendAndAwait(
@@ -1065,7 +1238,14 @@ class SyncOrchestrator @Inject constructor(
             stage = stage,
             severity = if (response?.success == true) ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_INFO
             else ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_ERROR,
-            payload = response?.let { mapOf("success" to it.success, "state" to it.state, "error" to it.error) }
+            payload = response?.let {
+                stageSnapshot(documentId) + mapOf(
+                    "success" to it.success,
+                    "state" to it.state,
+                    "version" to it.version,
+                    "error" to it.error
+                )
+            }
         )
 
         if (response == null) {
@@ -1478,10 +1658,45 @@ class SyncOrchestrator @Inject constructor(
                 // If the server version is newer, accept the state change and clear the dirty flag.
                 if (dto.version > existing.version) {
                     AppLog.i(TAG, "Server version ${dto.version} > local ${existing.version} for dirty document ${dto.id}, accepting server state")
+                    val totalBefore = documentLineDao.getTotalActualQuantity(dto.id) ?: 0.0
+                    val localLineCountBefore = documentLineDao.getLinesByDocumentIdSync(dto.id).size
                     documentDao.upsertDocument(documentMapper.toEntity(dto))
+                    var preservedDirty = 0
                     if (dto.lines != null) {
-                        mergeDocumentLines(dto.id, dto.lines, productIdMap)
+                        preservedDirty = mergeDocumentLines(dto.id, dto.lines, productIdMap)
                     }
+                    // The upsert above wrote `isDirty = false` for the document
+                    // (DocumentMapper.toEntity always emits false). If
+                    // mergeDocumentLines preserved any locally-dirty lines, the
+                    // worker still owes the server a DOCUMENT_UPDATE for them —
+                    // re-arm doc.is_dirty so resyncDirtyDocuments picks it up
+                    // on the next pass instead of silently dropping the edits.
+                    val anyLineDirty = documentLineDao.getLinesByDocumentIdSync(dto.id).any { it.isDirty }
+                    if (anyLineDirty) {
+                        documentDao.markDocumentDirty(dto.id, System.currentTimeMillis())
+                    }
+                    val totalAfter = documentLineDao.getTotalActualQuantity(dto.id) ?: 0.0
+                    debugJournal.log(
+                        eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_SYNC_APPLIED,
+                        message = "applied newer server version over dirty local doc",
+                        documentId = dto.id,
+                        severity = if (totalAfter < totalBefore)
+                            ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN
+                            else ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_INFO,
+                        payload = mapOf(
+                            "branch" to "dirty_local_newer_server",
+                            "server_version" to dto.version,
+                            "local_version_before" to existing.version,
+                            "server_state" to dto.state,
+                            "local_state_before" to existing.state,
+                            "total_actual_before" to totalBefore,
+                            "total_actual_after" to totalAfter,
+                            "local_line_count_before" to localLineCountBefore,
+                            "server_line_count" to (dto.lines?.size ?: 0),
+                            "preserved_dirty_lines" to preservedDirty,
+                            "any_line_dirty_after" to anyLineDirty
+                        )
+                    )
                     if (dto.boxes != null) {
                         val boxEntities = dto.boxes.map { boxDto ->
                             val e = boxDto.toEntity(dto.id)
@@ -1510,14 +1725,48 @@ class SyncOrchestrator @Inject constructor(
                 return@forEach
             }
 
+            val totalBefore = if (existing != null)
+                documentLineDao.getTotalActualQuantity(dto.id) ?: 0.0 else 0.0
+            val localLineCountBefore = if (existing != null)
+                documentLineDao.getLinesByDocumentIdSync(dto.id).size else 0
+
             val entity = documentMapper.toEntity(dto)
             documentDao.upsertDocument(entity)
 
             // Replace lines — server sends the complete set. The merge preserves
             // any locally-dirty lines so an in-flight edit isn't overwritten by a
             // stale server echo while a push is still outstanding.
+            var preservedDirty = 0
             if (dto.lines != null) {
-                mergeDocumentLines(dto.id, dto.lines, productIdMap)
+                preservedDirty = mergeDocumentLines(dto.id, dto.lines, productIdMap)
+            }
+
+            // Only journal DOC_SYNC_APPLIED for actual merges over an
+            // existing local copy — first-seen documents from a delta sync
+            // are noise. WARN if the apply caused a total drop, since that's
+            // the failure shape we care about (offline edits being clobbered).
+            if (existing != null) {
+                val totalAfter = documentLineDao.getTotalActualQuantity(dto.id) ?: 0.0
+                debugJournal.log(
+                    eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_SYNC_APPLIED,
+                    message = "applied server doc payload",
+                    documentId = dto.id,
+                    severity = if (totalAfter < totalBefore)
+                        ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN
+                        else ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_INFO,
+                    payload = mapOf(
+                        "branch" to "normal_merge",
+                        "server_version" to dto.version,
+                        "local_version_before" to existing.version,
+                        "server_state" to dto.state,
+                        "local_state_before" to existing.state,
+                        "total_actual_before" to totalBefore,
+                        "total_actual_after" to totalAfter,
+                        "local_line_count_before" to localLineCountBefore,
+                        "server_line_count" to (dto.lines?.size ?: 0),
+                        "preserved_dirty_lines" to preservedDirty
+                    )
+                )
             }
 
             // Replace boxes — server sends the complete set.
@@ -1616,11 +1865,15 @@ class SyncOrchestrator @Inject constructor(
     // with stale server state would overwrite a dirty local qty AND reset
     // is_dirty to false, so the pending resyncDirtyDocuments() found nothing
     // to push and the edit was silently lost. Dirty rows are now preserved.
+    //
+    // Returns the count of locally-dirty lines that were preserved during the
+    // merge — callers use it for DOC_SYNC_APPLIED journal payloads so an
+    // operator can see how much in-flight worker data this merge protected.
     private suspend fun mergeDocumentLines(
         documentId: String,
         serverLineDtos: List<ua.com.programmer.pick.data.remote.dto.DocumentLineDto>,
         productIdMap: Map<String, String>
-    ) {
+    ): Int {
         val localById = documentLineDao.getLinesByDocumentIdSync(documentId)
             .associateBy { it.id }
         val serverEntities = serverLineDtos.map {
@@ -1649,6 +1902,7 @@ class SyncOrchestrator @Inject constructor(
         if (preservedDirty > 0) {
             AppLog.i(TAG, "Merge preserved $preservedDirty dirty line(s) for document $documentId")
         }
+        return preservedDirty
     }
 
     private suspend fun applyProductSync(
@@ -1888,6 +2142,18 @@ class SyncOrchestrator @Inject constructor(
 
         AppLog.d(TAG, "Processing ${pendingOps.size} pending operations")
 
+        // Re-push dirty documents FIRST. Order matters: a queued STAGE_COMPLETE
+        // that runs before resync makes the server transition the document on
+        // the basis of stale line totals — and a successful STAGE_COMPLETE
+        // clears doc.is_dirty (via updateDocumentVersion) so the worker's later
+        // resync sees nothing to send. The 05-27.04.26 incident is exactly
+        // this race: COLLECTING went offline at 14:28 with total=2965, the
+        // worker collected to 3777 offline, WS came back, the queued
+        // STAGE_COMPLETE [collect] processed first against server's stale
+        // 2965, the doc.is_dirty flag cleared on success, and the 813 units
+        // of offline edits never reached the server.
+        resyncDirtyDocuments()
+
         for (operation in pendingOps) {
             if (!webSocketManager.isConnected()) {
                 AppLog.w(TAG, "WebSocket disconnected during pending operations processing, stopping")
@@ -1902,24 +2168,38 @@ class SyncOrchestrator @Inject constructor(
         outgoingOperationRepository.deleteCompletedOperations()
         outgoingOperationRepository.deleteFailedOperations(MAX_QUEUE_RETRIES)
 
-        // Re-push dirty documents that were saved locally but never synced
-        // (e.g., debounce cancelled by navigation, fire-and-forget lost in transit)
+        // One more pass: a stage-complete success path (in processOperation)
+        // can clear doc.is_dirty even though dirty lines remain — same shape
+        // as the inbound-merge case handled in applyDocumentSync. Re-running
+        // resync here catches any leftover unsynced lines.
         resyncDirtyDocuments()
     }
 
     /**
      * Find documents with dirty lines that may not have been synced to the server,
-     * and re-send their line data.
+     * and re-send their line data. Also picks up documents whose own dirty flag
+     * was cleared by an inbound server payload merge while their lines remain
+     * locally-dirty (this is what caused the 05-27.04.26 incident: 813 units of
+     * offline-collected edits silently dropped because the queued STAGE_COMPLETE
+     * landed before the dirty data got to flush).
+     *
+     * Returns the number of documents that successfully re-sent their data.
      */
-    private suspend fun resyncDirtyDocuments() {
-        if (!webSocketManager.isConnected() || !webSocketManager.isUserAuthenticated()) return
+    suspend fun resyncDirtyDocuments(): Int {
+        if (!webSocketManager.isConnected() || !webSocketManager.isUserAuthenticated()) return 0
 
-        try {
-            val dirtyDocuments = documentDao.getDirtyDocuments()
-            if (dirtyDocuments.isEmpty()) return
+        return try {
+            // Union: docs flagged dirty + docs with any dirty line. Map by id so
+            // we don't re-send the same doc twice when both queries match.
+            val byId = LinkedHashMap<String, ua.com.programmer.pick.data.local.database.entity.DocumentEntity>()
+            documentDao.getDirtyDocuments().forEach { byId[it.id] = it }
+            documentDao.getDocumentsWithDirtyLines().forEach { byId.putIfAbsent(it.id, it) }
+            val dirtyDocuments = byId.values
+            if (dirtyDocuments.isEmpty()) return 0
 
             AppLog.d(TAG, "Re-syncing ${dirtyDocuments.size} dirty document(s)")
 
+            var sentCount = 0
             for (doc in dirtyDocuments) {
                 if (!webSocketManager.isConnected()) break
 
@@ -1950,16 +2230,32 @@ class SyncOrchestrator @Inject constructor(
                     documentId = doc.id,
                     severity = if (sent) ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_INFO
                     else ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN,
-                    payload = mapOf("line_count" to lines.size, "state" to doc.state)
+                    payload = mapOf(
+                        "line_count" to lines.size,
+                        "total_actual_qty" to lines.sumOf { it.actualQuantity },
+                        "state" to doc.state
+                    )
                 )
                 if (sent) {
+                    sentCount++
                     AppLog.d(TAG, "Re-synced dirty document: ${doc.id}")
+                    // Clear dirty flags now that the message is in OkHttp's send
+                    // buffer. DOCUMENT_UPDATE is fire-and-forget (no server ack
+                    // exists), so this is the best signal we get. If the WS
+                    // drops between buffer-accept and server-receive, the data
+                    // is lost — but leaving the flag set indefinitely is worse
+                    // because it makes the dirty-line query grow unbounded and
+                    // every reconnect re-sends the entire history.
+                    documentLineDao.markAllLinesAsSynced(doc.id)
+                    documentDao.markDocumentAsSynced(doc.id)
                 } else {
                     AppLog.w(TAG, "Failed to re-sync dirty document: ${doc.id}")
                 }
             }
+            sentCount
         } catch (e: Exception) {
             AppLog.w(TAG, "Error during dirty document re-sync: ${e.message}")
+            0
         }
     }
 

@@ -39,5 +39,17 @@ object DebugEventType {
     const val WS_SEND_FAIL = "WS_SEND_FAIL"
     const val WS_ACK_TIMEOUT = "WS_ACK_TIMEOUT"
     const val WS_DISCONNECT = "WS_DISCONNECT"
+    // WebSocket transitioned Disconnected/Reconnecting → Connected. Carries
+    // offline_ms, dirty_doc_count, and the list of currently-held stage locks
+    // so we can correlate "what changed during the outage" with subsequent
+    // SYNC_DATA / DOCUMENT_UPDATE traffic. Without this event the recent
+    // offline-edits-lost incident required guessing the reconnect moment.
+    const val WS_RECONNECT = "WS_RECONNECT"
+    // Counterpart to DOC_SYNC_SUPPRESSED: an inbound server payload was
+    // applied to local state. Carries before/after totals + version diff
+    // + how many local dirty lines were preserved by mergeDocumentLines.
+    // The 05-27.04.26 investigation needed exactly this — to see when
+    // and why a local total dropped.
+    const val DOC_SYNC_APPLIED = "DOC_SYNC_APPLIED"
     const val JOURNAL_CONFIG_CHANGED = "JOURNAL_CONFIG_CHANGED"
 }

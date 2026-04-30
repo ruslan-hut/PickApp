@@ -38,6 +38,20 @@ interface DocumentDao {
     @Query("SELECT * FROM documents WHERE is_dirty = 1")
     suspend fun getDirtyDocuments(): List<DocumentEntity>
 
+    // Picks up documents whose own dirty flag may have been cleared (e.g. by a
+    // server-pushed payload merge in applyDocumentSync) but that still have one
+    // or more locally-dirty lines waiting to be sent. Without this, a long
+    // offline session followed by a stage-complete or server resync can land
+    // an authoritative server payload that wipes doc.is_dirty while
+    // mergeDocumentLines preserves the dirty lines — and resyncDirtyDocuments
+    // then never picks the doc up again, silently losing the worker's edits.
+    @Query("""
+        SELECT DISTINCT d.* FROM documents d
+        INNER JOIN document_lines l ON l.document_id = d.id
+        WHERE l.is_dirty = 1
+    """)
+    suspend fun getDocumentsWithDirtyLines(): List<DocumentEntity>
+
     @Query("SELECT COUNT(*) FROM documents WHERE type = :type")
     fun getDocumentCountByType(type: String): Flow<Int>
 
@@ -76,6 +90,9 @@ interface DocumentDao {
 
     @Query("UPDATE documents SET is_dirty = 0 WHERE id = :documentId")
     suspend fun markDocumentAsSynced(documentId: String)
+
+    @Query("UPDATE documents SET is_dirty = 1, last_modified = :lastModified WHERE id = :documentId")
+    suspend fun markDocumentDirty(documentId: String, lastModified: Long = System.currentTimeMillis())
 
     @Query("UPDATE documents SET assigned_user_id = :userId, last_modified = :lastModified WHERE id = :documentId")
     suspend fun updateAssignedUser(documentId: String, userId: String, lastModified: Long = System.currentTimeMillis())
