@@ -102,6 +102,13 @@ class DocumentDetailViewModel @Inject constructor(
         docType?.let { documentTypeConfigs[it] }
 
     fun load(documentId: String) {
+        // Re-entry from config change (screen rotation): the ViewModel survived
+        // and already holds the loaded doc plus any hasStageLock claim. Bail
+        // before clearing state so the device doesn't drop a server-held lock.
+        if (currentDocumentId == documentId && _uiState.value.document != null) {
+            return
+        }
+
         // Every document open starts in the "unlocked" state — the worker
         // must retake the document via STAGE_LOCK before the UI enters edit
         // mode. Lock claims are never persisted across document open/close
