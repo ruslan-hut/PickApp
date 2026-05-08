@@ -13,6 +13,11 @@ object DebugEventType {
     const val LINE_CREATE = "LINE_CREATE"
     const val BOX_ADD = "BOX_ADD"
     const val BOX_REMOVE = "BOX_REMOVE"
+    // Diagnostic trail for the box-scan resolve path during pack:
+    // local-cache miss → server fallback (BOX_LOOKUP) → re-query cache.
+    // Captures why a "box not found" toast fired even though the box exists
+    // on the server (offline WS, server reject, normalization mismatch).
+    const val BOX_LOOKUP = "BOX_LOOKUP"
     const val SYNC_SCHEDULED = "SYNC_SCHEDULED"
     const val SYNC_FIRED = "SYNC_FIRED"
     const val SYNC_FLUSHED = "SYNC_FLUSHED"

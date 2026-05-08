@@ -497,6 +497,22 @@ class SyncOrchestrator @Inject constructor(
         return Result.Success(Unit)
     }
 
+    /**
+     * Request a delta sync only if the cache is older than [maxAgeMs].
+     * No-op when WS is offline, the user is not authenticated, a sync is
+     * already in flight, or the cache is fresh. Used by foreground-resume
+     * hooks to refresh reference data without spamming on every navigation.
+     */
+    suspend fun requestDeltaSyncIfStale(maxAgeMs: Long) {
+        if (_syncState.value.isSyncing) return
+        if (!webSocketManager.isConnected()) return
+        if (!webSocketManager.isUserAuthenticated()) return
+        val last = _syncState.value.lastSyncTime ?: 0L
+        if (System.currentTimeMillis() - last < maxAgeMs) return
+        AppLog.d(TAG, "Cache stale (last=$last), requesting delta sync on resume")
+        requestDeltaSync()
+    }
+
     private fun startSyncTimeout() {
         syncTimeoutJob?.cancel()
         syncTimeoutJob = scope.launch {

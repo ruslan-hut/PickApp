@@ -845,18 +845,67 @@ class DocumentDetailViewModel @Inject constructor(
      * the barcode is not a box — caller falls back to the product flow.
      */
     private suspend fun handleBoxScanAttempt(barcode: String): Boolean {
+        val docId = currentDocumentId
         // 1. Local cache first (every sync pulls boxes; usually hits).
         var box: Box? = boxDao.getBoxByBarcode(barcode)?.toDomain()
         if (box == null) {
+            debugJournal.log(
+                eventType = DebugEventType.BOX_LOOKUP,
+                message = "local cache miss; querying server",
+                documentId = docId,
+                payload = mapOf("barcode" to barcode, "length" to barcode.length)
+            )
             // 2. Server fallback — the catalog may have grown since the last sync.
             val result = try {
                 syncOrchestrator.sendBoxLookup(barcode)
             } catch (e: Exception) {
                 AppLog.w("DocumentDetailViewModel", "box lookup failed: ${e.message}")
+                debugJournal.log(
+                    eventType = DebugEventType.BOX_LOOKUP,
+                    message = "server lookup error: ${e.message}",
+                    documentId = docId,
+                    severity = DebugJournal.SEVERITY_WARN,
+                    payload = mapOf("barcode" to barcode)
+                )
                 null
             }
-            if (result?.success != true) return false
-            box = boxDao.getBoxByBarcode(barcode)?.toDomain() ?: return false
+            if (result == null) {
+                debugJournal.log(
+                    eventType = DebugEventType.BOX_LOOKUP,
+                    message = "server lookup: no response (offline or timeout)",
+                    documentId = docId,
+                    severity = DebugJournal.SEVERITY_WARN,
+                    payload = mapOf("barcode" to barcode)
+                )
+                return false
+            }
+            if (!result.success) {
+                debugJournal.log(
+                    eventType = DebugEventType.BOX_LOOKUP,
+                    message = "server reported not found: ${result.error}",
+                    documentId = docId,
+                    severity = DebugJournal.SEVERITY_WARN,
+                    payload = mapOf("barcode" to barcode, "error" to (result.error ?: ""))
+                )
+                return false
+            }
+            box = boxDao.getBoxByBarcode(barcode)?.toDomain()
+            if (box == null) {
+                debugJournal.log(
+                    eventType = DebugEventType.BOX_LOOKUP,
+                    message = "server returned success but local cache still misses after insert",
+                    documentId = docId,
+                    severity = DebugJournal.SEVERITY_WARN,
+                    payload = mapOf("barcode" to barcode)
+                )
+                return false
+            }
+            debugJournal.log(
+                eventType = DebugEventType.BOX_LOOKUP,
+                message = "server resolved box and cached locally",
+                documentId = docId,
+                payload = mapOf("barcode" to barcode, "is_parcel" to box.isParcel, "id" to box.id)
+            )
         }
 
         if (box.isParcel) {

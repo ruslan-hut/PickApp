@@ -2,9 +2,17 @@ package ua.com.programmer.pick
 
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import ua.com.programmer.pick.core.scanner.BarcodeService
+import ua.com.programmer.pick.core.util.AppLog
 import ua.com.programmer.pick.core.util.FileLogger
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.data.sync.SyncScheduler
@@ -24,6 +32,8 @@ class PickApplication : Application(), Configuration.Provider {
 
     @Inject
     lateinit var barcodeService: BarcodeService
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -48,5 +58,26 @@ class PickApplication : Application(), Configuration.Provider {
 
         // Start hardware scanner so we receive scanner intents (registers receiver)
         barcodeService.startHardwareScanner()
+
+        // Foreground-resume sync hook: when the app returns to the foreground
+        // and reference data has aged past FOREGROUND_RESYNC_THRESHOLD_MS,
+        // request a delta sync. Covers the gap when WorkManager periodic sync
+        // is throttled by Doze/app-standby and ERP-side box catalog updates
+        // would otherwise be invisible until the next 15-min cycle.
+        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) {
+                appScope.launch {
+                    try {
+                        syncOrchestrator.requestDeltaSyncIfStale(FOREGROUND_RESYNC_THRESHOLD_MS)
+                    } catch (e: Exception) {
+                        AppLog.w("PickApplication", "foreground resync failed: ${e.message}")
+                    }
+                }
+            }
+        })
+    }
+
+    private companion object {
+        const val FOREGROUND_RESYNC_THRESHOLD_MS = 60_000L
     }
 }
