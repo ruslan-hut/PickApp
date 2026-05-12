@@ -93,6 +93,7 @@ class MessageParser @Inject constructor(
         private const val FIELD_ALLOWS_EXTRA_LINES = "allows_extra_lines"
         private const val FIELD_REQUIRES_PLAN = "requires_plan"
         private const val FIELD_DEBUG_JOURNAL_ENABLED = "debug_journal_enabled"
+        private const val FIELD_HELD_STAGE_LOCKS = "held_stage_locks"
         private const val FIELD_DEVICE_ID = "device_id"
         private const val FIELD_EVENTS = "events"
         private const val FIELD_ACCEPTED_IDS = "accepted_ids"
@@ -350,6 +351,9 @@ class MessageParser @Inject constructor(
             debugJournalEnabled = payload?.get(FIELD_DEBUG_JOURNAL_ENABLED)?.let {
                 if (it.isJsonNull) null else it.asBoolean
             },
+            heldStageLocks = payload?.getAsJsonArray(FIELD_HELD_STAGE_LOCKS)
+                ?.mapNotNull { it.takeIf { e -> !e.isJsonNull }?.asString }
+                ?.filter { it.isNotBlank() },
             errorMessage = payload?.get(FIELD_ERROR_MESSAGE)?.asString
         )
     }

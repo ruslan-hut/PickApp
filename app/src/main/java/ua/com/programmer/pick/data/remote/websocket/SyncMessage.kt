@@ -138,6 +138,14 @@ sealed class SyncMessage {
         val tenantId: String? = null,
         val availableDocumentTypes: List<AvailableDocumentTypeDto>? = null,
         val debugJournalEnabled: Boolean? = null,
+        // ERP external_ids of documents this (user, device) pair already
+        // holds an in-process stage lock for. Populated by the v2 backend
+        // so the orchestrator can rebuild its session-scoped
+        // `heldStageLocks` set immediately on connect — closing the
+        // post-restart / post-reconnect race where inbound SYNC_DATA
+        // could overwrite worker-owned line data before the user thinks
+        // to re-open the doc. Null/empty on a fresh login.
+        val heldStageLocks: List<String>? = null,
         val errorMessage: String? = null
     ) : SyncMessage() {
         override val type = MessageType.USER_LOGIN_RESULT

@@ -53,7 +53,15 @@ sealed class UserAuthState {
         val userName: String,
         val role: String,
         val offlineHash: String?,
-        val availableDocumentTypes: List<AvailableDocumentTypeDto>? = null
+        val availableDocumentTypes: List<AvailableDocumentTypeDto>? = null,
+        // ERP external_ids of documents the server reports this (user, device)
+        // pair still holds an in-process stage lock for. Forwarded from the
+        // USER_LOGIN_RESULT payload so the orchestrator can rebuild its
+        // session-scoped `heldStageLocks` set immediately — closing the
+        // post-restart race where inbound SYNC_DATA could otherwise
+        // overwrite worker-owned line data while the device thought the
+        // lock was gone.
+        val heldStageLocks: List<String>? = null
     ) : UserAuthState()
     data class AuthFailed(val error: String) : UserAuthState()
 }
@@ -193,7 +201,8 @@ class WebSocketManager @Inject constructor(
                 userName = response.userName ?: "",
                 role = response.role ?: "",
                 offlineHash = response.offlineHash,
-                availableDocumentTypes = response.availableDocumentTypes
+                availableDocumentTypes = response.availableDocumentTypes,
+                heldStageLocks = response.heldStageLocks
             )
             // Reconcile the persisted current user ID with what the server
             // authoritatively reports. If the user's MongoDB _id changes

@@ -404,6 +404,19 @@ class SyncOrchestrator @Inject constructor(
                             appPreferences.setAvailableDocumentTypes(json)
                         }
 
+                        // Re-populate the in-memory `heldStageLocks` set from
+                        // the server's authoritative view (USER_LOGIN_RESULT
+                        // payload). After a process death / WS reset the set
+                        // is empty, but the server may still hold an
+                        // in-process lock for this (user, device) pair — and
+                        // any inbound SYNC_DATA for those docs would slip
+                        // past suppression and merge over the worker's
+                        // is_dirty data. Reasserting here closes that race
+                        // before the first sync round-trip fires below.
+                        authState.heldStageLocks
+                            ?.takeIf { it.isNotEmpty() }
+                            ?.let { reassertHeldStageLocksFromLogin(it) }
+
                         // Push local dirty state BEFORE requesting server state.
                         // Otherwise a stale SYNC_DATA response can race ahead of
                         // resyncDirtyDocuments and clobber in-flight edits via
@@ -2118,6 +2131,42 @@ class SyncOrchestrator @Inject constructor(
     // message, and converts server echoes (StageLockResult.documentId etc.)
     // back to Room ids before mutating the local DB. Fallbacks handle the
     // transitional case where either side still uses the ObjectID-hex form.
+
+    /**
+     * Rebuild the session-scoped `heldStageLocks` set from the server-asserted
+     * list of held locks in USER_LOGIN_RESULT. Each entry is an ERP external_id;
+     * we map back to the local Room id via `documentDao.getDocumentByExternalId`
+     * and only add entries whose local row actually exists — a server-reported
+     * lock for a document the device doesn't have yet (fresh install, cleared
+     * data) cannot drive suppression anyway, since suppression keys on the
+     * local doc's `state in WORKER_AUTHORITATIVE_STATES`. The subsequent delta
+     * sync will fetch the doc; the next inbound SYNC_DATA for it will then be
+     * suppressed correctly because by that point both heldStageLocks contains
+     * the doc AND the local state matches the server's in-process state.
+     *
+     * No journal row — the diagnostic value is captured by the existing
+     * DOC_SYNC_SUPPRESSED rows that fire when suppression actually engages.
+     */
+    private fun reassertHeldStageLocksFromLogin(externalIds: List<String>) {
+        scope.launch {
+            var reasserted = 0
+            var unknown = 0
+            externalIds.forEach { ext ->
+                val local = documentDao.getDocumentByExternalId(ext)
+                if (local != null) {
+                    if (heldStageLocks.add(local.id)) reasserted++
+                } else {
+                    unknown++
+                }
+            }
+            if (reasserted > 0 || unknown > 0) {
+                AppLog.i(
+                    TAG,
+                    "Reasserted $reasserted held stage lock(s) from USER_LOGIN_RESULT (unknown_to_local=$unknown, total_reported=${externalIds.size})"
+                )
+            }
+        }
+    }
 
     private suspend fun toExternalDocumentId(roomDocumentId: String): String {
         val doc = documentDao.getDocumentById(roomDocumentId)
