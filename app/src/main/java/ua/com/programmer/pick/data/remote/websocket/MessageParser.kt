@@ -134,6 +134,7 @@ class MessageParser @Inject constructor(
                 MessageType.BOX_DELIVERY_CONFIRM_RESULT.name -> parseBoxDeliveryConfirmResult(id, timestamp, payload)
                 MessageType.SERVER_ERROR.name -> parseServerError(id, timestamp, payload)
                 MessageType.PUSH.name -> parsePush(id, timestamp, payload)
+                MessageType.FORCE_RELEASE_REQUEST.name -> parseForceReleaseRequest(id, timestamp, payload)
                 MessageType.DEBUG_EVENT_BATCH_RESULT.name -> parseDebugEventBatchResult(id, timestamp, payload)
                 else -> {
                     AppLog.w(TAG, "Unknown message type: $typeStr")
@@ -308,6 +309,7 @@ class MessageParser @Inject constructor(
             is SyncMessage.BoxDeliveryConfirmResult,
             is SyncMessage.ServerError,
             is SyncMessage.Push,
+            is SyncMessage.ForceReleaseRequest,
             is SyncMessage.DebugEventBatchResult -> null
         }
     }
@@ -454,6 +456,15 @@ class MessageParser @Inject constructor(
             entityType = payload.get(FIELD_ENTITY_TYPE)?.asString,
             entityId = payload.get(FIELD_ENTITY_ID)?.asString,
             data = payload.get(FIELD_DATA)
+        )
+    }
+
+    private fun parseForceReleaseRequest(id: String, timestamp: String, payload: JsonObject?): SyncMessage.ForceReleaseRequest? {
+        val documentId = payload?.get(FIELD_DOCUMENT_ID)?.asString?.takeIf { it.isNotBlank() } ?: return null
+        return SyncMessage.ForceReleaseRequest(
+            id = id,
+            timestamp = timestamp,
+            documentId = documentId,
         )
     }
 

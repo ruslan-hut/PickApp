@@ -1468,6 +1468,9 @@ class SyncOrchestrator @Inject constructor(
                     // which SyncOrchestrator observes in initialize()
                     AppLog.d(TAG, "UserLoginResult received, handled via userAuthState flow")
                 }
+                is SyncMessage.ForceReleaseRequest -> {
+                    handleForceReleaseRequest(message)
+                }
                 else -> {
                     AppLog.d(TAG, "Unhandled message type: ${message.type}")
                 }
@@ -2131,6 +2134,107 @@ class SyncOrchestrator @Inject constructor(
     // message, and converts server echoes (StageLockResult.documentId etc.)
     // back to Room ids before mutating the local DB. Fallbacks handle the
     // transitional case where either side still uses the ObjectID-hex form.
+
+    /**
+     * Cooperative force-release: the server (admin action) asked us to
+     * release the lock ourselves. Semantics match "exit without saving":
+     *   1. Cancel any pending debounced sync — do NOT flush dirty edits.
+     *   2. Drop the worker's dirty actuals via the existing M5″ helper.
+     *   3. Send STAGE_UNLOCK so the server completes the cooperative flow
+     *      and the admin's HTTP request returns success.
+     *   4. Emit DocSyncEvent.LockLost so any open detail screen surfaces
+     *      the same banner used for M5″ give-up; the worker sees how
+     *      many lines / units were lost and is navigated back to the
+     *      list.
+     *
+     * If the device is offline at the moment the request arrives, this
+     * codepath can't run — the WS frame would never have been delivered.
+     * The server's hard-release fallback handles that case independently.
+     */
+    private suspend fun handleForceReleaseRequest(message: SyncMessage.ForceReleaseRequest) {
+        val externalId = message.documentId
+        val roomId = toRoomDocumentId(externalId)
+        AppLog.i(TAG, "Cooperative force-release request received for $externalId (room=$roomId)")
+
+        // Cancel any pending debounced sync so it doesn't fire mid-release.
+        documentSyncJobs.remove(roomId)?.cancel()
+
+        // Snapshot dirty rows for the audit journal before clearing them.
+        val dirtyBefore = try {
+            documentLineDao.getLinesByDocumentIdSync(roomId).filter { it.isDirty }
+        } catch (_: Exception) { emptyList() }
+        val droppedSum = dirtyBefore.sumOf { it.actualQuantity }
+        val droppedCount = dirtyBefore.size
+        val samples = dirtyBefore.take(5).map {
+            mapOf(
+                "line_id" to it.id,
+                "line_number" to it.lineNumber,
+                "product_id" to it.productId,
+                "dropped_actual_quantity" to it.actualQuantity,
+                "dropped_is_completed" to it.isCompleted,
+                "planned_quantity" to it.plannedQuantity,
+            )
+        }
+
+        try { documentLineDao.dropDirtyEdits(roomId) } catch (_: Exception) {}
+        try { documentDao.markDocumentAsSynced(roomId) } catch (_: Exception) {}
+        heldStageLocks.remove(roomId)
+
+        // Derive the stage from current local state to populate STAGE_UNLOCK.
+        // If the local state has already drifted out of in-process (e.g. an
+        // inbound SYNC_DATA already moved it), stageOf can still resolve
+        // start states; we send unlock anyway so the server's pending
+        // cooperative wait completes deterministically.
+        val doc = documentDao.getDocumentById(roomId)
+        val stage = doc?.let {
+            ua.com.programmer.pick.domain.model.DocumentState.stageOf(
+                ua.com.programmer.pick.domain.model.DocumentState.fromString(it.state)
+            )
+        }
+
+        if (stage != null && webSocketManager.isConnected()) {
+            val unlockMsg = SyncMessage.StageUnlock(
+                id = messageParser.generateMessageId(),
+                timestamp = messageParser.getCurrentTimestamp(),
+                documentId = externalId,
+                stage = stage,
+            )
+            try {
+                webSocketManager.sendMessage(unlockMsg)
+                debugJournal.log(
+                    eventType = ua.com.programmer.pick.data.debug.DebugEventType.STAGE_UNLOCK_SENT,
+                    message = "stage unlock sent (cooperative force-release)",
+                    documentId = roomId,
+                    stage = stage,
+                )
+            } catch (e: Exception) {
+                AppLog.w(TAG, "Cooperative force-release: failed to send STAGE_UNLOCK: ${e.message}")
+            }
+        } else {
+            AppLog.w(TAG, "Cooperative force-release: cannot send STAGE_UNLOCK (stage=$stage, connected=${webSocketManager.isConnected()})")
+        }
+
+        debugJournal.log(
+            eventType = ua.com.programmer.pick.data.debug.DebugEventType.LOCK_LOST_EDIT_DROPPED,
+            message = "cooperative force-release: dropped $droppedCount dirty line(s) totalling $droppedSum",
+            documentId = roomId,
+            severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_ERROR,
+            payload = mapOf(
+                "reason" to "cooperative_force_release",
+                "dropped_line_count" to droppedCount,
+                "dropped_actual_sum" to droppedSum,
+                "samples" to samples,
+            )
+        )
+
+        _docSyncEvents.tryEmit(
+            DocSyncEvent.LockLost(
+                documentId = roomId,
+                droppedLineCount = droppedCount,
+                droppedActualSum = droppedSum,
+            )
+        )
+    }
 
     /**
      * Rebuild the session-scoped `heldStageLocks` set from the server-asserted

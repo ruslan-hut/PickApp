@@ -60,6 +60,11 @@ enum class MessageType {
     SERVER_ERROR,
     PUSH,
 
+    // Admin / system-initiated cooperative force-release. Server -> device
+    // request to drop dirty edits and send STAGE_UNLOCK; the admin's HTTP
+    // request completes when the unlock lands within 10s.
+    FORCE_RELEASE_REQUEST,
+
     // Debug journal
     DEBUG_EVENT_BATCH,
     DEBUG_EVENT_BATCH_RESULT
@@ -584,6 +589,26 @@ sealed class SyncMessage {
         val data: JsonElement? = null
     ) : SyncMessage() {
         override val type = MessageType.PUSH
+    }
+
+    /**
+     * Server-initiated request to release the worker's stage lock
+     * cooperatively. Triggered by an admin clicking "Force release" in
+     * the tenant UI while the device is connected. The orchestrator
+     * runs the equivalent of "exit without saving":
+     *   1. Cancel pending debounced sync for this doc.
+     *   2. Drop any locally-dirty edits (zero actuals/is_completed/batch).
+     *   3. Send STAGE_UNLOCK so the server completes the cooperative flow.
+     *   4. Emit a UI event so any open detail screen surfaces a banner
+     *      and navigates back.
+     * documentId is the ERP external_id.
+     */
+    data class ForceReleaseRequest(
+        override val id: String,
+        override val timestamp: String,
+        val documentId: String,
+    ) : SyncMessage() {
+        override val type = MessageType.FORCE_RELEASE_REQUEST
     }
 
     // ============================================
