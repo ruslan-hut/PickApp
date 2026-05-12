@@ -56,5 +56,15 @@ object DebugEventType {
     // The 05-27.04.26 investigation needed exactly this — to see when
     // and why a local total dropped.
     const val DOC_SYNC_APPLIED = "DOC_SYNC_APPLIED"
+    // A LOADED document arrived from the server carrying non-zero
+    // actual_quantity (or is_completed=true) on one or more lines. Those
+    // values were forced to 0/false in mergeDocumentLines before the
+    // dirty-preserve step. Catches cross-device propagation (another worker
+    // picked the doc and it was unlocked back to LOADED), ERP edits that
+    // re-emit stale actuals, server-side mis-mapping, and any other upstream
+    // contract violation. Severity ERROR — every occurrence is a sign that
+    // either the customer's workflow allows pre-filled actuals (in which
+    // case this guard is wrong) or there is real upstream drift to chase.
+    const val LOADED_ACTUAL_REJECTED = "LOADED_ACTUAL_REJECTED"
     const val JOURNAL_CONFIG_CHANGED = "JOURNAL_CONFIG_CHANGED"
 }

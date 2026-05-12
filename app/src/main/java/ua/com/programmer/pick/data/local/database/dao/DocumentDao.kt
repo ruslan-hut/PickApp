@@ -85,6 +85,22 @@ interface DocumentDao {
     @Query("UPDATE documents SET total_actual = :totalActual, is_dirty = 1, last_modified = :lastModified WHERE id = :documentId")
     suspend fun updateTotalActual(documentId: String, totalActual: Double, lastModified: Long)
 
+    // Recomputes total_actual for the given documents from their current
+    // line set WITHOUT touching is_dirty or last_modified. Used by the
+    // startup LOADED-actual scrub: the scrub fixes local display drift and
+    // must not cause resyncDirtyDocuments to push the scrubbed state to the
+    // server, because the server is the authoritative source of the wrong
+    // value we're trying to undo locally.
+    @Query("""
+        UPDATE documents
+        SET total_actual = COALESCE(
+            (SELECT SUM(actual_quantity) FROM document_lines WHERE document_id = documents.id),
+            0
+        )
+        WHERE id IN (:documentIds)
+    """)
+    suspend fun recomputeTotalActualForDocs(documentIds: List<String>): Int
+
     @Query("UPDATE documents SET total_planned = :totalPlanned, last_modified = :lastModified WHERE id = :documentId")
     suspend fun updateTotalPlanned(documentId: String, totalPlanned: Double, lastModified: Long)
 

@@ -234,6 +234,21 @@ class SyncOrchestrator @Inject constructor(
             }
         }
 
+        // Startup scrub: zero any non-dirty actual_quantity / is_completed left
+        // on lines of LOADED documents. The inbound-merge guard in
+        // mergeDocumentLines stops new contamination, but it cannot undo rows
+        // that landed in the DB before that guard existed (or via a code path
+        // that bypassed it). Worker-edited lines (is_dirty=1) are never
+        // touched. Each affected document is journalled at SEVERITY_ERROR
+        // with source=startup_scrub so it remains visible in the Debug Journal.
+        scope.launch {
+            try {
+                scrubLoadedDocActualQuantitiesOnStartup()
+            } catch (e: Exception) {
+                AppLog.e(TAG, "Startup LOADED-actual scrub failed: ${e.message}", e)
+            }
+        }
+
         // Observe network state
         networkMonitor.isOnline
             .onEach { isOnline ->
@@ -1679,7 +1694,7 @@ class SyncOrchestrator @Inject constructor(
                     documentDao.upsertDocument(documentMapper.toEntity(dto))
                     var preservedDirty = 0
                     if (dto.lines != null) {
-                        preservedDirty = mergeDocumentLines(dto.id, dto.lines, productIdMap)
+                        preservedDirty = mergeDocumentLines(dto.id, dto.lines, productIdMap, dto.state)
                     }
                     // The upsert above wrote `isDirty = false` for the document
                     // (DocumentMapper.toEntity always emits false). If
@@ -1754,7 +1769,7 @@ class SyncOrchestrator @Inject constructor(
             // stale server echo while a push is still outstanding.
             var preservedDirty = 0
             if (dto.lines != null) {
-                preservedDirty = mergeDocumentLines(dto.id, dto.lines, productIdMap)
+                preservedDirty = mergeDocumentLines(dto.id, dto.lines, productIdMap, dto.state)
             }
 
             // Only journal DOC_SYNC_APPLIED for actual merges over an
@@ -1866,6 +1881,53 @@ class SyncOrchestrator @Inject constructor(
             .toMap()
     }
 
+    // Defense-in-depth complement to the LOADED-actual guard in
+    // mergeDocumentLines. The merge guard prevents new contamination; this
+    // function fixes rows that already landed in the local DB before the
+    // guard shipped, or that arrived through any future path that bypassed
+    // it. Only non-dirty lines on LOADED docs are touched; worker edits are
+    // preserved. The recompute step updates each affected document's
+    // total_actual WITHOUT marking the doc dirty — otherwise the resync
+    // worker would push the scrubbed state to the server, but the server
+    // is exactly the upstream we're trying to override locally.
+    private suspend fun scrubLoadedDocActualQuantitiesOnStartup() {
+        val affected = documentLineDao.findLoadedDocStaleActuals()
+        if (affected.isEmpty()) return
+
+        val byDoc = affected.groupBy { it.documentId }
+        val updatedLines = documentLineDao.scrubLoadedDocStaleActuals()
+        documentDao.recomputeTotalActualForDocs(byDoc.keys.toList())
+
+        AppLog.w(
+            TAG,
+            "Startup scrub: zeroed $updatedLines stale line actual(s) across ${byDoc.size} LOADED doc(s)"
+        )
+
+        byDoc.forEach { (docId, lines) ->
+            debugJournal.log(
+                eventType = ua.com.programmer.pick.data.debug.DebugEventType.LOADED_ACTUAL_REJECTED,
+                message = "startup scrub: zeroed ${lines.size} stale line actual(s)",
+                documentId = docId,
+                severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_ERROR,
+                payload = mapOf(
+                    "source" to "startup_scrub",
+                    "rejected_line_count" to lines.size,
+                    "rejected_actual_sum" to lines.sumOf { it.actualQuantity },
+                    "samples" to lines.take(5).map {
+                        mapOf(
+                            "line_id" to it.id,
+                            "line_number" to it.lineNumber,
+                            "product_id" to it.productId,
+                            "stale_actual_quantity" to it.actualQuantity,
+                            "stale_is_completed" to it.isCompleted,
+                            "planned_quantity" to it.plannedQuantity
+                        )
+                    }
+                )
+            )
+        }
+    }
+
     private fun translateLineEntity(
         entity: ua.com.programmer.pick.data.local.database.entity.DocumentLineEntity,
         productIdMap: Map<String, String>
@@ -1885,16 +1947,71 @@ class SyncOrchestrator @Inject constructor(
     // Returns the count of locally-dirty lines that were preserved during the
     // merge — callers use it for DOC_SYNC_APPLIED journal payloads so an
     // operator can see how much in-flight worker data this merge protected.
+    //
+    // documentState is the server-asserted state for the document this batch
+    // belongs to. When it is LOADED we enforce a hard invariant: a LOADED doc
+    // cannot carry non-zero actuals or is_completed=true on any line. Any
+    // such server values are coerced to 0/false before the dirty-preserve
+    // step (so a locally-dirty line still wins). This is a belt-and-braces
+    // guard against upstream contract violations — cross-device propagation
+    // after admin unlock, ERP edits that re-emit prior-session actuals,
+    // stale snapshot replays on re-issue, server field-mapping bugs — none
+    // of which we can distinguish from inside the app without server logs.
+    // Each occurrence is journalled at ERROR severity so future repeats are
+    // visible even when the customer can't reproduce on demand.
     private suspend fun mergeDocumentLines(
         documentId: String,
         serverLineDtos: List<ua.com.programmer.pick.data.remote.dto.DocumentLineDto>,
-        productIdMap: Map<String, String>
+        productIdMap: Map<String, String>,
+        documentState: String
     ): Int {
         val localById = documentLineDao.getLinesByDocumentIdSync(documentId)
             .associateBy { it.id }
-        val serverEntities = serverLineDtos.map {
+        val rawServerEntities = serverLineDtos.map {
             translateLineEntity(documentMapper.toLineEntity(it), productIdMap)
         }
+        val isLoaded = documentState.equals("LOADED", ignoreCase = true)
+        val rejectedSamples = mutableListOf<Map<String, Any?>>()
+        var rejectedLineCount = 0
+        var rejectedActualSum = 0.0
+        val serverEntities = if (isLoaded) {
+            rawServerEntities.map { server ->
+                val hasActual = server.actualQuantity != 0.0
+                val hasCompleted = server.isCompleted
+                if (hasActual || hasCompleted) {
+                    rejectedLineCount += 1
+                    rejectedActualSum += server.actualQuantity
+                    if (rejectedSamples.size < 5) {
+                        rejectedSamples += mapOf(
+                            "line_id" to server.id,
+                            "line_number" to server.lineNumber,
+                            "product_id" to server.productId,
+                            "server_actual_quantity" to server.actualQuantity,
+                            "server_is_completed" to server.isCompleted,
+                            "planned_quantity" to server.plannedQuantity
+                        )
+                    }
+                    server.copy(actualQuantity = 0.0, isCompleted = false)
+                } else server
+            }
+        } else rawServerEntities
+
+        if (rejectedLineCount > 0) {
+            debugJournal.log(
+                eventType = ua.com.programmer.pick.data.debug.DebugEventType.LOADED_ACTUAL_REJECTED,
+                message = "coerced $rejectedLineCount line(s) on LOADED doc to actual_quantity=0",
+                documentId = documentId,
+                severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_ERROR,
+                payload = mapOf(
+                    "rejected_line_count" to rejectedLineCount,
+                    "rejected_actual_sum" to rejectedActualSum,
+                    "server_line_count" to rawServerEntities.size,
+                    "samples" to rejectedSamples
+                )
+            )
+            AppLog.w(TAG, "LOADED doc $documentId: rejected $rejectedLineCount non-zero server line(s) (sum=$rejectedActualSum)")
+        }
+
         val serverIds = serverEntities.map { it.id }.toSet()
 
         localById.values

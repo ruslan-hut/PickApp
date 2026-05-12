@@ -35,6 +35,29 @@ interface DocumentLineDao {
     @Query("SELECT * FROM document_lines WHERE is_dirty = 1")
     suspend fun getDirtyLines(): List<DocumentLineEntity>
 
+    // Defense-in-depth scrub for the LOADED-actual-leak class of bug. Finds any
+    // line on a LOADED document where the server (or a prior pre-guard sync)
+    // left a non-zero actual_quantity or is_completed=true on a line that was
+    // not edited locally. Worker-edited lines (is_dirty=1) are never touched —
+    // they win the merge regardless of doc state and the user's in-flight work
+    // must be preserved across app restarts.
+    @Query("""
+        SELECT * FROM document_lines
+        WHERE is_dirty = 0
+          AND (actual_quantity != 0 OR is_completed = 1)
+          AND document_id IN (SELECT id FROM documents WHERE state = 'LOADED')
+    """)
+    suspend fun findLoadedDocStaleActuals(): List<DocumentLineEntity>
+
+    @Query("""
+        UPDATE document_lines
+        SET actual_quantity = 0, is_completed = 0
+        WHERE is_dirty = 0
+          AND (actual_quantity != 0 OR is_completed = 1)
+          AND document_id IN (SELECT id FROM documents WHERE state = 'LOADED')
+    """)
+    suspend fun scrubLoadedDocStaleActuals(): Int
+
     @Query("SELECT COUNT(*) FROM document_lines WHERE document_id = :documentId")
     fun getLineCount(documentId: String): Flow<Int>
 
