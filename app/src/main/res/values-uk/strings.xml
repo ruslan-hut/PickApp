@@ -95,6 +95,10 @@
     <string name="pause_document_dialog_title">Призупинити роботу?</string>
     <string name="pause_document_dialog_message">Зберегти прогрес і вийти?</string>
     <string name="document_paused">Роботу призупинено</string>
+    <string name="lock_lost_dialog_title">Документ більше не у вас в роботі</string>
+    <string name="lock_lost_dialog_message_fmt">Документ було перепризначено або звільнено на сервері. Незбережені зміни втрачено: %1$d рядків, %2$s од. загалом.</string>
+    <string name="lock_lost_dialog_message_zero">Документ було перепризначено або звільнено на сервері. Незбережених змін не було.</string>
+    <string name="lock_lost_dialog_ok">OK</string>
     <string name="unchecked_lines_dialog_title">Не можна завершити документ</string>
     <string name="unchecked_lines_dialog_message_fmt">Не підтверджено: %1$d рядків. Проведіть праворуч, щоб позначити рядок як готовий, або ліворуч, щоб зняти позначку.</string>
     <string name="line_acknowledge_action">Позначити рядок як готовий</string>

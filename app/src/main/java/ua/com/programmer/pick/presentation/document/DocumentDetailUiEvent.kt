@@ -7,6 +7,15 @@ sealed class DocumentDetailUiEvent {
     data class ShowToast(val messageType: ToastMessage) : DocumentDetailUiEvent()
     data class ShowBarcodeAlert(val alertType: BarcodeAlertType) : DocumentDetailUiEvent()
     data object NavigateBack : DocumentDetailUiEvent()
+    /**
+     * M5″ recovery exhausted the silent re-lock budget; the worker's dirty
+     * edits were dropped on this device. The screen should show a banner /
+     * dialog explaining what happened and (typically) navigate the worker
+     * back to the document list. `droppedLineCount` and `droppedActualSum`
+     * are surfaced in the message so the worker can see the magnitude of
+     * what was lost.
+     */
+    data class LockLost(val droppedLineCount: Int, val droppedActualSum: Double) : DocumentDetailUiEvent()
 }
 
 enum class ToastMessage(@StringRes val resId: Int) {

@@ -98,6 +98,10 @@ fun DocumentDetailScreen(
     var showPackCompleteConfirm by remember { mutableStateOf(false) }
     // Dialog: confirm pause — save progress and exit without completing the stage
     var showPauseConfirm by remember { mutableStateOf(false) }
+    // Dialog: orchestrator gave up trying to recover the worker's stage lock
+    // (M5″ exhaustion). Holds the dropped counts captured at the moment the
+    // event fired; the dialog text formats from these.
+    var lockLost by remember { mutableStateOf<DocumentDetailUiEvent.LockLost?>(null) }
 
     LaunchedEffect(documentId) {
         viewModel.load(documentId)
@@ -115,6 +119,9 @@ fun DocumentDetailScreen(
                 }
                 is DocumentDetailUiEvent.NavigateBack -> {
                     onNavigateBack?.invoke()
+                }
+                is DocumentDetailUiEvent.LockLost -> {
+                    lockLost = event
                 }
             }
         }
@@ -182,6 +189,44 @@ fun DocumentDetailScreen(
                 viewModel.pauseDocument()
             },
             onDismiss = { showPauseConfirm = false }
+        )
+    }
+
+    // M5″ recovery exhausted: server repudiated this device's lock and the
+    // worker's dirty edits were dropped. Show the size of what was lost so
+    // the worker can flag it to the supervisor, then route back to the list.
+    // Dismissing or tapping OK both navigate back — the screen is no longer
+    // valid for the doc that's been reassigned away.
+    lockLost?.let { event ->
+        val droppedFormatted = if (event.droppedActualSum == event.droppedActualSum.toLong().toDouble()) {
+            event.droppedActualSum.toLong().toString()
+        } else {
+            String.format("%.1f", event.droppedActualSum)
+        }
+        val message = if (event.droppedLineCount > 0) {
+            resources.getString(
+                R.string.lock_lost_dialog_message_fmt,
+                event.droppedLineCount,
+                droppedFormatted,
+            )
+        } else {
+            resources.getString(R.string.lock_lost_dialog_message_zero)
+        }
+        AlertDialog(
+            onDismissRequest = {
+                lockLost = null
+                onNavigateBack?.invoke()
+            },
+            title = { Text(text = resources.getString(R.string.lock_lost_dialog_title)) },
+            text = { Text(text = message) },
+            confirmButton = {
+                TextButton(onClick = {
+                    lockLost = null
+                    onNavigateBack?.invoke()
+                }) {
+                    Text(text = resources.getString(R.string.lock_lost_dialog_ok))
+                }
+            }
         )
     }
 

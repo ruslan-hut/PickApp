@@ -108,6 +108,26 @@ interface DocumentLineDao {
     @Query("UPDATE document_lines SET is_dirty = 0 WHERE id = :lineId")
     suspend fun markLineAsSynced(lineId: String)
 
+    // Drops every worker-owned edit on a document by zeroing actuals,
+    // clearing is_completed/batch, and turning is_dirty off — but ONLY on
+    // rows that are currently dirty (i.e. carried unsent worker input).
+    // Used by the M5″ lock-loss recovery give-up branch: after three
+    // failed silent-relock attempts the worker's edits have been
+    // repudiated by the server, so the local state must match the
+    // server's truth before the next fresh fetch lands. The is_dirty=0
+    // condition guarantees we never wipe non-dirty rows (those already
+    // reflect server state). Returns the number of rows zeroed so the
+    // caller can journal a meaningful audit row.
+    @Query("""
+        UPDATE document_lines
+        SET actual_quantity = 0,
+            is_completed = 0,
+            batch_number = '',
+            is_dirty = 0
+        WHERE document_id = :documentId AND is_dirty = 1
+    """)
+    suspend fun dropDirtyEdits(documentId: String): Int
+
     @Query("UPDATE document_lines SET is_dirty = 0 WHERE document_id = :documentId")
     suspend fun markAllLinesAsSynced(documentId: String)
 

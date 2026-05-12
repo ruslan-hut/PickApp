@@ -76,6 +76,33 @@ class DocumentDetailViewModel @Inject constructor(
         // Subscribe to barcode scans once when ViewModel is created
         subscribeToScans()
         subscribeToDocumentTypeConfigs()
+        subscribeToOrchestratorEvents()
+    }
+
+    /**
+     * Surface orchestrator-side one-shot events into the document detail
+     * stream. Only events that match the currently-loaded document are
+     * forwarded, so a LockLost for a different doc (rare but possible if
+     * the user back-navigated mid-recovery) doesn't fire a stale banner.
+     */
+    private fun subscribeToOrchestratorEvents() {
+        syncOrchestrator.docSyncEvents
+            .onEach { event ->
+                when (event) {
+                    is SyncOrchestrator.DocSyncEvent.LockLost -> {
+                        if (event.documentId == currentDocumentId) {
+                            _uiState.update { it.copy(hasStageLock = false) }
+                            _uiEvents.emit(
+                                DocumentDetailUiEvent.LockLost(
+                                    droppedLineCount = event.droppedLineCount,
+                                    droppedActualSum = event.droppedActualSum,
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+            .launchIn(viewModelScope)
     }
 
     private fun subscribeToDocumentTypeConfigs() {

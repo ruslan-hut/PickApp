@@ -66,5 +66,19 @@ object DebugEventType {
     // either the customer's workflow allows pre-filled actuals (in which
     // case this guard is wrong) or there is real upstream drift to chase.
     const val LOADED_ACTUAL_REJECTED = "LOADED_ACTUAL_REJECTED"
+    // M5″ lock-loss recovery succeeded: the server had transiently lost
+    // (or admin had soft-released) the worker's lock; a silent STAGE_LOCK
+    // re-acquired it within the 3-attempt × 10s budget and any queued or
+    // dirty edits were drained on success. Severity INFO — the recovery
+    // worked, but the row is the audit trail for "what happened in the
+    // gap" so support can correlate with server-side lock churn.
+    const val LOCK_LOST_RECOVERED = "LOCK_LOST_RECOVERED"
+    // M5″ recovery gave up after 3 failed silent re-lock attempts. The
+    // worker's dirty edits for this document were dropped (zeroed),
+    // local state was refreshed from the server, and the UI showed a
+    // banner. Severity ERROR — this is data loss for that document on
+    // this device, intentional but worth flagging. Payload carries the
+    // dropped quantities so admins can decide whether to reconcile.
+    const val LOCK_LOST_EDIT_DROPPED = "LOCK_LOST_EDIT_DROPPED"
     const val JOURNAL_CONFIG_CHANGED = "JOURNAL_CONFIG_CHANGED"
 }

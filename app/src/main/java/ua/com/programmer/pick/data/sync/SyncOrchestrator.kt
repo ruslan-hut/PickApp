@@ -6,8 +6,11 @@ import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
@@ -178,6 +181,38 @@ class SyncOrchestrator @Inject constructor(
         // that doc (see applyDocumentSync). Mirrors the backend's in-process
         // states that trigger `erp_sync_blocked`.
         private val WORKER_AUTHORITATIVE_STATES = setOf("COLLECTING", "PACKING", "DELIVERING")
+
+        // M5″ lock-loss recovery budget: when the server rejects a worker
+        // write (LOCK_LOST / WRONG_STATE), the orchestrator silently re-issues
+        // STAGE_LOCK up to LOCK_LOSS_MAX_ATTEMPTS times with
+        // LOCK_LOSS_RETRY_BACKOFF_MS between attempts. Tuned to ride out
+        // transient server-state hiccups (admin force-release followed by
+        // re-assignment, brief Mongo race) without burning battery on a
+        // permanent rejection. After exhaustion the doc transitions to a
+        // local read-only state and the dirty edits are dropped + journalled.
+        private const val LOCK_LOSS_MAX_ATTEMPTS = 3
+        private const val LOCK_LOSS_RETRY_BACKOFF_MS = 10_000L
+    }
+
+    /**
+     * One-shot events emitted by the orchestrator that the UI layer should
+     * surface to the worker. Currently used only by the M5″ lock-loss
+     * recovery to notify the document detail screen when its document has
+     * been repudiated by the server. Subscribe with `replay = 0` semantics —
+     * each event is delivered to whichever ViewModel is currently observing.
+     */
+    sealed class DocSyncEvent {
+        /**
+         * The orchestrator gave up trying to re-acquire the stage lock for
+         * this document after the M5″ budget was exhausted. Dirty edits have
+         * been dropped locally and the doc has been refreshed from the server.
+         * The UI must navigate the worker off the doc and show a banner.
+         */
+        data class LockLost(
+            val documentId: String,
+            val droppedLineCount: Int,
+            val droppedActualSum: Double,
+        ) : DocSyncEvent()
     }
 
     private val scope = CoroutineScope(ioDispatcher)
@@ -199,6 +234,27 @@ class SyncOrchestrator @Inject constructor(
     // STAGE_UNLOCK_RESULT), leaving the UI with no way to recover.
     private val heldStageLocks: MutableSet<String> =
         java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+    // M5″ lock-loss recovery state. `lockLossInProgress` is checked at the
+    // top of every outbound line-update path (`performDocumentSync`) so we
+    // don't fan out more DOCUMENT_UPDATEs that the server is currently
+    // rejecting — the worker can keep scanning, the edits accumulate as
+    // `is_dirty=1` rows, and the recovery either re-acquires the lock and
+    // drains them, or gives up and drops them. `lockLossJobs` lets us
+    // collapse repeat rejection signals for the same doc onto a single
+    // running recovery coroutine. Keyed by internal (Room) document id.
+    private val lockLossInProgress: MutableSet<String> =
+        java.util.concurrent.ConcurrentHashMap.newKeySet()
+    private val lockLossJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
+
+    // One-shot UI events. UnlimitedReplay-free buffered flow with extraBufferCapacity
+    // so a fast-firing emit() never suspends the orchestrator on a slow collector,
+    // and a freshly-attached collector doesn't replay stale events from minutes ago.
+    private val _docSyncEvents = MutableSharedFlow<DocSyncEvent>(
+        replay = 0,
+        extraBufferCapacity = 16,
+    )
+    val docSyncEvents: SharedFlow<DocSyncEvent> = _docSyncEvents.asSharedFlow()
 
     // Tracks the last DOC_UPDATE_QUEUED journal-write per document so we can
     // coalesce a long offline burst into one full row plus a periodic
@@ -1079,6 +1135,15 @@ class SyncOrchestrator @Inject constructor(
     }
 
     private suspend fun performDocumentSync(documentId: String) {
+        // M5″ guard: if the server is currently rejecting writes for this doc
+        // and a silent re-lock attempt is in flight, queue more dirty edits
+        // locally but don't fan out a fresh DOCUMENT_UPDATE — it would just
+        // get rejected again and pad the journal. The recovery's success
+        // path calls flushDocumentSync() to drain whatever accumulated.
+        if (documentId in lockLossInProgress) {
+            AppLog.d(TAG, "performDocumentSync: lock-loss recovery in progress for $documentId, skipping")
+            return
+        }
         val doc = documentDao.getDocumentById(documentId) ?: return
         val lineEntities = documentLineDao.getLinesByDocumentIdSync(documentId)
         if (lineEntities.isEmpty()) return
@@ -1511,6 +1576,23 @@ class SyncOrchestrator @Inject constructor(
             isSyncing = false
         )
 
+        // Lock-loss class of errors (M5″). The server rejected a worker-write
+        // because we no longer hold the stage lock (LOCK_LOST) or the doc
+        // moved out of the in-process state (WRONG_STATE). Both shapes carry
+        // a document_id so the recovery can target the specific doc. Route
+        // to the silent re-lock machine BEFORE the legacy FORBIDDEN→reconnect
+        // branch: these errors are not auth failures, they must not trigger
+        // a token-refresh disconnect loop.
+        if (message.code == "LOCK_LOST" || message.code == "WRONG_STATE") {
+            val externalDocId = message.documentId
+            if (!externalDocId.isNullOrBlank()) {
+                scope.launch { onDocumentWriteRejected(externalDocId, message.code) }
+            } else {
+                AppLog.w(TAG, "ServerError ${message.code} arrived without document_id; ignoring")
+            }
+            return
+        }
+
         // If FORBIDDEN, trigger reconnect (which will refresh the token)
         if (message.code == "FORBIDDEN") {
             AppLog.d(TAG, "FORBIDDEN error received, triggering WebSocket reconnect with token refresh")
@@ -1520,6 +1602,185 @@ class SyncOrchestrator @Inject constructor(
                 webSocketManager.connect()
             }
         }
+    }
+
+    /**
+     * M5″ lock-loss recovery. Triggered by a server-side rejection of a
+     * worker write (DOCUMENT_UPDATE). Plan:
+     *
+     *   1. Coalesce — if a recovery for this doc is already running, ignore.
+     *   2. Pause outbound sync for the doc (lockLossInProgress flag).
+     *   3. Attempt STAGE_LOCK in the doc's current stage, up to
+     *      LOCK_LOSS_MAX_ATTEMPTS times with LOCK_LOSS_RETRY_BACKOFF_MS
+     *      between attempts.
+     *   4. On success: drain accumulated dirty edits via flushDocumentSync,
+     *      journal LOCK_LOST_RECOVERED, clear the flag.
+     *   5. On final failure: drop dirty edits (zero actuals on is_dirty rows),
+     *      journal LOCK_LOST_EDIT_DROPPED with the dropped quantities, refresh
+     *      the doc from the server, emit a DocSyncEvent.LockLost so the UI
+     *      can navigate off + show a banner.
+     */
+    private suspend fun onDocumentWriteRejected(externalDocumentId: String, code: String) {
+        val roomId = toRoomDocumentId(externalDocumentId)
+        // Coalesce repeat signals for the same doc onto the existing recovery.
+        // putIfAbsent semantics on the Set: returns false if already present.
+        if (!lockLossInProgress.add(roomId)) {
+            AppLog.d(TAG, "Lock-loss recovery already in progress for $roomId, ignoring duplicate $code signal")
+            return
+        }
+        val existingJob = lockLossJobs[roomId]
+        existingJob?.cancel()
+        val job = scope.launch {
+            try {
+                runLockLossRecovery(roomId, code)
+            } finally {
+                lockLossInProgress.remove(roomId)
+                lockLossJobs.remove(roomId)
+            }
+        }
+        lockLossJobs[roomId] = job
+    }
+
+    /**
+     * Attempts up to LOCK_LOSS_MAX_ATTEMPTS silent STAGE_LOCKs for the
+     * document, derived from its current local state's stage. Returns on
+     * the first success (after draining dirty edits) or after the budget
+     * is exhausted (after invoking the give-up branch).
+     */
+    private suspend fun runLockLossRecovery(roomDocumentId: String, triggerCode: String) {
+        // Capture the stage from local state. The doc may have already been
+        // mutated by an inbound SYNC_DATA between rejection and recovery
+        // start — that's fine: stageOf maps both the start state (LOADED/
+        // PACK/DELIVERY) and the in-process state (COLLECTING/PACKING/
+        // DELIVERING) to the same stage label, so a stale local state
+        // doesn't break the lock attempt.
+        val doc = documentDao.getDocumentById(roomDocumentId)
+        if (doc == null) {
+            AppLog.w(TAG, "Lock-loss recovery: doc $roomDocumentId not found locally, nothing to recover")
+            return
+        }
+        val stage = ua.com.programmer.pick.domain.model.DocumentState.stageOf(
+            ua.com.programmer.pick.domain.model.DocumentState.fromString(doc.state)
+        )
+        if (stage == null) {
+            AppLog.w(TAG, "Lock-loss recovery: doc $roomDocumentId in terminal state ${doc.state}, cannot relock")
+            finalizeLockLossGiveUp(roomDocumentId, reason = "terminal_state_${doc.state}")
+            return
+        }
+
+        AppLog.i(TAG, "Lock-loss recovery starting for $roomDocumentId (stage=$stage, trigger=$triggerCode)")
+
+        var attempt = 0
+        while (attempt < LOCK_LOSS_MAX_ATTEMPTS) {
+            attempt++
+            val result = try {
+                lockForStage(roomDocumentId, stage)
+            } catch (e: Exception) {
+                AppLog.w(TAG, "Lock-loss recovery attempt $attempt failed with exception: ${e.message}")
+                Result.Error(e)
+            }
+            val success = (result as? Result.Success)?.data?.success == true
+            if (success) {
+                AppLog.i(TAG, "Lock-loss recovery succeeded on attempt $attempt for $roomDocumentId")
+                // Drain accumulated dirty edits now that the lock is back.
+                // Recovery flag clears in the finally{} of onDocumentWriteRejected.
+                lockLossInProgress.remove(roomDocumentId)
+                try { flushDocumentSync(roomDocumentId) } catch (_: Exception) {}
+                debugJournal.log(
+                    eventType = ua.com.programmer.pick.data.debug.DebugEventType.LOCK_LOST_RECOVERED,
+                    message = "silent re-lock succeeded on attempt $attempt",
+                    documentId = roomDocumentId,
+                    stage = stage,
+                    payload = mapOf(
+                        "attempt" to attempt,
+                        "trigger_code" to triggerCode,
+                    )
+                )
+                return
+            }
+            if (attempt < LOCK_LOSS_MAX_ATTEMPTS) {
+                AppLog.w(TAG, "Lock-loss recovery attempt $attempt denied for $roomDocumentId; backing off ${LOCK_LOSS_RETRY_BACKOFF_MS}ms")
+                delay(LOCK_LOSS_RETRY_BACKOFF_MS)
+            }
+        }
+
+        AppLog.w(TAG, "Lock-loss recovery exhausted ${LOCK_LOSS_MAX_ATTEMPTS} attempts for $roomDocumentId; dropping dirty edits")
+        finalizeLockLossGiveUp(roomDocumentId, reason = "max_attempts_exhausted")
+    }
+
+    /**
+     * Give-up branch of M5″. Captures the about-to-be-dropped dirty
+     * quantities for the journal, zeroes them in Room, marks the doc as
+     * non-dirty, refreshes the doc from the server, and emits a one-shot
+     * DocSyncEvent.LockLost so the detail screen can navigate off and
+     * show a banner.
+     *
+     * Called either when 3 retries failed, or when the doc was in a
+     * terminal state that can't be re-locked.
+     */
+    private suspend fun finalizeLockLossGiveUp(roomDocumentId: String, reason: String) {
+        // Snapshot the dirty rows for the audit journal before dropping them.
+        val dirtyBefore = try {
+            documentLineDao.getLinesByDocumentIdSync(roomDocumentId).filter { it.isDirty }
+        } catch (_: Exception) { emptyList() }
+        val droppedSum = dirtyBefore.sumOf { it.actualQuantity }
+        val droppedCount = dirtyBefore.size
+
+        val samples = dirtyBefore.take(5).map {
+            mapOf(
+                "line_id" to it.id,
+                "line_number" to it.lineNumber,
+                "product_id" to it.productId,
+                "dropped_actual_quantity" to it.actualQuantity,
+                "dropped_is_completed" to it.isCompleted,
+                "planned_quantity" to it.plannedQuantity,
+            )
+        }
+
+        // Drop the worker's unsent edits to match server's truth.
+        val rowsZeroed = try {
+            documentLineDao.dropDirtyEdits(roomDocumentId)
+        } catch (e: Exception) {
+            AppLog.e(TAG, "Failed to drop dirty edits for $roomDocumentId: ${e.message}", e)
+            0
+        }
+        // Recompute totals so the UI doesn't show stale aggregates between
+        // here and the next inbound SYNC_DATA.
+        try {
+            documentDao.recomputeTotalActualForDocs(listOf(roomDocumentId))
+        } catch (_: Exception) {}
+        try { documentDao.markDocumentAsSynced(roomDocumentId) } catch (_: Exception) {}
+
+        // Release any session claim and trigger a fresh server fetch so the
+        // local doc realigns with whatever state the server actually has now
+        // (assigned to someone else, locked elsewhere, etc.). UI re-renders
+        // off the refreshed entity.
+        heldStageLocks.remove(roomDocumentId)
+        try { requestDocumentProducts(roomDocumentId) } catch (_: Exception) {}
+
+        debugJournal.log(
+            eventType = ua.com.programmer.pick.data.debug.DebugEventType.LOCK_LOST_EDIT_DROPPED,
+            message = "gave up after lock-loss recovery; dropped $droppedCount dirty line(s) totalling $droppedSum",
+            documentId = roomDocumentId,
+            severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_ERROR,
+            payload = mapOf(
+                "reason" to reason,
+                "dropped_line_count" to droppedCount,
+                "dropped_actual_sum" to droppedSum,
+                "rows_zeroed" to rowsZeroed,
+                "samples" to samples,
+            )
+        )
+
+        // Notify the UI. tryEmit instead of emit so the orchestrator never
+        // blocks on a slow / detached collector — the buffer absorbs.
+        _docSyncEvents.tryEmit(
+            DocSyncEvent.LockLost(
+                documentId = roomDocumentId,
+                droppedLineCount = droppedCount,
+                droppedActualSum = droppedSum,
+            )
+        )
     }
 
     // ============================================

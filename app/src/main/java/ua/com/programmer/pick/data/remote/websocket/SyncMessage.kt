@@ -544,14 +544,21 @@ sealed class SyncMessage {
 
     /**
      * Server error response
-     * Payload: code, message, details
+     * Payload: code, message, details, optional document_id
+     *
+     * `documentId` is populated for write-path rejections (codes
+     * `LOCK_LOST`, `WRONG_STATE`) so the orchestrator can drive M5″
+     * lock-loss recovery for the specific document without parsing the
+     * human-readable message. Empty for connection-level errors
+     * (`NOT_AUTHENTICATED`, `INVALID_PAYLOAD`, …).
      */
     data class ServerError(
         override val id: String,
         override val timestamp: String,
         val code: String,
         val message: String,
-        val details: String? = null
+        val details: String? = null,
+        val documentId: String? = null
     ) : SyncMessage() {
         override val type = MessageType.SERVER_ERROR
     }

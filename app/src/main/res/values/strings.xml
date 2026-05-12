@@ -95,6 +95,10 @@
     <string name="pause_document_dialog_title">Pause work?</string>
     <string name="pause_document_dialog_message">Save the progress and exit?</string>
     <string name="document_paused">Work paused</string>
+    <string name="lock_lost_dialog_title">Document no longer assigned</string>
+    <string name="lock_lost_dialog_message_fmt">This document was reassigned or released on the server. Unsaved changes were dropped: %1$d line(s), %2$s units total.</string>
+    <string name="lock_lost_dialog_message_zero">This document was reassigned or released on the server. No unsaved changes were lost.</string>
+    <string name="lock_lost_dialog_ok">OK</string>
     <string name="unchecked_lines_dialog_title">Cannot finish document</string>
     <string name="unchecked_lines_dialog_message_fmt">%1$d line(s) not acknowledged. Swipe right to mark a line as done, or swipe left to clear the mark.</string>
     <string name="line_acknowledge_action">Mark line as done</string>

@@ -436,7 +436,8 @@ class MessageParser @Inject constructor(
             timestamp = timestamp,
             code = payload?.get(FIELD_CODE)?.asString ?: "UNKNOWN",
             message = payload?.get(FIELD_MESSAGE)?.asString ?: "Unknown error",
-            details = payload?.get(FIELD_DETAILS)?.asString
+            details = payload?.get(FIELD_DETAILS)?.asString,
+            documentId = payload?.get(FIELD_DOCUMENT_ID)?.asString?.takeIf { it.isNotBlank() }
         )
     }
 
