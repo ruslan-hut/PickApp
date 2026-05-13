@@ -97,6 +97,8 @@
     <string name="document_paused">Работа приостановлена</string>
     <string name="unchecked_lines_dialog_title">Нельзя завершить документ</string>
     <string name="unchecked_lines_dialog_message_fmt">Не подтверждено: %1$d строк. Свайп вправо — отметить строку как готовую, свайп влево — снять отметку.</string>
+    <string name="no_unchecked_lines">Все строки обработаны</string>
+    <string name="filter_unchecked_active_cd">Показаны только необработанные строки</string>
     <string name="line_acknowledge_action">Отметить строку как готовую</string>
     <string name="line_clear_action">Снять отметку</string>
     <string name="document_state_loaded">Новый</string>

@@ -101,6 +101,8 @@
     <string name="lock_lost_dialog_ok">OK</string>
     <string name="unchecked_lines_dialog_title">Не можна завершити документ</string>
     <string name="unchecked_lines_dialog_message_fmt">Не підтверджено: %1$d рядків. Проведіть праворуч, щоб позначити рядок як готовий, або ліворуч, щоб зняти позначку.</string>
+    <string name="no_unchecked_lines">Усі рядки оброблено</string>
+    <string name="filter_unchecked_active_cd">Показано лише необроблені рядки</string>
     <string name="line_acknowledge_action">Позначити рядок як готовий</string>
     <string name="line_clear_action">Зняти позначку</string>
     <string name="document_state_loaded">Новий</string>

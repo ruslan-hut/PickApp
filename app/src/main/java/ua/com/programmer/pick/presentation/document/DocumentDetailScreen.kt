@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -236,7 +237,7 @@ fun DocumentDetailScreen(
     if (uiState.firstUncheckedLineId != null) {
         val firstId = uiState.firstUncheckedLineId
         LaunchedEffect(firstId) {
-            val idx = uiState.lines.indexOfFirst { it.id == firstId }
+            val idx = uiState.visibleLines.indexOfFirst { it.id == firstId }
             if (idx >= 0) {
                 listState.animateScrollToItem(idx + 2)
             }
@@ -250,7 +251,7 @@ fun DocumentDetailScreen(
     // Auto-scroll to selected line when barcode is scanned
     LaunchedEffect(uiState.selectedLineId) {
         val selectedId = uiState.selectedLineId ?: return@LaunchedEffect
-        val lineIndex = uiState.lines.indexOfFirst { it.id == selectedId }
+        val lineIndex = uiState.visibleLines.indexOfFirst { it.id == selectedId }
         if (lineIndex >= 0) {
             // Account for header items: DocumentHeaderCard (0) + SectionHeader (1)
             val scrollIndex = lineIndex + 2
@@ -346,7 +347,9 @@ fun DocumentDetailScreen(
                         linesTotal = uiState.lines.size,
                         linesCompleted = uiState.lines.count { it.isCompleted },
                         requiresPlan = uiState.requiresPlan,
-                        isOverCollected = uiState.hasOvercollectedLine
+                        isOverCollected = uiState.hasOvercollectedLine,
+                        filterActive = uiState.showOnlyUnchecked,
+                        onToggleFilter = { viewModel.toggleUncheckedFilter() }
                     )
                 }
             }
@@ -432,7 +435,9 @@ fun DocumentDetailScreen(
                                                 linesTotal = uiState.lines.size,
                                                 linesCompleted = uiState.lines.count { it.isCompleted },
                                                 requiresPlan = uiState.requiresPlan,
-                                                isOverCollected = uiState.hasOvercollectedLine
+                                                isOverCollected = uiState.hasOvercollectedLine,
+                                                filterActive = uiState.showOnlyUnchecked,
+                                                onToggleFilter = { viewModel.toggleUncheckedFilter() }
                                             )
                                         }
 
@@ -452,7 +457,7 @@ fun DocumentDetailScreen(
                                             }
                                         } else {
                                             items(
-                                                items = uiState.lines,
+                                                items = uiState.visibleLines,
                                                 key = { it.id }
                                             ) { line ->
                                                 DocumentLineRow(
@@ -496,6 +501,8 @@ private fun PinnedProgressBar(
     linesCompleted: Int,
     requiresPlan: Boolean,
     isOverCollected: Boolean,
+    filterActive: Boolean,
+    onToggleFilter: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val progress = if (requiresPlan && totalPlanned > 0) {
@@ -503,10 +510,22 @@ private fun PinnedProgressBar(
     } else 0f
 
     val isComplete = linesCompleted >= linesTotal
+    val containerColor = if (filterActive) {
+        MaterialTheme.colorScheme.tertiaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceContainer
+    }
+    val onContainerColor = if (filterActive) {
+        MaterialTheme.colorScheme.onTertiaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
 
     Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggleFilter),
+        color = containerColor,
         shadowElevation = 2.dp
     ) {
         Column(
@@ -519,16 +538,28 @@ private fun PinnedProgressBar(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = stringResource(R.string.actual, totalActual),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (isOverCollected) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.onSurface
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (filterActive) {
+                        Icon(
+                            painter = painterResource(R.drawable.outline_filter_alt_24),
+                            contentDescription = stringResource(R.string.filter_unchecked_active_cd),
+                            tint = onContainerColor,
+                            modifier = Modifier
+                                .size(16.dp)
+                                .padding(end = 4.dp)
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.actual, totalActual),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (isOverCollected) MaterialTheme.colorScheme.error
+                        else onContainerColor
+                    )
+                }
                 Text(
                     text = stringResource(R.string.lines_progress_fmt, linesCompleted, linesTotal),
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = onContainerColor
                 )
             }
 
@@ -563,6 +594,8 @@ private fun DocumentHeaderCard(
     linesCompleted: Int,
     requiresPlan: Boolean,
     isOverCollected: Boolean,
+    filterActive: Boolean,
+    onToggleFilter: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val progress = if (requiresPlan && totalPlanned > 0) {
@@ -573,7 +606,9 @@ private fun DocumentHeaderCard(
 
     PickElevatedCard(
         modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        onClick = onToggleFilter,
         containerColor = when {
+            filterActive -> MaterialTheme.colorScheme.tertiaryContainer
             isOverCollected -> MaterialTheme.colorScheme.errorContainer
             isComplete -> MaterialTheme.colorScheme.secondaryContainer
             else -> MaterialTheme.colorScheme.surfaceVariant
@@ -590,6 +625,7 @@ private fun DocumentHeaderCard(
                     text = clientName,
                     style = MaterialTheme.typography.titleMedium,
                     color = when {
+                        filterActive -> MaterialTheme.colorScheme.onTertiaryContainer
                         isOverCollected -> MaterialTheme.colorScheme.onErrorContainer
                         isComplete -> MaterialTheme.colorScheme.onSecondaryContainer
                         else -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -604,6 +640,7 @@ private fun DocumentHeaderCard(
                     text = warehouseName,
                     style = MaterialTheme.typography.bodyMedium,
                     color = when {
+                        filterActive -> MaterialTheme.colorScheme.onTertiaryContainer
                         isOverCollected -> MaterialTheme.colorScheme.onErrorContainer
                         isComplete -> MaterialTheme.colorScheme.onSecondaryContainer
                         else -> MaterialTheme.colorScheme.onSurfaceVariant

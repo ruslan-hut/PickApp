@@ -575,6 +575,23 @@ class DocumentDetailViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Toggle the "show only unchecked lines" filter. Turning the filter on
+     * with no unchecked lines left is a no-op that surfaces a toast — the
+     * worker would otherwise see an empty list with no explanation. Turning
+     * it off is always allowed.
+     */
+    fun toggleUncheckedFilter() {
+        val state = _uiState.value
+        if (!state.showOnlyUnchecked && state.uncheckedCount == 0) {
+            viewModelScope.launch {
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.NO_UNCHECKED_LINES))
+            }
+            return
+        }
+        _uiState.update { it.copy(showOnlyUnchecked = !it.showOnlyUnchecked) }
+    }
+
     /** Clear the unchecked-lines warning after the blocking dialog is dismissed. */
     fun dismissUncheckedWarning() {
         _uiState.update { it.copy(firstUncheckedLineId = null, uncheckedLineCount = 0) }

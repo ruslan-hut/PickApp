@@ -101,6 +101,8 @@
     <string name="lock_lost_dialog_ok">OK</string>
     <string name="unchecked_lines_dialog_title">Cannot finish document</string>
     <string name="unchecked_lines_dialog_message_fmt">%1$d line(s) not acknowledged. Swipe right to mark a line as done, or swipe left to clear the mark.</string>
+    <string name="no_unchecked_lines">All lines are done</string>
+    <string name="filter_unchecked_active_cd">Showing only unchecked lines</string>
     <string name="line_acknowledge_action">Mark line as done</string>
     <string name="line_clear_action">Clear the done mark</string>
     <string name="document_state_loaded">New</string>

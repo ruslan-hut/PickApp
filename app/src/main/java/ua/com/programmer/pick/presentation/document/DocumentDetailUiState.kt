@@ -52,7 +52,11 @@ data class DocumentDetailUiState(
     val allowsExtraLines: Boolean = false,
     // When false, the type doesn't carry planned quantities — the UI hides
     // plan labels and progress bars. Defaults to true to match pre-flags.
-    val requiresPlan: Boolean = true
+    val requiresPlan: Boolean = true,
+    // Toggled by tapping the pinned progress bar. When true, the products
+    // list hides lines already marked as completed so the worker can focus
+    // on the remaining items. Reset to false on every document load.
+    val showOnlyUnchecked: Boolean = false
 ) {
     // Per CLAUDE.md "Server-Driven Architecture": the app does not make
     // authorization decisions locally. The server already filters the sync
@@ -132,4 +136,14 @@ data class DocumentDetailUiState(
 
     /** True while a parcel weight dialog is open — scans are suspended. */
     val isAwaitingWeight: Boolean get() = pendingWeightBox != null
+
+    /** Count of lines still pending acknowledgement. Drives the unchecked filter. */
+    val uncheckedCount: Int get() = lines.count { !it.isCompleted }
+
+    /**
+     * Lines actually rendered in the list. When the unchecked filter is on
+     * we drop already-completed rows; otherwise the full list is shown.
+     */
+    val visibleLines: List<DocumentLine>
+        get() = if (showOnlyUnchecked) lines.filter { !it.isCompleted } else lines
 }
