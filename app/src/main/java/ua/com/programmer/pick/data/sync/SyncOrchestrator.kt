@@ -928,6 +928,12 @@ class SyncOrchestrator @Inject constructor(
 
             Result.Success(result)
         } else {
+            // No ack within the request timeout — the socket is very likely a
+            // stale half-open connection (common right after a long Doze
+            // sleep). Tear it down so the user's retry runs on a fresh socket
+            // instead of timing out again.
+            AppLog.w(TAG, "Stage lock timed out, forcing WebSocket reconnect")
+            webSocketManager.forceReconnect()
             Result.Error(Exception("Lock request timeout"))
         }
     }

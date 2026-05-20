@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import ua.com.programmer.pick.core.scanner.BarcodeService
 import ua.com.programmer.pick.core.util.AppLog
 import ua.com.programmer.pick.core.util.FileLogger
+import ua.com.programmer.pick.data.remote.websocket.WebSocketManager
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.data.sync.SyncScheduler
 import javax.inject.Inject
@@ -32,6 +33,9 @@ class PickApplication : Application(), Configuration.Provider {
 
     @Inject
     lateinit var barcodeService: BarcodeService
+
+    @Inject
+    lateinit var webSocketManager: WebSocketManager
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -66,6 +70,11 @@ class PickApplication : Application(), Configuration.Provider {
         // would otherwise be invisible until the next 15-min cycle.
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {
+                // Probe the WebSocket first: a long Doze sleep freezes the PING
+                // timer, so connectionState can read Connected while the socket
+                // is dead — making the next lock attempt time out. Force a
+                // reconnect if the socket is stale.
+                webSocketManager.verifyConnectionHealth()
                 appScope.launch {
                     try {
                         syncOrchestrator.requestDeltaSyncIfStale(FOREGROUND_RESYNC_THRESHOLD_MS)

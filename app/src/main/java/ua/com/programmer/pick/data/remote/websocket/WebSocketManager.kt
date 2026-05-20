@@ -109,6 +109,7 @@ class WebSocketManager @Inject constructor(
         private const val MAX_RECONNECT_DELAY_MS = 60000L
         private const val BACKOFF_MULTIPLIER = 2.0
         private const val REQUEST_TIMEOUT_MS = 30000L  // 30 seconds timeout for request/response
+        private const val HEALTH_CHECK_TIMEOUT_MS = 7000L  // resume-probe pong wait
         private const val DEVICE_PENDING_CLOSE_CODE = 4003
         private const val DEVICE_REJECTED_CLOSE_CODE = 4004
         private const val NOT_AUTHENTICATED_ERROR_CODE = "NOT_AUTHENTICATED"
@@ -120,6 +121,7 @@ class WebSocketManager @Inject constructor(
     private var reconnectJob: Job? = null
     private var pingJob: Job? = null
     private var pongTimeoutJob: Job? = null
+    private var healthCheckJob: Job? = null
     private var reconnectAttempts = 0
     private var lastPongReceived = System.currentTimeMillis()
 
@@ -161,6 +163,8 @@ class WebSocketManager @Inject constructor(
         isManuallyDisconnected = true
         reconnectJob?.cancel()
         reconnectJob = null
+        healthCheckJob?.cancel()
+        healthCheckJob = null
         stopPingTimer()
 
         webSocket?.close(1000, "Client disconnect")
@@ -171,6 +175,101 @@ class WebSocketManager @Inject constructor(
         pendingResponses.clear()
 
         AppLog.d(TAG, "WebSocket disconnected manually")
+    }
+
+    /**
+     * Verify the connection is actually alive — call on app foreground/resume.
+     *
+     * After a long Doze sleep the PING timer (a coroutine `delay` loop) is
+     * frozen along with the CPU, so no PONG-timeout is armed. `connectionState`
+     * can then read `Connected` while the socket is already dead server-side.
+     * A lock attempt issued in that window is sent into a black hole and only
+     * fails after the 30s request timeout.
+     *
+     * This probes a `Connected` socket with an immediate PING and forces a
+     * reconnect if no PONG arrives; if the state is already non-connected it
+     * kicks off a normal connect.
+     */
+    fun verifyConnectionHealth() {
+        if (healthCheckJob?.isActive == true) {
+            AppLog.d(TAG, "Health check already running, skipping")
+            return
+        }
+        when (_connectionState.value) {
+            is ConnectionState.Connected -> {
+                healthCheckJob = scope.launch {
+                    if (!probeConnection()) {
+                        AppLog.w(TAG, "Resume health check failed - stale socket, forcing reconnect")
+                        debugJournal.log(
+                            eventType = ua.com.programmer.pick.data.debug.DebugEventType.WS_DISCONNECT,
+                            message = "resume health check failed - stale socket",
+                            severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN
+                        )
+                        forceReconnect()
+                    }
+                }
+            }
+            is ConnectionState.Disconnected, is ConnectionState.Error -> {
+                AppLog.d(TAG, "Resume health check: not connected, connecting")
+                connect()
+            }
+            else -> {
+                // Connecting / Reconnecting — already in progress, leave it
+            }
+        }
+    }
+
+    /**
+     * Send a PING and wait up to [HEALTH_CHECK_TIMEOUT_MS] for a fresh PONG.
+     * @return true if a PONG advanced [lastPongReceived], false otherwise.
+     */
+    private suspend fun probeConnection(): Boolean {
+        if (webSocket == null) return false
+        val before = lastPongReceived
+        sendPing()
+        val deadline = System.currentTimeMillis() + HEALTH_CHECK_TIMEOUT_MS
+        while (System.currentTimeMillis() < deadline) {
+            delay(200)
+            if (lastPongReceived > before) return true
+        }
+        return false
+    }
+
+    /**
+     * Tear down the current socket and reconnect immediately, regardless of
+     * the cached connection state.
+     *
+     * Unlike [connect], this does not early-return when the state still reads
+     * `Connected` — required to recover from a stale half-open socket left
+     * behind by a long Doze sleep.
+     */
+    fun forceReconnect() {
+        AppLog.d(TAG, "Force reconnect requested")
+        isManuallyDisconnected = false
+        healthCheckJob?.cancel()
+        healthCheckJob = null
+        reconnectJob?.cancel()
+        reconnectJob = null
+        stopPingTimer()
+
+        // Drop the old socket before cancelling it: the listener callbacks
+        // key off identity, so onClosed/onFailure from the old socket become
+        // no-ops once the field no longer points at it.
+        val old = webSocket
+        webSocket = null
+        old?.cancel()
+
+        // Fail any in-flight request/response waiters so callers unblock now.
+        pendingResponses.forEach { (_, response) ->
+            @Suppress("UNCHECKED_CAST")
+            (response.continuation as? CancellableContinuation<SyncMessage>)?.cancel()
+        }
+        pendingResponses.clear()
+
+        _userAuthState.value = UserAuthState.NotAuthenticated
+        reconnectAttempts = 0
+        _connectionState.value = ConnectionState.Reconnecting
+        startConnection()
     }
 
     /**
@@ -447,6 +546,10 @@ class WebSocketManager @Inject constructor(
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+            if (webSocket !== this@WebSocketManager.webSocket) {
+                AppLog.d(TAG, "Ignoring onClosed from stale WebSocket")
+                return
+            }
             AppLog.d(TAG, "WebSocket closed: $code - $reason")
             debugJournal.log(
                 eventType = ua.com.programmer.pick.data.debug.DebugEventType.WS_DISCONNECT,
@@ -458,6 +561,10 @@ class WebSocketManager @Inject constructor(
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            if (webSocket !== this@WebSocketManager.webSocket) {
+                AppLog.d(TAG, "Ignoring onFailure from stale WebSocket: ${t.message}")
+                return
+            }
             AppLog.e(TAG, "WebSocket failure: ${t.message}", t)
             debugJournal.log(
                 eventType = ua.com.programmer.pick.data.debug.DebugEventType.WS_DISCONNECT,
