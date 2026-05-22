@@ -114,6 +114,7 @@
     <string name="document_state_delivery">Доставка</string>
     <string name="document_state_delivering">Доставляється</string>
     <string name="document_state_delivered">Доставлено</string>
+    <string name="document_state_review">Перевірка</string>
     <string name="document_state_sent">Відправлено</string>
     <string name="document_state_error">Помилка</string>
 

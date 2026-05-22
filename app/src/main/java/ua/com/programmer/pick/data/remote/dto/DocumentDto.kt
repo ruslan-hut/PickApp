@@ -69,6 +69,15 @@ data class DocumentDto(
     @SerializedName("version")
     val version: Int,
 
+    /**
+     * True when this LOADED document was returned for partial re-collection
+     * after an ERP review. Its per-line is_completed / actual_quantity were
+     * pre-seeded by the server and must NOT be zeroed by the LOADED corruption
+     * defense in mergeDocumentLines.
+     */
+    @SerializedName("recollection")
+    val recollection: Boolean = false,
+
     @SerializedName("lines")
     val lines: List<DocumentLineDto>? = null,
 

@@ -1,133 +1,85 @@
 # PickApp Backend Specification
 
-This document defines the backend API structure required to connect with the PickApp Android application.
+This document defines the backend contract for the PickApp Android application.
 
 ## Overview
 
-The backend serves as an intermediate server between the Android TSD devices and an external ERP system. It must support:
+The backend is an intermediate server between the Android TSD devices and an
+external ERP system. It is **WebSocket-first**: the app authenticates,
+synchronizes data, and runs all document, stage and box operations over a single
+WebSocket connection.
 
-- **REST API** for authentication and batch synchronization
-- **WebSocket** for real-time updates and document operations
-- **Offline-first sync** with delta updates and conflict resolution
+- **WebSocket** — authentication, delta/full synchronization, real-time updates,
+  document/stage/box operations, diagnostics. This is the only data path used in
+  production.
+- **Offline-first sync** — delta updates with server-managed cursors and
+  conflict resolution.
 
----
-
-## 1. Authentication API
-
-### POST `/auth/login`
-
-Authenticate user and obtain tokens.
-
-**Request:**
-```json
-{
-  "login": "string",
-  "password": "string",
-  "device_id": "string (optional)"
-}
-```
-
-**Response:**
-```json
-{
-  "token": "string (JWT access token)",
-  "refresh_token": "string",
-  "expires_at": 1234567890000,
-  "user": {
-    "id": "string (UUID)",
-    "login": "string",
-    "name": "string",
-    "role": "string (WAREHOUSE_WORKER | PICKER | ADMINISTRATOR)",
-    "is_active": true,
-    "last_updated": 1234567890000
-  }
-}
-```
-
-### POST `/auth/refresh`
-
-Refresh expired access token.
-
-**Request:**
-```json
-{
-  "refresh_token": "string"
-}
-```
-
-**Response:** Same as login response.
-
-### POST `/auth/logout`
-
-Invalidate current session.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response:** `204 No Content`
+The detailed wire protocol lives in [websocket-protocol.md](websocket-protocol.md).
+This document covers the entity contract, the document state machine, the sync
+model, security and the ERP integration boundary.
 
 ---
 
-## 2. Sync API
+## 1. Authentication
 
-All sync endpoints require `Authorization: Bearer <token>` header.
+Authentication is performed entirely over the WebSocket connection — there is no
+REST authentication path in the production flow.
 
-### GET `/sync/full`
+- **Stage 1 — Device connection:** the device connects with an `app_token`
+  (hardcoded in the app build) and a `device_id`. New devices are auto-registered
+  PENDING and must be approved via the admin panel.
+- **Stage 2 — User login:** after the socket is open, the device sends a
+  `USER_LOGIN` message with `login` + `password`. The server replies with
+  `USER_LOGIN_RESULT` carrying the user identity, role, tenant, an
+  `offline_hash` for offline re-authentication, the per-type capability flags,
+  the per-device `debug_journal_enabled` flag, and any `held_stage_locks`.
 
-Get complete dataset for an entity type. Used on first sync.
+See [websocket-protocol.md](websocket-protocol.md) §"USER_LOGIN" for payloads.
 
-**Query Parameters:**
-- `entity` - Entity type: `users`, `products`, `clients`, `warehouses`, `documents`
+> **Legacy note.** The codebase still contains a REST auth scaffold
+> (`AuthApi`: `POST /auth/login`, `/auth/refresh`, `/auth/logout`, with JWT
+> access/refresh tokens). It is **not used** by the production flow and is not
+> part of this contract. New work should not depend on it.
 
-**Response:**
-```json
-{
-  "sync_id": "string (UUID)",
-  "entity_type": "string",
-  "timestamp": 1234567890000,
-  "is_full_sync": true,
-  "data": [...],
-  "deleted_ids": []
-}
-```
+---
 
-### GET `/sync/delta`
+## 2. Synchronization
 
-Get incremental changes since last sync.
+All synchronization runs over the WebSocket. See
+[websocket-protocol.md](websocket-protocol.md) for message envelopes.
 
-**Query Parameters:**
-- `entity` - Entity type
-- `since` - Last sync timestamp (milliseconds)
+- `SYNC_REQUEST` — delta sync since the client's per-entity cursors.
+- `FULL_SYNC_REQUEST` — full resync (after a local failure or inconsistency).
+- `SYNC_DATA` — one batch per entity type; carries `full_set`, `data`, and
+  `deleted_ids`.
+- `SYNC_COMPLETE` — round complete, returns the new cursors.
+- `ACK` — client confirms receipt; the server persists the device cursors only
+  after the ACK.
+- `DOCUMENT_LIST_REFRESH` / `DOCUMENT_PRODUCTS` — targeted refreshes.
 
-**Response:** Same structure as `/sync/full` with `is_full_sync: false`.
-
-### POST `/sync/ack`
-
-Acknowledge successful sync. Server can clean up pending changes.
-
-**Request:**
-```json
-{
-  "entity_type": "string",
-  "sync_id": "string",
-  "timestamp": 1234567890000
-}
-```
-
-**Response:** `204 No Content`
+Entity types: `users`, `products`, `clients`, `warehouses`, `documents`,
+`boxes`.
 
 ---
 
 ## 3. Entity Data Structures
 
+All reference entities carry an optional `external_id` — the ERP canonical
+identifier used in cross-references (e.g. `DocumentLine.product_id`,
+`Document.assigned_user_id`) on the v2 wire format.
+
 ### User
 
 ```json
 {
-  "id": "string (UUID)",
-  "login": "string (unique)",
+  "id": "string (server _id)",
+  "external_id": "string (ERP id, optional)",
+  "login": "string (unique per tenant)",
   "name": "string",
-  "role": "WAREHOUSE_WORKER | PICKER | ADMINISTRATOR",
+  "role": "COLLECTOR | COURIER | ADMINISTRATOR",
   "is_active": true,
+  "warehouse_id": "string (optional)",
   "last_updated": 1234567890000
 }
 ```
@@ -136,7 +88,8 @@ Acknowledge successful sync. Server can clean up pending changes.
 
 ```json
 {
-  "id": "string (UUID)",
+  "id": "string",
+  "external_id": "string (ERP id, optional)",
   "code": "string (unique)",
   "name": "string",
   "description": "string (optional)",
@@ -145,7 +98,7 @@ Acknowledge successful sync. Server can clean up pending changes.
   "is_active": true,
   "barcodes": [
     {
-      "id": "string (UUID)",
+      "id": "string (optional)",
       "barcode": "string",
       "type": "EAN13 | EAN8 | CODE128 | CODE39 | QR | DATAMATRIX | GS1_DATAMATRIX | UNKNOWN",
       "is_primary": false
@@ -159,7 +112,8 @@ Acknowledge successful sync. Server can clean up pending changes.
 
 ```json
 {
-  "id": "string (UUID)",
+  "id": "string",
+  "external_id": "string (ERP id, optional)",
   "code": "string (unique)",
   "name": "string",
   "address": "string (optional)",
@@ -172,14 +126,15 @@ Acknowledge successful sync. Server can clean up pending changes.
 
 ```json
 {
-  "id": "string (UUID)",
+  "id": "string",
+  "external_id": "string (ERP id, optional)",
   "code": "string (unique)",
   "name": "string",
   "is_addressed": false,
   "is_active": true,
   "locations": [
     {
-      "id": "string (UUID)",
+      "id": "string",
       "row": "string",
       "shelf": "string",
       "barcode": "string (optional)",
@@ -189,16 +144,36 @@ Acknowledge successful sync. Server can clean up pending changes.
 }
 ```
 
+### Box (master catalog)
+
+A box type from the ERP catalog. `is_parcel` distinguishes a delivery "place"
+(a parcel — weight required when added to a document during PACK) from a
+package (which nests inside a parcel).
+
+```json
+{
+  "id": "string",
+  "external_id": "string (ERP id, optional)",
+  "barcode": "string",
+  "name": "string",
+  "length": 0,
+  "width": 0,
+  "height": 0,
+  "is_parcel": false,
+  "is_active": true
+}
+```
+
 ### Document
 
 ```json
 {
-  "id": "string (UUID)",
-  "external_id": "string (optional, ERP reference)",
-  "type": "INCOMING_RECEIPT | OUTGOING_SHIPMENT | INVENTORY",
+  "id": "string",
+  "external_id": "string (ERP id, optional)",
+  "type": "string (ERP-defined type code)",
   "number": "string",
   "date": 1234567890000,
-  "state": "LOADED | IN_PROGRESS | COMPLETED | SENT | ERROR",
+  "state": "LOADED | COLLECTING | COLLECTED | PACK | PACKING | PACKED | DELIVERY | DELIVERING | DELIVERED | SENT | ERROR",
   "client_id": "string (optional)",
   "client_name": "string (optional)",
   "warehouse_id": "string (optional)",
@@ -207,19 +182,22 @@ Acknowledge successful sync. Server can clean up pending changes.
   "total_planned": 100.0,
   "total_actual": 0.0,
   "assigned_user_id": "string (optional)",
+  "assigned_worker_id": "string (optional)",
+  "courier_user_id": "string (optional)",
   "taken_at": 1234567890000,
   "completed_at": null,
+  "delivered_at": null,
   "last_modified": 1234567890000,
   "version": 1,
   "lines": [
     {
-      "id": "string (UUID)",
+      "id": "string",
       "document_id": "string",
       "line_number": 1,
-      "product_id": "string",
-      "product_code": "string",
-      "product_name": "string",
-      "unit": "string",
+      "product_id": "string (ERP external_id on v2)",
+      "product_code": "string (optional)",
+      "product_name": "string (optional)",
+      "unit": "string (optional)",
       "planned_quantity": 10.0,
       "actual_quantity": 0.0,
       "batch_number": "string (optional)",
@@ -229,135 +207,158 @@ Acknowledge successful sync. Server can clean up pending changes.
       "notes": "string (optional)",
       "is_completed": false
     }
+  ],
+  "boxes": [
+    {
+      "box_number": 1,
+      "box_id": "string (master Box id)",
+      "barcode": "string",
+      "is_parcel": false,
+      "weight": 0,
+      "status": "PACKED | PICKED_UP | DELIVERED",
+      "packed_by": "string (optional)",
+      "packed_at": 1234567890000,
+      "picked_up_by": "string (optional)",
+      "picked_up_at": 1234567890000,
+      "delivered_by": "string (optional)",
+      "delivered_at": 1234567890000
+    }
   ]
 }
 ```
 
----
-
-## 4. WebSocket Protocol
-
-> [!IMPORTANT]
-> The WebSocket protocol is detailed in the dedicated [websocket-protocol.md](websocket-protocol.md) document.
->
-> The draft protocol design previously outlined in this section has been superseded by the production-implemented real-time catalog. Please refer to [websocket-protocol.md](websocket-protocol.md) as the single authoritative reference for:
-> - The two-stage device & user authentication flow
-> - Detailed message envelopes (`PING`, `SYNC_REQUEST`, `DOCUMENT_LOCK`, `DOCUMENT_UPDATE`, etc.)
-> - Structured event telemetry uploads (`DEBUG_EVENT_BATCH`) and retention policies.
+- `boxes[]` are populated during the PACK / DELIVERY stages. `box_number` is the
+  in-document primary key, server-assigned on `BOX_ADD`. `is_parcel` is
+  denormalized from the master `Box` at add-time.
+- The document `type` is an ERP-defined code. The server reports the set of
+  types available to a user, with capability flags, in
+  `USER_LOGIN_RESULT.available_document_types` (`allows_over_plan`,
+  `allows_extra_lines`, `requires_plan`).
 
 ---
 
-## 5. Document State Machine
+## 4. Document State Machine
+
+A document moves through three stages — **collect → pack → deliver** — each with
+a start state, an in-process state and a done state, plus two terminal states.
+
+| Stage | Start | In-process | Done |
+|-------|-------|------------|------|
+| collect | `LOADED` | `COLLECTING` | `COLLECTED` |
+| pack | `PACK` | `PACKING` | `PACKED` |
+| deliver | `DELIVERY` | `DELIVERING` | `DELIVERED` |
+
+Terminal states: `SENT` (confirmed by ERP), `ERROR` (requires attention).
 
 ```
-┌─────────┐
-│ LOADED  │  Initial state from ERP
-└────┬────┘
-     │ User takes into work
-     ▼
-┌────────────┐
-│ IN_PROGRESS│  User is working on document
-└─────┬──────┘
-      │ User completes
-      ▼
-┌───────────┐
-│ COMPLETED │  Ready for ERP sync
-└─────┬─────┘
-      │ Synced to ERP
-      ▼
-┌──────┐
-│ SENT │  Confirmed by ERP
-└──────┘
-
-      │ Error during sync
-      ▼
-┌───────┐
-│ ERROR │  Requires attention
-└───────┘
+LOADED ──lock──▶ COLLECTING ──complete──▶ COLLECTED ──▶ PACK
+                     │ unlock
+                     ▼
+                  LOADED
+PACK ──lock──▶ PACKING ──complete──▶ PACKED ──▶ DELIVERY
+DELIVERY ──lock──▶ DELIVERING ──complete──▶ DELIVERED ──▶ SENT
+                                            (any stage) ──▶ ERROR
 ```
+
+- A worker acquires a stage lock (`STAGE_LOCK`) on a start state; the document
+  enters the in-process state and the TSD becomes the source of truth.
+- `STAGE_COMPLETE` advances to the done state; `STAGE_UNLOCK` reverts to the
+  start state; `STAGE_PAUSE` releases the lock while keeping the in-process
+  state.
+- Transitions between one stage's done state and the next stage's start state
+  are server / ERP driven.
+
+See [ownership-model-plan.md](ownership-model-plan.md) for the full ownership
+policy (who may write document data in each regime).
 
 ---
 
-## 6. Sync Mechanism
+## 5. Sync Mechanism
 
 ### Sync Flow
 
-The server always returns the **complete document set** for the current user/filter. The client treats every `SYNC_DATA` response for documents as the full set and purges any local documents not present in the response (except dirty/locally-modified documents).
-
-1. Client sends `SYNC_REQUEST` or `DOCUMENT_LIST_REFRESH` via WebSocket
-2. Server returns `SYNC_DATA` messages per entity type (always includes documents, even if empty)
-3. Server may include `deleted_ids` for explicitly removed documents
-4. Client applies changes locally and purges stale documents
-5. Client sends `ACK` to confirm
-6. Client updates local sync cursors
+1. Client sends `SYNC_REQUEST` (with cursors) or `FULL_SYNC_REQUEST`, or a
+   targeted `DOCUMENT_LIST_REFRESH`.
+2. Server returns one `SYNC_DATA` per entity type, then `SYNC_COMPLETE` with new
+   cursors.
+3. `SYNC_DATA.full_set` decides purge behavior:
+   - `false` (delta) — merge only; local rows outside the payload are kept.
+   - `true` (full set) — authoritative; local rows of that entity outside the
+     payload are deleted. Worker-owned / locally-dirty documents are exempt.
+4. `SYNC_DATA.deleted_ids` carries explicit server-side removals.
+5. Client applies changes and sends `ACK`.
+6. Server persists the device cursors only after the `ACK`.
 
 ### Conflict Resolution
 
-Documents use optimistic locking via `version` field:
+Documents use optimistic locking via the `version` field:
 
-1. Client includes current `version` in update requests
-2. Server compares with stored version
-3. If mismatch: reject with `409 Conflict` (REST) or `ERROR` with code `CONFLICT` (WebSocket)
-4. Client must refresh document and retry
+1. The server bumps `version` on every write and uses it for an atomic
+   compare-and-set.
+2. While a stage lock is held the server sets `erp_sync_blocked = true` and
+   refuses ERP writes to that document.
+3. A device write that is no longer valid is rejected with a `SERVER_ERROR`
+   (`LOCK_LOST` or `WRONG_STATE`, carrying `document_id`); the app runs silent
+   re-lock recovery.
+4. For documents not locked by the device, server state wins; for worker-owned
+   documents, per-line dirty preservation protects the worker's edits.
 
 ### Sync Intervals
 
-- **Periodic:** Every 15 minutes via background worker
-- **On-demand:** When network becomes available
-- **Real-time:** WebSocket push for immediate updates
+- **Periodic:** every 15 minutes via a background worker.
+- **On-demand:** when network becomes available, on app foreground, and after
+  stage operations.
+- **Real-time:** WebSocket `PUSH` for immediate updates.
 
 ---
 
-## 7. Error Handling
+## 6. Error Handling
 
-### HTTP Status Codes
+### WebSocket errors
+
+Errors are delivered as `SERVER_ERROR` messages. See
+[websocket-protocol.md](websocket-protocol.md) §"SERVER_ERROR" for the full code
+list (`NOT_AUTHENTICATED`, `INVALID_PAYLOAD`, `DOCUMENT_LOCKED`, `LOCK_LOST`,
+`WRONG_STATE`, `FORBIDDEN`, `INTERNAL_ERROR`, …).
+
+### Connection-upgrade errors
+
+The initial WebSocket upgrade can fail with HTTP status codes:
 
 | Code | Meaning |
 |------|---------|
-| 200  | Success |
-| 204  | No Content (success, no body) |
-| 400  | Bad Request (validation error) |
-| 401  | Unauthorized (invalid/expired token) |
-| 403  | Forbidden (insufficient permissions) |
-| 404  | Not Found |
-| 409  | Conflict (version mismatch) |
-| 500  | Internal Server Error |
+| 101  | Switching Protocols (success) |
+| 401  | Unauthorized (invalid/missing app token) |
+| 403  | Forbidden (device PENDING/REJECTED, or no tenant) |
 
-### Error Response Format
-
-```json
-{
-  "error": "ERROR_CODE",
-  "message": "Human readable message",
-  "details": {}
-}
-```
+After the upgrade, device-status close codes `4003` (PENDING) and `4004`
+(REJECTED) stop the client from auto-reconnecting.
 
 ---
 
-## 8. Security Requirements
+## 7. Security Requirements
 
 ### Authentication
 
-- JWT tokens with configurable expiration
-- Refresh tokens for seamless re-authentication
-- Password storage: SHA-256 hash (for offline fallback on client)
+- Two-stage auth: app-token device validation, then per-tenant user login.
+- `offline_hash` returned on login enables offline re-authentication for
+  previously authenticated users.
+- Password storage: SHA-256 hash (for offline fallback on the client).
 
 ### Transport
 
-- HTTPS required for all REST endpoints
-- WSS required for WebSocket connections
-- Certificate pinning recommended for production
+- WSS required for WebSocket connections in production.
+- Certificate pinning recommended for production.
 
 ### Authorization
 
-- Role-based access control
-- Document assignment tracking (who is working on what)
-- Audit logging for all document operations
+- Role-based access control (`COLLECTOR`, `COURIER`, `ADMINISTRATOR`).
+- Stage-lock ownership tracking (who is working on which document).
+- Audit logging for document and force-release operations.
 
 ---
 
-## 9. Database Schema (Reference)
+## 8. Database Schema (Reference)
 
 ### Core Tables
 
@@ -370,95 +371,68 @@ Documents use optimistic locking via `version` field:
 | `clients` | Customers and suppliers |
 | `warehouses` | Warehouse definitions |
 | `warehouse_locations` | Addressed storage locations |
+| `boxes` | Box master catalog (parcels and packages) |
 | `documents` | Document headers |
 | `document_lines` | Document line items |
+| `document_boxes` | Boxes linked to a document during pack/deliver |
 
 ### Sync Support Tables
 
 | Table | Purpose |
 |-------|---------|
-| `sync_state` | Per-client sync timestamps |
+| `sync_state` | Per-device sync cursors |
 | `deleted_records` | Soft-delete tracking for delta sync |
 | `outgoing_queue` | Pending ERP sync operations |
+| `debug_journal_events` | Uploaded device debug-journal events (tenant-scoped) |
 
 ---
 
-## 10. ERP Integration Points
+## 9. ERP Integration Points
 
-The backend acts as middleware between mobile clients and ERP:
+The backend acts as middleware between mobile clients and the ERP.
 
 ### Inbound (ERP → Backend)
 
-- New documents (receipts, shipments, inventory tasks)
-- Master data updates (products, clients, warehouses)
-- Document state confirmations
+- New documents and document state advances.
+- Master data updates (products, clients, warehouses, boxes).
 
 ### Outbound (Backend → ERP)
 
-- Completed documents with actual quantities
-- Document state changes
-- Error notifications
+- Completed-stage documents with actual quantities and boxes.
+- Document state changes and error notifications.
 
-### Recommended Integration Pattern
+### Ownership boundary
+
+While a document is worker-owned (`erp_sync_blocked = true`), the backend
+refuses ERP writes to it. At stage completion the device's line actuals,
+batches, `is_completed` flags and boxes become the new baseline and are
+immutable from the ERP side.
 
 ```
-ERP ←──REST/SOAP──→ Backend ←──REST/WS──→ Mobile App
-         │                        │
-    Batch sync              Real-time sync
-    (scheduled)             (on-demand)
+ERP ◀──REST/SOAP──▶ Backend ◀──WebSocket──▶ Mobile App
+         │                         │
+    Batch sync               Real-time, offline-first sync
+    (scheduled)              (delta + full)
 ```
 
 ---
 
-## 11. Recommended Tech Stack
-
-### Backend Options
-
-| Component | Options |
-|-----------|---------|
-| Runtime | Node.js, Kotlin/Spring, Go, .NET |
-| REST Framework | Express, Spring Boot, Gin, ASP.NET |
-| WebSocket | ws (Node), Spring WebSocket, Gorilla |
-| Database | PostgreSQL (recommended), MySQL |
-| Cache | Redis (for sessions, rate limiting) |
-| Queue | RabbitMQ, Redis Streams (for ERP sync) |
-
-### Deployment
-
-- Docker containers
-- Kubernetes for scaling
-- Load balancer for WebSocket sticky sessions
-
----
-
-## 12. Project Status & History
+## 10. Project Status
 
 > [!NOTE]
-> The primary phases of the PickApp middleware backend development have been successfully implemented. The MVP is fully shipped and running in production.
+> The PickApp middleware backend MVP is shipped and running in production. The
+> three-stage (collect/pack/deliver) document workflow, box operations and the
+> debug journal are implemented. Open ownership-model follow-ups are tracked in
+> [ownership-model-plan.md](ownership-model-plan.md).
 
-### Phase 1: Core API
-- [x] User authentication (login/refresh/logout)
-- [x] Sync endpoints (full/delta/ack)
-- [x] Basic CRUD for all entities
-
-### Phase 2: Real-time
-- [x] WebSocket connection handling
-- [x] Message routing (subscribe, updates)
-- [x] Document locking mechanism
-
-### Phase 3: Document Operations
-- [x] Take into work flow
-- [x] Line updates with validation
-- [x] Document completion
-- [x] Version conflict handling
-
-### Phase 4: ERP Integration
-- [x] Inbound sync from ERP
-- [x] Outbound document sync
-- [x] Error handling and retry
-
-### Phase 5: Production
-- [x] Security hardening
-- [x] Performance optimization
-- [x] Monitoring and logging
-- [x] Documentation
+| Area | Status |
+|------|--------|
+| Two-stage WebSocket authentication | ✅ Shipped |
+| Delta / full synchronization (`SYNC_REQUEST` / `FULL_SYNC_REQUEST`) | ✅ Shipped |
+| Three-stage document workflow (`STAGE_LOCK` / `PAUSE` / `COMPLETE` / `UNLOCK`) | ✅ Shipped |
+| Box operations (add / remove / lookup, courier pickup / delivery) | ✅ Shipped |
+| Optimistic locking + `erp_sync_blocked` ownership guard | ✅ Shipped |
+| Cooperative force-release (`FORCE_RELEASE_REQUEST`) | ✅ Shipped |
+| Debug journal upload (`DEBUG_EVENT_BATCH`) | ✅ Shipped |
+| ERP inbound / outbound integration | ✅ Shipped |
+| Ownership-model hardening (PACK/DELIVERY reset, cross-device push, …) | ◻ In progress — see [ownership-model-plan.md](ownership-model-plan.md) |

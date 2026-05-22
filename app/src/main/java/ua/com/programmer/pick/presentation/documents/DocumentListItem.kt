@@ -230,6 +230,11 @@ private fun DocumentStateBadge(
             Color(0xFF0D47A1),
             white
         )
+        DocumentState.REVIEW -> Triple(
+            R.string.document_state_review,
+            Color(0xFFF57F17),
+            white
+        )
         DocumentState.SENT -> Triple(
             R.string.document_state_sent,
             MaterialTheme.colorScheme.secondaryContainer,

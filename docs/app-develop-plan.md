@@ -101,21 +101,35 @@ Expected volume:
 
 ## 5. Document Lifecycle (TSD)
 
-### 5.1 Document States
+### 5.1 Document Stages and States
 
-1. Loaded (read-only)
-2. Taken into work / In progress
-3. Completed
-4. Sent to server
-5. Error / Conflict
+A document moves through three stages — **collect → pack → deliver** — each with
+a start state (idle, ERP-owned), an in-process state (locked by a worker), and a
+done state, plus two terminal states.
 
-### 5.2 Document Locking
+| Stage | Start | In-process | Done |
+|-------|-------|------------|------|
+| collect | Loaded | Collecting | Collected |
+| pack | Pack | Packing | Packed |
+| deliver | Delivery | Delivering | Delivered |
 
-- Explicit user action: **“Take into work”**
+Terminal states: **Sent** (confirmed by ERP) and **Error / Conflict**.
+
+> The original MVP scope used a single in-process stage (Loaded → In progress →
+> Completed → Sent). It was superseded by the three-stage model above. See
+> [websocket-protocol.md](websocket-protocol.md) and
+> [backend-spec.md](backend-spec.md) for the implemented state machine.
+
+### 5.2 Stage Locking
+
+- Explicit user action: **“Take into work”** acquires a stage lock.
 - After this action:
-  - TSD becomes the source of truth
-  - Server blocks incoming ERP updates
-  - ERP receives document status “In work”
+  - TSD becomes the source of truth for the document
+  - Server blocks incoming ERP updates (`erp_sync_blocked`)
+  - The document enters the stage's in-process state
+- A worker can pause a stage (release the lock, keep the in-process state) or
+  unlock it (revert to the start state). Admins can force-release a lock; see
+  [ownership-model-plan.md](ownership-model-plan.md).
 
 ---
 

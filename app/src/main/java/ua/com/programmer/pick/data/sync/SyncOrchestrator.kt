@@ -1977,7 +1977,7 @@ class SyncOrchestrator @Inject constructor(
                     documentDao.upsertDocument(documentMapper.toEntity(dto))
                     var preservedDirty = 0
                     if (dto.lines != null) {
-                        preservedDirty = mergeDocumentLines(dto.id, dto.lines, productIdMap, dto.state)
+                        preservedDirty = mergeDocumentLines(dto.id, dto.lines, productIdMap, dto.state, dto.recollection)
                     }
                     // The upsert above wrote `isDirty = false` for the document
                     // (DocumentMapper.toEntity always emits false). If
@@ -2052,7 +2052,7 @@ class SyncOrchestrator @Inject constructor(
             // stale server echo while a push is still outstanding.
             var preservedDirty = 0
             if (dto.lines != null) {
-                preservedDirty = mergeDocumentLines(dto.id, dto.lines, productIdMap, dto.state)
+                preservedDirty = mergeDocumentLines(dto.id, dto.lines, productIdMap, dto.state, dto.recollection)
             }
 
             // Only journal DOC_SYNC_APPLIED for actual merges over an
@@ -2383,14 +2383,19 @@ class SyncOrchestrator @Inject constructor(
         documentId: String,
         serverLineDtos: List<ua.com.programmer.pick.data.remote.dto.DocumentLineDto>,
         productIdMap: Map<String, String>,
-        documentState: String
+        documentState: String,
+        recollection: Boolean
     ): Int {
         val localById = documentLineDao.getLinesByDocumentIdSync(documentId)
             .associateBy { it.id }
         val rawServerEntities = serverLineDtos.map {
             translateLineEntity(documentMapper.toLineEntity(it), productIdMap)
         }
-        val isLoaded = documentState.equals("LOADED", ignoreCase = true)
+        // A recollection document is a LOADED doc whose per-line progress was
+        // deliberately pre-seeded by the server (an ERP review sent it back for
+        // partial re-collection). Skip the LOADED corruption defense for it so
+        // the curated is_completed / actual_quantity on kept lines survive.
+        val isLoaded = documentState.equals("LOADED", ignoreCase = true) && !recollection
         val rejectedSamples = mutableListOf<Map<String, Any?>>()
         var rejectedLineCount = 0
         var rejectedActualSum = 0.0
