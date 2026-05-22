@@ -24,6 +24,7 @@ enum class ToastMessage(@StringRes val resId: Int) {
     DOCUMENT_TAKEN_INTO_WORK(R.string.document_taken_into_work),
     DOCUMENT_PACKAGED(R.string.document_packaged),
     DOCUMENT_COMPLETED(R.string.document_completed),
+    DOCUMENT_SENT_FOR_REVIEW(R.string.document_sent_for_review),
     DOCUMENT_RELEASED(R.string.document_released),
     DOCUMENT_PAUSED(R.string.document_paused),
     ERROR_TAKE_INTO_WORK(R.string.error_take_into_work),

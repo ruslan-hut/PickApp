@@ -758,7 +758,14 @@ class DocumentDetailViewModel @Inject constructor(
                 when (val result = syncOrchestrator.completeStage(documentId, stage)) {
                     is Result.Success -> {
                         _uiState.update { it.copy(isProcessingAction = false, hasStageLock = false) }
-                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_COMPLETED))
+                        // A requires_review document that finished Collect with a
+                        // planned/actual mismatch is parked in REVIEW, not completed.
+                        val toast = if (result.data.state.equals("REVIEW", ignoreCase = true)) {
+                            ToastMessage.DOCUMENT_SENT_FOR_REVIEW
+                        } else {
+                            ToastMessage.DOCUMENT_COMPLETED
+                        }
+                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(toast))
                         _uiEvents.emit(DocumentDetailUiEvent.NavigateBack)
                     }
                     is Result.Error -> {

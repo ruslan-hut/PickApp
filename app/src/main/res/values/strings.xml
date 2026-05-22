@@ -78,6 +78,7 @@
     <string name="no">No</string>
     <string name="document_taken_into_work">Document taken into work</string>
     <string name="document_completed">Document completed</string>
+    <string name="document_sent_for_review">Document sent for review</string>
     <string name="error_take_into_work">Failed to take document into work</string>
     <string name="error_complete_document">Failed to complete document</string>
     <string name="document_gone_on_server">Document is no longer available on the server. Your changes could not be saved.</string>
