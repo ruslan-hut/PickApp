@@ -591,7 +591,7 @@ Push events:
 
 ### DEBUG_EVENT_BATCH
 
-Upload a batch of debug-journal events from the device. Best-effort;
+Upload a batch of per-document debug-journal events from the device. Best-effort;
 fire-and-retry. Enabled per device via `debug_journal_enabled` in
 `USER_LOGIN_RESULT` (see Debug Journal section below).
 

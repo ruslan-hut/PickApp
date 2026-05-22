@@ -237,149 +237,13 @@ Acknowledge successful sync. Server can clean up pending changes.
 
 ## 4. WebSocket Protocol
 
-**Endpoint:** `wss://<host>/ws/sync`
-
-**Connection:** Include `Authorization: Bearer <token>` in upgrade headers.
-
-### Server → Client Messages
-
-#### CONNECTED
-```json
-{
-  "type": "CONNECTED",
-  "message_id": "uuid",
-  "server_time": 1234567890000,
-  "session_id": "uuid"
-}
-```
-
-#### DELTA_UPDATE
-Real-time entity changes pushed to client.
-```json
-{
-  "type": "DELTA_UPDATE",
-  "message_id": "uuid",
-  "entity_type": "documents",
-  "timestamp": 1234567890000,
-  "is_full_sync": false,
-  "data": [...],
-  "deleted_ids": ["id1", "id2"]
-}
-```
-
-#### DOCUMENT_LOCK
-Notify when another user takes a document.
-```json
-{
-  "type": "DOCUMENT_LOCK",
-  "message_id": "uuid",
-  "document_id": "uuid",
-  "locked_by": "user-id",
-  "locked_by_name": "User Name",
-  "locked_at": 1234567890000
-}
-```
-
-#### ACK
-Acknowledge client operation.
-```json
-{
-  "type": "ACK",
-  "message_id": "uuid",
-  "original_message_id": "client-msg-id",
-  "success": true,
-  "new_version": 2,
-  "error": null
-}
-```
-
-#### ERROR
-```json
-{
-  "type": "ERROR",
-  "message_id": "uuid",
-  "code": "CONFLICT | NOT_FOUND | UNAUTHORIZED | INTERNAL",
-  "message": "Human readable error",
-  "related_message_id": "uuid (optional)"
-}
-```
-
-### Client → Server Messages
-
-#### SUBSCRIBE
-```json
-{
-  "type": "SUBSCRIBE",
-  "message_id": "uuid",
-  "entity_types": ["documents", "products"]
-}
-```
-
-#### TAKE_INTO_WORK
-Claim document for processing.
-```json
-{
-  "type": "TAKE_INTO_WORK",
-  "message_id": "uuid",
-  "document_id": "uuid",
-  "user_id": "uuid",
-  "timestamp": 1234567890000
-}
-```
-
-#### DOCUMENT_UPDATE
-Update document header.
-```json
-{
-  "type": "DOCUMENT_UPDATE",
-  "message_id": "uuid",
-  "document_id": "uuid",
-  "state": "IN_PROGRESS",
-  "notes": "string (optional)",
-  "total_actual": 50.0,
-  "version": 1,
-  "timestamp": 1234567890000
-}
-```
-
-#### LINE_UPDATE
-Update single document line.
-```json
-{
-  "type": "LINE_UPDATE",
-  "message_id": "uuid",
-  "document_id": "uuid",
-  "line_id": "uuid",
-  "actual_quantity": 5.0,
-  "batch_number": "BATCH123 (optional)",
-  "location_id": "uuid (optional)",
-  "notes": "string (optional)",
-  "is_completed": false,
-  "timestamp": 1234567890000
-}
-```
-
-#### COMPLETE_DOCUMENT
-Mark document as completed.
-```json
-{
-  "type": "COMPLETE_DOCUMENT",
-  "message_id": "uuid",
-  "document_id": "uuid",
-  "user_id": "uuid",
-  "completed_at": 1234567890000,
-  "version": 1
-}
-```
-
-#### DEBUG_EVENT_BATCH
-Upload a batch of per-document debug-journal events. Best-effort ingestion,
-tenant-scoped. Enabled per device by setting `debug_journal_enabled: true` in
-the `USER_LOGIN_RESULT` payload for that `(tenant_id, device_id)` pair.
-
-See **`DEBUG_JOURNAL_SERVER_PLAN.md`** for the full data model, ingestion
-pipeline, admin REST API, and retention rules. The on-the-wire message is
-documented in `websocket-protocol.md`.
+> [!IMPORTANT]
+> The WebSocket protocol is detailed in the dedicated [websocket-protocol.md](websocket-protocol.md) document.
+>
+> The draft protocol design previously outlined in this section has been superseded by the production-implemented real-time catalog. Please refer to [websocket-protocol.md](websocket-protocol.md) as the single authoritative reference for:
+> - The two-stage device & user authentication flow
+> - Detailed message envelopes (`PING`, `SYNC_REQUEST`, `DOCUMENT_LOCK`, `DOCUMENT_UPDATE`, etc.)
+> - Structured event telemetry uploads (`DEBUG_EVENT_BATCH`) and retention policies.
 
 ---
 
@@ -567,61 +431,34 @@ ERP ←──REST/SOAP──→ Backend ←──REST/WS──→ Mobile App
 
 ---
 
-## 12. Development Checklist
+## 12. Project Status & History
+
+> [!NOTE]
+> The primary phases of the PickApp middleware backend development have been successfully implemented. The MVP is fully shipped and running in production.
 
 ### Phase 1: Core API
-- [ ] User authentication (login/refresh/logout)
-- [ ] Sync endpoints (full/delta/ack)
-- [ ] Basic CRUD for all entities
+- [x] User authentication (login/refresh/logout)
+- [x] Sync endpoints (full/delta/ack)
+- [x] Basic CRUD for all entities
 
 ### Phase 2: Real-time
-- [ ] WebSocket connection handling
-- [ ] Message routing (subscribe, updates)
-- [ ] Document locking mechanism
+- [x] WebSocket connection handling
+- [x] Message routing (subscribe, updates)
+- [x] Document locking mechanism
 
 ### Phase 3: Document Operations
-- [ ] Take into work flow
-- [ ] Line updates with validation
-- [ ] Document completion
-- [ ] Version conflict handling
+- [x] Take into work flow
+- [x] Line updates with validation
+- [x] Document completion
+- [x] Version conflict handling
 
 ### Phase 4: ERP Integration
-- [ ] Inbound sync from ERP
-- [ ] Outbound document sync
-- [ ] Error handling and retry
+- [x] Inbound sync from ERP
+- [x] Outbound document sync
+- [x] Error handling and retry
 
 ### Phase 5: Production
-- [ ] Security hardening
-- [ ] Performance optimization
-- [ ] Monitoring and logging
-- [ ] Documentation
-
----
-
-## Appendix: Sample API Calls
-
-### Login
-```bash
-curl -X POST https://api.example.com/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"login":"user1","password":"secret"}'
-```
-
-### Get Products (Delta)
-```bash
-curl -X GET "https://api.example.com/sync/delta?entity=products&since=1234567890000" \
-  -H "Authorization: Bearer <token>"
-```
-
-### WebSocket Connection
-```javascript
-const ws = new WebSocket('wss://api.example.com/ws/sync', {
-  headers: { 'Authorization': 'Bearer <token>' }
-});
-
-ws.send(JSON.stringify({
-  type: 'SUBSCRIBE',
-  message_id: crypto.randomUUID(),
-  entity_types: ['documents']
-}));
-```
+- [x] Security hardening
+- [x] Performance optimization
+- [x] Monitoring and logging
+- [x] Documentation

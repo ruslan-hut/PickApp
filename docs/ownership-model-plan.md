@@ -35,7 +35,7 @@ up from here.
 2. **M8 box-status semantics**: when reverting DELIVERING → DELIVERY, do
    we treat already-PICKED_UP boxes as "courier had them" (preserve
    pickup metadata + status) or as "wipe the whole stage" (reset to
-   PACKED, clear all courier fields)? CLAUDE.md doesn't pin this; the
+   PACKED, clear all courier fields)? [CLAUDE.md](../CLAUDE.md) doesn't pin this; the
    user needs to decide before code lands.
 3. **M9 UX**: surface FAILED ops as a list (Profile badge → list view) or
    as a single counter ("3 sync errors — tap to retry")? The list is
@@ -50,7 +50,7 @@ up from here.
 
 ## Context
 
-The earlier LOADED-phantom-actuals catalog (image #1) was closed by client +
+The earlier LOADED-phantom-actuals catalog was closed by client +
 server fixes that landed on `master`. The bug was a single symptom of a
 broader policy: **who owns document data when?**
 
@@ -196,8 +196,8 @@ re-lock instead of the FORBIDDEN reconnect loop.
 
 ### 3.5 Line ObjectID instability across ERP re-imports (RESOLVED by M6)
 
-`preserveLineActuals` now matches by `product_id` and preserves
-`existing._id`. App's `mergeDocumentLines` works correctly because
+`preserveLineActuals` now matches by `product_id` and the existing line `_id` is
+preserved. App's `mergeDocumentLines` works correctly because
 line ids stay stable across re-imports.
 
 ### 3.6 `preserveLineActuals` keyed only on `line_number` (RESOLVED by M6)
@@ -313,7 +313,7 @@ Server:
   point for **M10**.
 
 Contract docs:
-- `BACKEND_SPEC.md`, `websocket-protocol.md` — would need updates for
+- [backend-spec.md](backend-spec.md), [websocket-protocol.md](websocket-protocol.md) — would need updates for
   M2's broadcast section.
 
 ## 7. What this analysis does not cover
@@ -324,4 +324,4 @@ Contract docs:
   beyond what M8 will address.
 - Multi-tenant isolation (only tangentially relevant).
 - Authentication / authorization beyond the Server-Driven Architecture
-  section of CLAUDE.md.
+  section of [CLAUDE.md](../CLAUDE.md).

@@ -141,7 +141,7 @@ Expected volume:
 
 #### Administrator
 - Full access
-- Can view the in-app Debug Journal (see `CLAUDE.md`)
+- Can view the in-app Debug Journal (see [CLAUDE.md](../CLAUDE.md))
 
 ---
 
@@ -241,4 +241,4 @@ Explicitly excluded from MVP:
 MVP shipped. This document is kept as a frozen product-spec reference for
 scope, business scenarios, roles, and offline-first requirements. Current
 implementation details (layer structure, message catalog, debug journal) live
-in `CLAUDE.md`, `websocket-protocol.md`, and `BACKEND_SPEC.md`.
+in [CLAUDE.md](../CLAUDE.md), [websocket-protocol.md](websocket-protocol.md), and [backend-spec.md](backend-spec.md).
