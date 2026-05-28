@@ -23,6 +23,7 @@ enum class MessageType {
 
     // Document operations
     DOCUMENT_UPDATE,
+    DOCUMENT_UPDATE_RESULT,
 
     // Stage operations (generalized lock/unlock/pause/complete for any stage)
     STAGE_LOCK,
@@ -151,6 +152,12 @@ sealed class SyncMessage {
         // could overwrite worker-owned line data before the user thinks
         // to re-open the doc. Null/empty on a fresh login.
         val heldStageLocks: List<String>? = null,
+        // True when the backend confirms DOCUMENT_UPDATE writes with a
+        // DOCUMENT_UPDATE_RESULT frame. The orchestrator gates its
+        // clear-dirty-only-on-ack behaviour on this so an updated client
+        // talking to an old server falls back to the legacy buffer-accept
+        // clear instead of waiting out an ack that never arrives.
+        val supportsUpdateAck: Boolean = false,
         val errorMessage: String? = null
     ) : SyncMessage() {
         override val type = MessageType.USER_LOGIN_RESULT
@@ -275,6 +282,26 @@ sealed class SyncMessage {
         val lines: List<DocumentLineUpdate>
     ) : SyncMessage() {
         override val type = MessageType.DOCUMENT_UPDATE
+    }
+
+    /**
+     * Server confirmation for a DOCUMENT_UPDATE. requestId echoes the id of the
+     * DocumentUpdate it confirms (document_id alone can't disambiguate
+     * concurrent updates on the same doc). On success the orchestrator clears
+     * is_dirty for the confirmed lines and adopts version; on failure it leaves
+     * them dirty for the next resync.
+     * Payload: success, document_id, request_id, version, error_code
+     */
+    data class DocumentUpdateResult(
+        override val id: String,
+        override val timestamp: String,
+        val documentId: String,
+        val requestId: String,
+        val success: Boolean,
+        val version: Long? = null,
+        val errorCode: String? = null
+    ) : SyncMessage() {
+        override val type = MessageType.DOCUMENT_UPDATE_RESULT
     }
 
     // ============================================

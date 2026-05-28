@@ -235,6 +235,13 @@ class SyncOrchestrator @Inject constructor(
     private val heldStageLocks: MutableSet<String> =
         java.util.concurrent.ConcurrentHashMap.newKeySet()
 
+    // Whether the connected server confirms DOCUMENT_UPDATE writes with a
+    // DOCUMENT_UPDATE_RESULT frame (advertised in USER_LOGIN_RESULT). When true,
+    // resyncDirtyDocuments clears is_dirty only on a confirmed ack; when false
+    // (old server) it falls back to the legacy clear-on-buffer-accept path.
+    @Volatile
+    private var supportsUpdateAck: Boolean = false
+
     // M5″ lock-loss recovery state. `lockLossInProgress` is checked at the
     // top of every outbound line-update path (`performDocumentSync`) so we
     // don't fan out more DOCUMENT_UPDATEs that the server is currently
@@ -391,6 +398,7 @@ class SyncOrchestrator @Inject constructor(
             .onEach { authState ->
                 when (authState) {
                     is UserAuthState.Authenticated -> {
+                        supportsUpdateAck = authState.supportsUpdateAck
                         _syncState.value = _syncState.value.copy(
                             isUserAuthenticated = true,
                             authenticatedUserId = authState.userId,
@@ -2055,6 +2063,14 @@ class SyncOrchestrator @Inject constructor(
                 preservedDirty = mergeDocumentLines(dto.id, dto.lines, productIdMap, dto.state, dto.recollection)
             }
 
+            // The upsert above wrote isDirty = false for the document. If the
+            // line merge kept or re-armed any dirty line (worker data the server
+            // is still behind on), re-arm doc.is_dirty so resyncDirtyDocuments
+            // re-pushes it instead of silently dropping the edits.
+            if (preservedDirty > 0) {
+                documentDao.markDocumentDirty(dto.id, System.currentTimeMillis())
+            }
+
             // Only journal DOC_SYNC_APPLIED for actual merges over an
             // existing local copy — first-seen documents from a delta sync
             // are noise. WARN if the apply caused a total drop, since that's
@@ -2443,16 +2459,50 @@ class SyncOrchestrator @Inject constructor(
             .filter { it.id !in serverIds && !it.isDirty }
             .forEach { documentLineDao.deleteLine(it.id) }
 
+        // Worker Data Invariant (mirrors the backend's preserveLineActuals):
+        // while the document is in a worker-authoritative in-process state,
+        // actual_quantity / is_completed / batch_number are owned by the
+        // worker. A server payload can only carry a stale or equal view of
+        // them, so it must never be allowed to regress local progress.
+        //
+        // Relying on the per-line is_dirty flag alone is unsafe: DOCUMENT_UPDATE
+        // is fire-and-forget (the backend sends no success ack — see
+        // client.go:handleDocumentUpdate), and resyncDirtyDocuments clears
+        // is_dirty the moment OkHttp buffers the send. If the socket drops
+        // between buffer-accept and server-receive, the edit lives only on the
+        // device with is_dirty already cleared. A later reconnect that pulls
+        // the server's stale copy would then merge over it with nothing flagged
+        // to preserve. This is exactly the doc 27-26.05.26 data loss (312 → 94).
+        //
+        // So while in-process we keep the local worker fields for every matched
+        // line regardless of is_dirty, and re-arm is_dirty when the server is
+        // behind so resyncDirtyDocuments re-pushes the truth.
+        val workerInProcess = documentState.uppercase() in WORKER_AUTHORITATIVE_STATES
         val merged = serverEntities.map { server ->
             val local = localById[server.id]
-            if (local != null && local.isDirty) {
-                server.copy(
+            when {
+                local == null -> server
+                local.isDirty -> server.copy(
                     actualQuantity = local.actualQuantity,
                     isCompleted = local.isCompleted,
+                    batchNumber = local.batchNumber,
                     notes = local.notes ?: server.notes,
                     isDirty = true
                 )
-            } else server
+                workerInProcess -> {
+                    val serverBehind = server.actualQuantity != local.actualQuantity ||
+                        server.isCompleted != local.isCompleted ||
+                        server.batchNumber != local.batchNumber
+                    server.copy(
+                        actualQuantity = local.actualQuantity,
+                        isCompleted = local.isCompleted,
+                        batchNumber = local.batchNumber,
+                        notes = local.notes ?: server.notes,
+                        isDirty = serverBehind
+                    )
+                }
+                else -> server
+            }
         }
         documentLineDao.insertLines(merged)
 
@@ -2781,33 +2831,91 @@ class SyncOrchestrator @Inject constructor(
                     lines = lines
                 )
 
-                val sent = webSocketManager.sendMessage(message)
-                debugJournal.log(
-                    eventType = ua.com.programmer.pick.data.debug.DebugEventType.RESYNC_DIRTY,
-                    message = if (sent) "re-synced dirty document" else "re-sync send failed",
-                    documentId = doc.id,
-                    severity = if (sent) ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_INFO
-                    else ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN,
-                    payload = mapOf(
-                        "line_count" to lines.size,
-                        "total_actual_qty" to lines.sumOf { it.actualQuantity },
-                        "state" to doc.state
+                if (supportsUpdateAck) {
+                    // Confirmed path: clear is_dirty only when the server
+                    // acknowledges the write (DOCUMENT_UPDATE_RESULT). This is
+                    // the fix for the doc 27-26.05.26 loss — the legacy path
+                    // below cleared on buffer-accept, so a socket drop between
+                    // buffer and server orphaned the edits with is_dirty already
+                    // off, and a later server pull merged over them.
+                    val ack = webSocketManager.sendAndAwait(message, SyncMessage.DocumentUpdateResult::class.java)
+                    val confirmed = ack?.success == true
+                    debugJournal.log(
+                        eventType = ua.com.programmer.pick.data.debug.DebugEventType.RESYNC_DIRTY,
+                        message = when {
+                            confirmed -> "re-synced dirty document (confirmed)"
+                            ack != null -> "re-sync rejected: ${ack.errorCode}"
+                            else -> "re-sync unconfirmed (no ack)"
+                        },
+                        documentId = doc.id,
+                        severity = if (confirmed) ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_INFO
+                        else ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN,
+                        payload = mapOf(
+                            "line_count" to lines.size,
+                            "total_actual_qty" to lines.sumOf { it.actualQuantity },
+                            "state" to doc.state,
+                            "confirmed" to confirmed,
+                            "server_version" to (ack?.version ?: -1L),
+                            "error_code" to (ack?.errorCode ?: "")
+                        )
                     )
-                )
-                if (sent) {
-                    sentCount++
-                    AppLog.d(TAG, "Re-synced dirty document: ${doc.id}")
-                    // Clear dirty flags now that the message is in OkHttp's send
-                    // buffer. DOCUMENT_UPDATE is fire-and-forget (no server ack
-                    // exists), so this is the best signal we get. If the WS
-                    // drops between buffer-accept and server-receive, the data
-                    // is lost — but leaving the flag set indefinitely is worse
-                    // because it makes the dirty-line query grow unbounded and
-                    // every reconnect re-sends the entire history.
-                    documentLineDao.markAllLinesAsSynced(doc.id)
-                    documentDao.markDocumentAsSynced(doc.id)
+                    if (confirmed) {
+                        sentCount++
+                        // Precise clear: only retire is_dirty on lines whose
+                        // current value still matches what we just confirmed.
+                        // A line edited during the round-trip won't match and
+                        // stays dirty for the next resync — closing the
+                        // snapshot/clear race the old markAllLinesAsSynced had.
+                        val sentById = lineEntities.associateBy({ it.id }, {
+                            Triple(it.actualQuantity, it.isCompleted, it.batchNumber)
+                        })
+                        documentLineDao.getLinesByDocumentIdSync(doc.id).forEach { current ->
+                            val snap = sentById[current.id] ?: return@forEach
+                            if (current.actualQuantity == snap.first &&
+                                current.isCompleted == snap.second &&
+                                current.batchNumber == snap.third) {
+                                documentLineDao.markLineAsSynced(current.id)
+                            }
+                        }
+                        // Adopt the server version only when the doc is now fully
+                        // clean (updateDocumentVersion also forces is_dirty=0).
+                        // If edits raced in, leave the doc dirty and its version
+                        // stale so the next pass re-confirms.
+                        val stillDirty = documentLineDao.getLinesByDocumentIdSync(doc.id).any { it.isDirty }
+                        val version = ack?.version
+                        if (!stillDirty && version != null) {
+                            documentDao.updateDocumentVersion(doc.id, version.toInt(), System.currentTimeMillis())
+                        } else if (!stillDirty) {
+                            documentDao.markDocumentAsSynced(doc.id)
+                        }
+                    } else {
+                        // No ack / rejected → keep dirty; next resync retries.
+                        // A rejection (LOCK_LOST / WRONG_STATE) is also delivered
+                        // as a typed SERVER_ERROR that drives M5″ recovery.
+                        AppLog.w(TAG, "Re-sync not confirmed for ${doc.id}")
+                    }
                 } else {
-                    AppLog.w(TAG, "Failed to re-sync dirty document: ${doc.id}")
+                    // Legacy fallback (old server, no ack): clear on buffer-accept.
+                    val sent = webSocketManager.sendMessage(message)
+                    debugJournal.log(
+                        eventType = ua.com.programmer.pick.data.debug.DebugEventType.RESYNC_DIRTY,
+                        message = if (sent) "re-synced dirty document" else "re-sync send failed",
+                        documentId = doc.id,
+                        severity = if (sent) ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_INFO
+                        else ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN,
+                        payload = mapOf(
+                            "line_count" to lines.size,
+                            "total_actual_qty" to lines.sumOf { it.actualQuantity },
+                            "state" to doc.state
+                        )
+                    )
+                    if (sent) {
+                        sentCount++
+                        documentLineDao.markAllLinesAsSynced(doc.id)
+                        documentDao.markDocumentAsSynced(doc.id)
+                    } else {
+                        AppLog.w(TAG, "Failed to re-sync dirty document: ${doc.id}")
+                    }
                 }
             }
             sentCount

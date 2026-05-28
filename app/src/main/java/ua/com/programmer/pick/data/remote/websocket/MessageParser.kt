@@ -53,6 +53,9 @@ class MessageParser @Inject constructor(
         private const val FIELD_BATCH_NUMBER = "batch_number"
         private const val FIELD_IS_COMPLETED = "is_completed"
         private const val FIELD_SUCCESS = "success"
+        private const val FIELD_REQUEST_ID = "request_id"
+        private const val FIELD_ERROR_CODE = "error_code"
+        private const val FIELD_SUPPORTS_UPDATE_ACK = "supports_update_ack"
         private const val FIELD_LOCKED_BY = "locked_by"
         private const val FIELD_COMPLETED_AT = "completed_at"
         private const val FIELD_VERSION = "version"
@@ -126,6 +129,7 @@ class MessageParser @Inject constructor(
                 MessageType.SYNC_COMPLETE.name -> parseSyncComplete(id, timestamp, payload)
                 MessageType.STAGE_LOCK_RESULT.name -> parseStageLockResult(id, timestamp, payload)
                 MessageType.STAGE_COMPLETE_RESULT.name -> parseStageCompleteResult(id, timestamp, payload)
+                MessageType.DOCUMENT_UPDATE_RESULT.name -> parseDocumentUpdateResult(id, timestamp, payload)
                 MessageType.PRODUCT_LOOKUP_RESULT.name -> parseProductLookupResult(id, timestamp, payload)
                 MessageType.BOX_ADD_RESULT.name -> parseBoxAddResult(id, timestamp, payload)
                 MessageType.BOX_REMOVE_RESULT.name -> parseBoxRemoveResult(id, timestamp, payload)
@@ -301,6 +305,7 @@ class MessageParser @Inject constructor(
             is SyncMessage.SyncComplete,
             is SyncMessage.StageLockResult,
             is SyncMessage.StageCompleteResult,
+            is SyncMessage.DocumentUpdateResult,
             is SyncMessage.ProductLookupResult,
             is SyncMessage.BoxAddResult,
             is SyncMessage.BoxRemoveResult,
@@ -356,6 +361,7 @@ class MessageParser @Inject constructor(
             heldStageLocks = payload?.getAsJsonArray(FIELD_HELD_STAGE_LOCKS)
                 ?.mapNotNull { it.takeIf { e -> !e.isJsonNull }?.asString }
                 ?.filter { it.isNotBlank() },
+            supportsUpdateAck = payload?.get(FIELD_SUPPORTS_UPDATE_ACK)?.takeIf { !it.isJsonNull }?.asBoolean ?: false,
             errorMessage = payload?.get(FIELD_ERROR_MESSAGE)?.asString
         )
     }
@@ -422,6 +428,19 @@ class MessageParser @Inject constructor(
             completedAt = payload.get(FIELD_COMPLETED_AT)?.asString,
             version = payload.get(FIELD_VERSION)?.asLong,
             error = payload.get(FIELD_ERROR)?.asString
+        )
+    }
+
+    private fun parseDocumentUpdateResult(id: String, timestamp: String, payload: JsonObject?): SyncMessage.DocumentUpdateResult? {
+        if (payload == null) return null
+        return SyncMessage.DocumentUpdateResult(
+            id = id,
+            timestamp = timestamp,
+            documentId = payload.get(FIELD_DOCUMENT_ID)?.asString ?: return null,
+            requestId = payload.get(FIELD_REQUEST_ID)?.asString ?: return null,
+            success = payload.get(FIELD_SUCCESS)?.asBoolean ?: false,
+            version = payload.get(FIELD_VERSION)?.takeIf { !it.isJsonNull }?.asLong,
+            errorCode = payload.get(FIELD_ERROR_CODE)?.asString
         )
     }
 

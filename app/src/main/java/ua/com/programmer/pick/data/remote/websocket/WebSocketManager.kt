@@ -61,7 +61,11 @@ sealed class UserAuthState {
         // post-restart race where inbound SYNC_DATA could otherwise
         // overwrite worker-owned line data while the device thought the
         // lock was gone.
-        val heldStageLocks: List<String>? = null
+        val heldStageLocks: List<String>? = null,
+        // Forwarded from USER_LOGIN_RESULT — whether the server confirms
+        // DOCUMENT_UPDATE writes with a DOCUMENT_UPDATE_RESULT frame. Gates the
+        // orchestrator's clear-dirty-only-on-ack path (legacy fallback when false).
+        val supportsUpdateAck: Boolean = false
     ) : UserAuthState()
     data class AuthFailed(val error: String) : UserAuthState()
 }
@@ -301,7 +305,8 @@ class WebSocketManager @Inject constructor(
                 role = response.role ?: "",
                 offlineHash = response.offlineHash,
                 availableDocumentTypes = response.availableDocumentTypes,
-                heldStageLocks = response.heldStageLocks
+                heldStageLocks = response.heldStageLocks,
+                supportsUpdateAck = response.supportsUpdateAck
             )
             // Reconcile the persisted current user ID with what the server
             // authoritatively reports. If the user's MongoDB _id changes
@@ -453,6 +458,9 @@ class WebSocketManager @Inject constructor(
         return when (message) {
             is SyncMessage.StageLock -> message.documentId
             is SyncMessage.StageComplete -> message.documentId
+            // Correlate by the request's own message id, not document_id —
+            // multiple DOCUMENT_UPDATEs for one doc can be in flight at once.
+            is SyncMessage.DocumentUpdate -> message.id
             is SyncMessage.ProductLookup -> message.barcode
             is SyncMessage.UserLogin -> message.login
             else -> null
@@ -676,6 +684,8 @@ class WebSocketManager @Inject constructor(
         return when (message) {
             is SyncMessage.StageLockResult -> message.documentId
             is SyncMessage.StageCompleteResult -> message.documentId
+            // Match against the request id the server echoed back.
+            is SyncMessage.DocumentUpdateResult -> message.requestId
             is SyncMessage.ProductLookupResult -> null  // no document-level correlation
             is SyncMessage.UserLoginResult -> null  // single login at a time
             is SyncMessage.SyncComplete -> null  // single sync at a time
