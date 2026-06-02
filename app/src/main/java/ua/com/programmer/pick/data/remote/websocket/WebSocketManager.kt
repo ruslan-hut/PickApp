@@ -22,6 +22,7 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import ua.com.programmer.pick.core.Constants
 import ua.com.programmer.pick.core.di.IoDispatcher
+import ua.com.programmer.pick.core.util.Clock
 import ua.com.programmer.pick.core.util.NetworkMonitor
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import kotlinx.coroutines.CoroutineDispatcher
@@ -105,6 +106,7 @@ class WebSocketManager @Inject constructor(
     private val appPreferences: AppPreferences,
     private val networkMonitor: NetworkMonitor,
     private val debugJournal: ua.com.programmer.pick.data.debug.DebugJournal,
+    private val clock: Clock,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) {
     companion object {
@@ -127,7 +129,7 @@ class WebSocketManager @Inject constructor(
     private var pongTimeoutJob: Job? = null
     private var healthCheckJob: Job? = null
     private var reconnectAttempts = 0
-    private var lastPongReceived = System.currentTimeMillis()
+    private var lastPongReceived = clock.now()
     // Debounce for half-open-socket teardown. A wedged socket makes every
     // ws.send() return false; without this guard a burst of failed sends (or
     // a failed ping plus failed doc updates) would each fire their own
@@ -238,8 +240,8 @@ class WebSocketManager @Inject constructor(
         if (webSocket == null) return false
         val before = lastPongReceived
         sendPing()
-        val deadline = System.currentTimeMillis() + HEALTH_CHECK_TIMEOUT_MS
-        while (System.currentTimeMillis() < deadline) {
+        val deadline = clock.now() + HEALTH_CHECK_TIMEOUT_MS
+        while (clock.now() < deadline) {
             delay(200)
             if (lastPongReceived > before) return true
         }
@@ -302,7 +304,7 @@ class WebSocketManager @Inject constructor(
      * → here) cancelling pingJob doesn't abort the teardown mid-flight.
      */
     private fun escalateStaleSocket(reason: String) {
-        val now = System.currentTimeMillis()
+        val now = clock.now()
         if (now - lastStaleEscalationAt < HEALTH_CHECK_TIMEOUT_MS) return
         when (_connectionState.value) {
             is ConnectionState.Reconnecting, is ConnectionState.Connecting -> return
@@ -480,7 +482,8 @@ class WebSocketManager @Inject constructor(
                     messageId = message.id,
                     expectedType = responseType,
                     continuation = continuation,
-                    correlationId = correlationId
+                    correlationId = correlationId,
+                    createdAt = clock.now()
                 )
 
                 continuation.invokeOnCancellation {
@@ -574,7 +577,7 @@ class WebSocketManager @Inject constructor(
         override fun onOpen(webSocket: WebSocket, response: Response) {
             AppLog.d(TAG, "WebSocket opened: ${response.code}")
             reconnectAttempts = 0
-            lastPongReceived = System.currentTimeMillis()
+            lastPongReceived = clock.now()
             _connectionState.value = ConnectionState.Connected
 
             // Start PING timer
@@ -757,7 +760,7 @@ class WebSocketManager @Inject constructor(
                 }
 
                 // Only send a new ping if the previous one was answered
-                val timeSinceLastPong = System.currentTimeMillis() - lastPongReceived
+                val timeSinceLastPong = clock.now() - lastPongReceived
                 if (timeSinceLastPong > Constants.Network.WEBSOCKET_PING_INTERVAL_SECONDS * 1000) {
                     // Previous ping still unanswered — let the existing timeout handle it
                     AppLog.w(TAG, "Previous PING still unanswered, skipping new PING")
@@ -797,7 +800,7 @@ class WebSocketManager @Inject constructor(
             delay(Constants.Network.WEBSOCKET_PONG_TIMEOUT_SECONDS * 1000)
 
             // Check if PONG was received after last PING
-            val timeSinceLastPong = System.currentTimeMillis() - lastPongReceived
+            val timeSinceLastPong = clock.now() - lastPongReceived
             if (timeSinceLastPong > Constants.Network.WEBSOCKET_PONG_TIMEOUT_SECONDS * 1000) {
                 // Hard-cancel + reconnect. A plain webSocket.close() here relies
                 // on a close-handshake the dead peer can never ack, so onClosed
@@ -811,7 +814,7 @@ class WebSocketManager @Inject constructor(
     }
 
     private fun handlePong(message: SyncMessage.Pong) {
-        lastPongReceived = System.currentTimeMillis()
+        lastPongReceived = clock.now()
         pongTimeoutJob?.cancel()
         AppLog.d(TAG, "PONG received")
 
@@ -916,7 +919,7 @@ class WebSocketManager @Inject constructor(
      * Clean up stale pending responses (older than 5 minutes)
      */
     fun cleanupStalePendingResponses() {
-        val now = System.currentTimeMillis()
+        val now = clock.now()
         val staleThreshold = 5 * 60 * 1000L // 5 minutes
 
         val staleIds = pendingResponses.entries
@@ -940,6 +943,6 @@ class WebSocketManager @Inject constructor(
         val expectedType: Class<*>,
         val continuation: CancellableContinuation<*>,
         val correlationId: String? = null,
-        val createdAt: Long = System.currentTimeMillis()
+        val createdAt: Long
     )
 }

@@ -28,6 +28,9 @@ navigationCompose = "2.9.8"
 # Coroutines
 coroutines = "1.11.0"
 
+# Testing
+mockk = "1.14.5"
+
 # DataStore
 datastore = "1.2.1"
 
@@ -91,6 +94,10 @@ navigation-compose = { group = "androidx.navigation", name = "navigation-compose
 # Coroutines
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
+
+# Testing
+mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 
 # DataStore
 datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }

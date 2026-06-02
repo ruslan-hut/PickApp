@@ -6,6 +6,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import ua.com.programmer.pick.core.util.Clock
 import javax.inject.Qualifier
 import javax.inject.Singleton
 
@@ -39,4 +40,8 @@ object AppModule {
     @Singleton
     @MainDispatcher
     fun provideMainDispatcher(): CoroutineDispatcher = Dispatchers.Main
+
+    @Provides
+    @Singleton
+    fun provideClock(): Clock = Clock.SYSTEM
 }
