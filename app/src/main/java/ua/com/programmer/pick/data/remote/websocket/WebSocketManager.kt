@@ -128,6 +128,13 @@ class WebSocketManager @Inject constructor(
     private var healthCheckJob: Job? = null
     private var reconnectAttempts = 0
     private var lastPongReceived = System.currentTimeMillis()
+    // Debounce for half-open-socket teardown. A wedged socket makes every
+    // ws.send() return false; without this guard a burst of failed sends (or
+    // a failed ping plus failed doc updates) would each fire their own
+    // forceReconnect and thrash. @Volatile so the value is visible across the
+    // io threads sendMessage runs on.
+    @Volatile
+    private var lastStaleEscalationAt = 0L
 
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
@@ -277,6 +284,41 @@ class WebSocketManager @Inject constructor(
     }
 
     /**
+     * Tear down a connection that *looks* alive but isn't.
+     *
+     * The cached [_connectionState] can read `Connected` while the underlying
+     * TCP socket is dead (radio dropped mid-session, NAT timed out, long Doze).
+     * In that half-open state `ws.send()` returns false and PONGs stop coming,
+     * yet OkHttp never delivers `onClosed`/`onFailure` because a graceful
+     * `close()` handshake can't complete over dead TCP — so the socket stays
+     * wedged indefinitely (observed: 83 minutes of failed sends with no
+     * reconnect). [forceReconnect] hard-cancels instead of closing, which is
+     * the only reliable recovery here.
+     *
+     * Guarded two ways: a time window so a burst of failed sends triggers at
+     * most one teardown, and a state check so we don't pile on while a
+     * reconnect is already underway. Runs forceReconnect on [scope] rather
+     * than inline, so when the caller is the ping coroutine (sendPing → send
+     * → here) cancelling pingJob doesn't abort the teardown mid-flight.
+     */
+    private fun escalateStaleSocket(reason: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastStaleEscalationAt < HEALTH_CHECK_TIMEOUT_MS) return
+        when (_connectionState.value) {
+            is ConnectionState.Reconnecting, is ConnectionState.Connecting -> return
+            else -> {}
+        }
+        lastStaleEscalationAt = now
+        AppLog.w(TAG, "Stale socket detected ($reason) - forcing reconnect")
+        debugJournal.log(
+            eventType = ua.com.programmer.pick.data.debug.DebugEventType.WS_DISCONNECT,
+            message = "stale socket: $reason",
+            severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN
+        )
+        scope.launch { forceReconnect() }
+    }
+
+    /**
      * Login user after WebSocket connection (Stage 2: User Login)
      * @param login User login
      * @param password User password
@@ -381,6 +423,10 @@ class WebSocketManager @Inject constructor(
                     message = "ws.send returned false for ${message.type}",
                     severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN
                 )
+                // send() returning false while we still read Connected means the
+                // socket is half-open/closing — recover instead of silently
+                // deferring every write to dirty re-sync on a dead connection.
+                escalateStaleSocket("send returned false for ${message.type}")
             }
             sent
         } catch (e: Exception) {
@@ -390,6 +436,7 @@ class WebSocketManager @Inject constructor(
                 message = "exception sending ${message.type}: ${e.message}",
                 severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_ERROR
             )
+            escalateStaleSocket("exception sending ${message.type}")
             false
         }
     }
@@ -752,8 +799,13 @@ class WebSocketManager @Inject constructor(
             // Check if PONG was received after last PING
             val timeSinceLastPong = System.currentTimeMillis() - lastPongReceived
             if (timeSinceLastPong > Constants.Network.WEBSOCKET_PONG_TIMEOUT_SECONDS * 1000) {
+                // Hard-cancel + reconnect. A plain webSocket.close() here relies
+                // on a close-handshake the dead peer can never ack, so onClosed
+                // never fires and the socket wedges forever — the 83-minute
+                // half-open incident. escalateStaleSocket routes through
+                // forceReconnect (cancel()), which doesn't need the peer.
                 AppLog.w(TAG, "PONG timeout - reconnecting")
-                webSocket?.close(4000, "PONG timeout")
+                escalateStaleSocket("pong timeout")
             }
         }
     }

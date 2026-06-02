@@ -1061,7 +1061,19 @@ class SyncOrchestrator @Inject constructor(
         return if (sent) {
             Result.Success(Unit)
         } else {
-            Result.Error(Exception("Failed to send pause request"))
+            // isConnected() was true but the write failed → half-open socket.
+            // WebSocketManager.sendMessage has already escalated to a forced
+            // reconnect; queue the pause (exactly as the offline branch above)
+            // so the worker's intent replays on the fresh socket instead of
+            // being silently dropped. Treat as success — the pause will land.
+            AppLog.w(TAG, "Pause send failed (half-open socket), queueing for replay: $documentId")
+            outgoingOperationRepository.queueOperation(
+                operationType = OperationType.STAGE_PAUSE,
+                entityType = EntityType.DOCUMENT,
+                entityId = documentId,
+                payload = gson.toJson(mapOf("document_id" to externalId, "stage" to stage))
+            )
+            Result.Success(Unit)
         }
     }
 
@@ -1372,6 +1384,13 @@ class SyncOrchestrator @Inject constructor(
         )
 
         if (response == null) {
+            // No ack within the timeout — same half-open-socket recovery as
+            // lockStage. The send may have succeeded into a dead socket (so the
+            // manager's send()==false escalation never fires); tear it down so
+            // the user's retry runs on a fresh connection instead of timing out
+            // against the same wedged one.
+            AppLog.w(TAG, "Stage complete timed out, forcing WebSocket reconnect")
+            webSocketManager.forceReconnect()
             return Result.Error(Exception("Complete request timeout"))
         }
 
