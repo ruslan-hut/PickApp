@@ -48,7 +48,7 @@ import ua.com.programmer.pick.data.local.database.entity.WarehouseLocationEntity
         DocumentBoxEntity::class,
         DebugJournalEntity::class
     ],
-    version = 14, // Version 14: boxes embedded on server-side Document.Boxes; local document_boxes table rebuilt around (document_id, box_number) composite PK
+    version = 15, // Version 15: document_lines gains volume + volume_unit (per-item ERP sort key)
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -245,6 +245,15 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_document_boxes_barcode ON document_boxes (barcode)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_document_boxes_box_id ON document_boxes (box_id)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_document_boxes_is_parcel ON document_boxes (is_parcel)")
+            }
+        }
+
+        // Per-item volume (e.g. 10) + its unit (e.g. "ml") arrive on each
+        // document line from the ERP and drive line ordering on the device.
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE document_lines ADD COLUMN volume INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE document_lines ADD COLUMN volume_unit TEXT DEFAULT NULL")
             }
         }
 

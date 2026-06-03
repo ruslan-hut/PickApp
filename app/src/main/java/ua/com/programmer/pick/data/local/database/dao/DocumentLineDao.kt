@@ -17,6 +17,8 @@ interface DocumentLineDao {
     @Query("SELECT * FROM document_lines WHERE id = :id")
     fun observeLineById(id: String): Flow<DocumentLineEntity?>
 
+    // Lines are ordered by line_number — the ERP assigns it in the intended
+    // sort order on document upload, so it is the authoritative display order.
     @Query("SELECT * FROM document_lines WHERE document_id = :documentId ORDER BY line_number ASC")
     fun getLinesByDocumentId(documentId: String): Flow<List<DocumentLineEntity>>
 

@@ -27,6 +27,14 @@ data class DocumentLineDto(
     @SerializedName("unit")
     val unit: String? = null,
 
+    // Per-item physical volume (e.g. 10) and its unit (e.g. "ml"). ERP-owned
+    // header metadata used only to sort lines on the device.
+    @SerializedName("volume")
+    val volume: Int = 0,
+
+    @SerializedName("volume_unit")
+    val volumeUnit: String? = null,
+
     @SerializedName("planned_quantity")
     val plannedQuantity: Double,
 

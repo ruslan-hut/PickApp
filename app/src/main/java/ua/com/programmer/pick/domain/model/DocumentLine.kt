@@ -8,6 +8,8 @@ data class DocumentLine(
     val productCode: String,
     val productName: String,
     val unit: String,
+    val volume: Int = 0,
+    val volumeUnit: String? = null,
     val plannedQuantity: Double,
     val actualQuantity: Double,
     val batchNumber: String?,

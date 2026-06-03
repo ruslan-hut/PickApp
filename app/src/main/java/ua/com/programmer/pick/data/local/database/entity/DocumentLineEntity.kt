@@ -45,6 +45,12 @@ data class DocumentLineEntity(
     @ColumnInfo(name = "unit")
     val unit: String,
 
+    @ColumnInfo(name = "volume")
+    val volume: Int = 0,
+
+    @ColumnInfo(name = "volume_unit")
+    val volumeUnit: String? = null,
+
     @ColumnInfo(name = "planned_quantity")
     val plannedQuantity: Double,
 
