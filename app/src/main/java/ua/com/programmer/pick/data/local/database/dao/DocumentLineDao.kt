@@ -102,6 +102,25 @@ interface DocumentLineDao {
     @Query("UPDATE document_lines SET notes = :notes, is_dirty = 1 WHERE id = :lineId")
     suspend fun updateLineNotes(lineId: String, notes: String?): Int
 
+    // Records a freshly captured photo's local cache path and marks it awaiting
+    // upload. photo_path / photo_pending are device-local — not synced.
+    @Query("UPDATE document_lines SET photo_path = :photoPath, photo_pending = 1 WHERE id = :lineId")
+    suspend fun updateLinePhoto(lineId: String, photoPath: String): Int
+
+    // Upload confirmed (HTTP 200): flip the server marker locally and clear the
+    // pending flag so the reconnect drain skips it.
+    @Query("UPDATE document_lines SET has_photo = 1, photo_pending = 0 WHERE id = :lineId")
+    suspend fun markLinePhotoUploaded(lineId: String): Int
+
+    // Lines holding a captured-but-unuploaded photo, drained on reconnect.
+    @Query("SELECT * FROM document_lines WHERE photo_pending = 1 AND photo_path IS NOT NULL")
+    suspend fun getLinesWithPendingPhotos(): List<DocumentLineEntity>
+
+    // Stop retrying an upload (file gone, or rejected as too large) without
+    // flipping has_photo.
+    @Query("UPDATE document_lines SET photo_pending = 0 WHERE id = :lineId")
+    suspend fun clearLinePhotoPending(lineId: String): Int
+
     @Query("UPDATE document_lines SET batch_number = :batchNumber, expiration_date = :expirationDate, is_dirty = 1 WHERE id = :lineId")
     suspend fun updateLineBatchInfo(lineId: String, batchNumber: String?, expirationDate: Long?)
 

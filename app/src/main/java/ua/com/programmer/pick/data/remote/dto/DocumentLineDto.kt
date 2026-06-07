@@ -57,7 +57,10 @@ data class DocumentLineDto(
     val notes: String?,
 
     @SerializedName("is_completed")
-    val isCompleted: Boolean = false
+    val isCompleted: Boolean = false,
+
+    @SerializedName("has_photo")
+    val hasPhoto: Boolean = false
 )
 
 /**

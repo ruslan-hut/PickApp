@@ -63,6 +63,8 @@ class MessageParser @Inject constructor(
         private const val FIELD_ERROR = "error"
         private const val FIELD_BARCODE = "barcode"
         private const val FIELD_PRODUCT = "product"
+        private const val FIELD_UPLOAD_URL = "upload_url"
+        private const val FIELD_EXPIRES_AT = "expires_at"
         private const val FIELD_ERROR_TYPE = "error_type"
         private const val FIELD_MESSAGE = "message"
         private const val FIELD_STACK_TRACE = "stack_trace"
@@ -132,6 +134,7 @@ class MessageParser @Inject constructor(
                 MessageType.STAGE_COMPLETE_RESULT.name -> parseStageCompleteResult(id, timestamp, payload)
                 MessageType.DOCUMENT_UPDATE_RESULT.name -> parseDocumentUpdateResult(id, timestamp, payload)
                 MessageType.PRODUCT_LOOKUP_RESULT.name -> parseProductLookupResult(id, timestamp, payload)
+                MessageType.LINE_PHOTO_UPLOAD_URL_RESULT.name -> parseLinePhotoUploadUrlResult(id, timestamp, payload)
                 MessageType.BOX_ADD_RESULT.name -> parseBoxAddResult(id, timestamp, payload)
                 MessageType.BOX_REMOVE_RESULT.name -> parseBoxRemoveResult(id, timestamp, payload)
                 MessageType.BOX_LOOKUP_RESULT.name -> parseBoxLookupResult(id, timestamp, payload)
@@ -248,6 +251,11 @@ class MessageParser @Inject constructor(
                 addProperty(FIELD_BARCODE, message.barcode)
             }
 
+            is SyncMessage.LinePhotoUploadUrl -> JsonObject().apply {
+                addProperty(FIELD_DOCUMENT_ID, message.documentId)
+                addProperty(FIELD_LINE_NUMBER, message.lineNumber)
+            }
+
             is SyncMessage.ErrorReport -> JsonObject().apply {
                 addProperty(FIELD_ERROR_TYPE, message.errorType)
                 addProperty(FIELD_MESSAGE, message.message)
@@ -311,6 +319,7 @@ class MessageParser @Inject constructor(
             is SyncMessage.StageCompleteResult,
             is SyncMessage.DocumentUpdateResult,
             is SyncMessage.ProductLookupResult,
+            is SyncMessage.LinePhotoUploadUrlResult,
             is SyncMessage.BoxAddResult,
             is SyncMessage.BoxRemoveResult,
             is SyncMessage.BoxLookupResult,
@@ -456,6 +465,19 @@ class MessageParser @Inject constructor(
             success = payload.get(FIELD_SUCCESS)?.asBoolean ?: false,
             product = payload.get(FIELD_PRODUCT),
             error = payload.get(FIELD_ERROR)?.asString
+        )
+    }
+
+    private fun parseLinePhotoUploadUrlResult(id: String, timestamp: String, payload: JsonObject?): SyncMessage.LinePhotoUploadUrlResult {
+        return SyncMessage.LinePhotoUploadUrlResult(
+            id = id,
+            timestamp = timestamp,
+            success = payload?.get(FIELD_SUCCESS)?.asBoolean ?: false,
+            documentId = payload?.get(FIELD_DOCUMENT_ID)?.asString,
+            lineNumber = payload?.get(FIELD_LINE_NUMBER)?.takeIf { !it.isJsonNull }?.asInt,
+            uploadUrl = payload?.get(FIELD_UPLOAD_URL)?.asString,
+            expiresAt = payload?.get(FIELD_EXPIRES_AT)?.takeIf { !it.isJsonNull }?.asLong,
+            error = payload?.get(FIELD_ERROR)?.asString
         )
     }
 

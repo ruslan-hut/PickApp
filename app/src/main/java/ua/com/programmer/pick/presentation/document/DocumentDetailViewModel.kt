@@ -20,8 +20,11 @@ import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.scanner.BarcodeService
 import ua.com.programmer.pick.core.scanner.ScannedBarcode
 import ua.com.programmer.pick.data.local.database.dao.ProductImageDao
+import ua.com.programmer.pick.core.util.ImageCompressor
+import ua.com.programmer.pick.core.util.LinePhotoStore
 import ua.com.programmer.pick.core.util.Result
 import ua.com.programmer.pick.data.debug.DebugEventType
+import kotlinx.coroutines.withContext
 import ua.com.programmer.pick.data.debug.DebugJournal
 import ua.com.programmer.pick.data.mapper.toDocumentBoxDomainList
 import ua.com.programmer.pick.data.mapper.toDomain
@@ -51,6 +54,8 @@ class DocumentDetailViewModel @Inject constructor(
     private val boxDao: BoxDao,
     private val documentBoxDao: DocumentBoxDao,
     private val documentTypeConfigProvider: DocumentTypeConfigProvider,
+    private val imageCompressor: ImageCompressor,
+    private val linePhotoStore: LinePhotoStore,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -157,7 +162,19 @@ class DocumentDetailViewModel @Inject constructor(
                 syncOrchestrator.requestDocumentProducts(documentId)
 
                 val doc = documentRepository.getDocumentById(documentId)
-                val lines = documentRepository.getLinesByDocumentId(documentId).first()
+                // Recover a dropped photo_path from the on-disk cache: a
+                // complete-set sync can delete+recreate a line row (losing the
+                // device-local column) while the file survives, so a saved photo
+                // stays viewable in preview mode.
+                val lines = documentRepository.getLinesByDocumentId(documentId).first().let { raw ->
+                    withContext(ioDispatcher) {
+                        raw.map { line ->
+                            if (line.photoPath == null) {
+                                linePhotoStore.findFor(line.id)?.let { line.copy(photoPath = it) } ?: line
+                            } else line
+                        }
+                    }
+                }
 
                 // Load product images from local DB
                 val productIds = lines.map { it.productId }
@@ -543,6 +560,71 @@ class DocumentDetailViewModel @Inject constructor(
                     _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
                 }
                 else -> _uiState.update { it.copy(isSaving = false) }
+            }
+        }
+    }
+
+    /** Camera bind/capture failed in the overlay — surface a toast. */
+    fun notifyPhotoCaptureFailed() {
+        viewModelScope.launch {
+            _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_PHOTO_CAPTURE))
+        }
+    }
+
+    /**
+     * Persist a freshly captured line photo: compress the JPEG, cache it under
+     * filesDir, mark the line pending upload, then attempt an immediate upload
+     * (it falls back to the reconnect drain when offline).
+     */
+    fun onPhotoCaptured(lineId: String, jpeg: ByteArray, rotationDegrees: Int) {
+        if (!_uiState.value.canEditLines) return
+
+        viewModelScope.launch {
+            val captured = withContext(ioDispatcher) {
+                val compressed = imageCompressor.compress(jpeg, rotationDegrees)
+                    ?: return@withContext null
+                linePhotoStore.write(lineId, compressed) to compressed.size
+            }
+            if (captured == null) {
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_PHOTO_CAPTURE))
+                return@launch
+            }
+            val (path, byteCount) = captured
+
+            val result = documentRepository.updateLinePhoto(lineId, path)
+            if (result is Result.Error) {
+                withContext(ioDispatcher) { linePhotoStore.delete(path) }
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_PHOTO_CAPTURE))
+                return@launch
+            }
+
+            // Drop any earlier capture for this line (incl. orphans left when a
+            // sync had nulled photo_path) so exactly the new file remains.
+            withContext(ioDispatcher) { linePhotoStore.deleteOthers(lineId, path) }
+
+            // Optimistic: show the new thumbnail + pending state immediately.
+            _uiState.update { current ->
+                val updated = current.lines.map {
+                    if (it.id == lineId) it.copy(photoPath = path, photoPending = true) else it
+                }
+                current.copy(lines = updated)
+            }
+
+            debugJournal.log(
+                eventType = DebugEventType.LINE_EDIT,
+                message = "line photo captured",
+                documentId = currentDocumentId,
+                payload = mapOf("line_id" to lineId, "bytes" to byteCount)
+            )
+
+            // Best-effort upload now; on failure it stays pending for reconnect.
+            if (syncOrchestrator.uploadLinePhoto(lineId)) {
+                _uiState.update { current ->
+                    val updated = current.lines.map {
+                        if (it.id == lineId) it.copy(hasPhoto = true, photoPending = false) else it
+                    }
+                    current.copy(lines = updated)
+                }
             }
         }
     }

@@ -62,6 +62,14 @@
     <string name="document_lines">Рядки</string>
     <string name="document_note_label">Примітка</string>
     <string name="line_note_label">Примітка</string>
+    <string name="line_photo_label">Фото</string>
+    <string name="take_photo">Зробити фото</string>
+    <string name="retake_photo">Перезняти фото</string>
+    <string name="capture_photo">Зняти</string>
+    <string name="photo_attached">Фото додано</string>
+    <string name="error_photo_capture">Не вдалося зробити фото</string>
+    <string name="error_photo_upload">Не вдалося завантажити фото</string>
+    <string name="camera_permission_required">Для зйомки потрібен дозвіл на камеру</string>
     <string name="no_lines_description">Немає рядків у цьому документі</string>
     <string name="lines_progress_fmt">%1$d / %2$d рядків</string>
     <string name="error_saving">Помилка збереження</string>

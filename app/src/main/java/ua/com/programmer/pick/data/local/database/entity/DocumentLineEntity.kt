@@ -76,5 +76,19 @@ data class DocumentLineEntity(
     val isCompleted: Boolean = false,
 
     @ColumnInfo(name = "is_dirty")
-    val isDirty: Boolean = false
+    val isDirty: Boolean = false,
+
+    // Server-set marker that a photo exists for this line (server-authoritative).
+    @ColumnInfo(name = "has_photo")
+    val hasPhoto: Boolean = false,
+
+    // Device-local cache path of the captured JPEG. Never sent to/from the
+    // server and never overwritten by the sync merge.
+    @ColumnInfo(name = "photo_path")
+    val photoPath: String? = null,
+
+    // Device-local flag: a captured photo is awaiting upload (drained on
+    // reconnect). Local-only, never synced.
+    @ColumnInfo(name = "photo_pending")
+    val photoPending: Boolean = false
 )

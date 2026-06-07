@@ -57,6 +57,8 @@ interface DocumentRepository {
 
     suspend fun updateLineNote(lineId: String, notes: String?): Result<Unit>
 
+    suspend fun updateLinePhoto(lineId: String, photoPath: String): Result<Unit>
+
     suspend fun incrementLineQuantity(lineId: String, delta: Double): Result<Unit>
 
     suspend fun updateLineCompleted(lineId: String, isCompleted: Boolean): Result<Unit>

@@ -52,6 +52,10 @@ enum class MessageType {
     PRODUCT_LOOKUP,
     PRODUCT_LOOKUP_RESULT,
 
+    // Per-line photo: request a signed upload URL, then HTTP POST the bytes
+    LINE_PHOTO_UPLOAD_URL,
+    LINE_PHOTO_UPLOAD_URL_RESULT,
+
     // Targeted refresh
     DOCUMENT_LIST_REFRESH,
     DOCUMENT_PRODUCTS,
@@ -427,6 +431,41 @@ sealed class SyncMessage {
         val error: String? = null
     ) : SyncMessage() {
         override val type = MessageType.PRODUCT_LOOKUP_RESULT
+    }
+
+    // ============================================
+    // Per-line Photo Messages
+    // ============================================
+
+    /**
+     * Client request for a short-lived signed URL to upload a line's photo.
+     * Correlated by document_id + line_number (multiple lines may be in flight).
+     */
+    data class LinePhotoUploadUrl(
+        override val id: String,
+        override val timestamp: String,
+        val documentId: String,
+        val lineNumber: Int
+    ) : SyncMessage() {
+        override val type = MessageType.LINE_PHOTO_UPLOAD_URL
+    }
+
+    /**
+     * Server response carrying the signed upload URL and its expiry. The URL is
+     * absolute and self-authenticating (token in the query) — POST raw JPEG
+     * bytes to it directly, do not prefix BASE_URL or attach a bearer.
+     */
+    data class LinePhotoUploadUrlResult(
+        override val id: String,
+        override val timestamp: String,
+        val success: Boolean,
+        val documentId: String? = null,
+        val lineNumber: Int? = null,
+        val uploadUrl: String? = null,
+        val expiresAt: Long? = null,
+        val error: String? = null
+    ) : SyncMessage() {
+        override val type = MessageType.LINE_PHOTO_UPLOAD_URL_RESULT
     }
 
     // ============================================

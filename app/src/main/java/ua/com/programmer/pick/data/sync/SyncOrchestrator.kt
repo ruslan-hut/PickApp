@@ -38,6 +38,7 @@ import ua.com.programmer.pick.data.mapper.ProductMapper
 import ua.com.programmer.pick.data.mapper.WarehouseMapper
 import ua.com.programmer.pick.data.mapper.toEntity
 import ua.com.programmer.pick.data.mapper.toEntityForSync
+import ua.com.programmer.pick.data.remote.LinePhotoUploader
 import ua.com.programmer.pick.data.remote.dto.ClientDto
 import ua.com.programmer.pick.data.remote.dto.DocumentDto
 import ua.com.programmer.pick.data.remote.dto.ProductDto
@@ -156,6 +157,8 @@ class SyncOrchestrator @Inject constructor(
     private val outgoingOperationRepository: OutgoingOperationRepository,
     private val debugJournal: ua.com.programmer.pick.data.debug.DebugJournal,
     private val debugJournalUploader: ua.com.programmer.pick.data.debug.DebugJournalUploader,
+    private val linePhotoUploader: ua.com.programmer.pick.data.remote.LinePhotoUploader,
+    private val linePhotoStore: ua.com.programmer.pick.core.util.LinePhotoStore,
     private val networkMonitor: NetworkMonitor,
     private val documentMapper: DocumentMapper,
     private val productMapper: ProductMapper,
@@ -387,6 +390,7 @@ class SyncOrchestrator @Inject constructor(
                     // nothing dirty, so calling it twice is cheap.
                     if (webSocketManager.isUserAuthenticated()) {
                         try { resyncDirtyDocuments() } catch (_: Exception) {}
+                        try { drainPendingPhotos() } catch (_: Exception) {}
                     }
                 }
                 wasConnected = isConnected
@@ -444,6 +448,8 @@ class SyncOrchestrator @Inject constructor(
                                 val enabled = appPreferences.debugJournalEnabled.first()
                                 if (enabled) debugJournalUploader.flush()
                             } catch (_: Exception) {}
+                            // Flush any photos captured while offline.
+                            try { drainPendingPhotos() } catch (_: Exception) {}
                         }
 
                         // Documents are loaded via delta sync for all roles.
@@ -659,6 +665,113 @@ class SyncOrchestrator @Inject constructor(
         }
 
         return Result.Success(Unit)
+    }
+
+    /**
+     * Request a short-lived signed URL to upload [lineNumber]'s photo on
+     * [documentId] (Room id). Returns the absolute upload URL on success.
+     * Tokens expire quickly, so callers must request a fresh URL per attempt.
+     */
+    suspend fun requestLinePhotoUploadUrl(documentId: String, lineNumber: Int): Result<String> {
+        if (!webSocketManager.isConnected()) {
+            return Result.Error(Exception("WebSocket not connected"))
+        }
+        if (!webSocketManager.isUserAuthenticated()) {
+            return Result.Error(Exception("User not authenticated"))
+        }
+
+        val message = SyncMessage.LinePhotoUploadUrl(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp(),
+            documentId = toExternalDocumentId(documentId),
+            lineNumber = lineNumber
+        )
+
+        val response = webSocketManager.sendAndAwait(
+            message,
+            SyncMessage.LinePhotoUploadUrlResult::class.java
+        )
+
+        return when {
+            response == null -> Result.Error(Exception("No response for photo upload URL"))
+            !response.success || response.uploadUrl.isNullOrBlank() ->
+                Result.Error(Exception(response.error ?: "Upload URL request failed"))
+            else -> Result.Success(response.uploadUrl)
+        }
+    }
+
+    /**
+     * Upload the captured photo for [lineId]: mint a fresh signed URL, POST the
+     * cached JPEG, and on success flip has_photo + clear the pending flag.
+     * Returns true when the upload (and marker update) succeeded. A transient
+     * failure leaves photo_pending set for the next drain; a permanent one
+     * (missing file, oversized) clears it to stop a retry loop.
+     */
+    suspend fun uploadLinePhoto(lineId: String): Boolean {
+        val line = documentLineDao.getLineById(lineId) ?: return false
+        if (!line.photoPending) return true
+        val bytes = linePhotoStore.read(line.photoPath)
+        if (bytes == null) {
+            AppLog.w(TAG, "Pending photo file missing for line $lineId; clearing flag")
+            documentLineDao.clearLinePhotoPending(lineId)
+            return false
+        }
+
+        // A 401 means the freshly minted URL's token already expired — refresh
+        // and retry once.
+        var result = requestAndUpload(line.documentId, line.lineNumber, bytes)
+        if (result is LinePhotoUploader.Result.Unauthorized) {
+            result = requestAndUpload(line.documentId, line.lineNumber, bytes)
+        }
+
+        return when (result) {
+            LinePhotoUploader.Result.Success -> {
+                documentLineDao.markLinePhotoUploaded(lineId)
+                true
+            }
+            LinePhotoUploader.Result.TooLarge -> {
+                AppLog.w(TAG, "Photo for line $lineId rejected as too large; clearing flag")
+                documentLineDao.clearLinePhotoPending(lineId)
+                false
+            }
+            // null URL (offline/server error), repeated 401, or other failure:
+            // keep pending and retry on the next drain.
+            else -> false
+        }
+    }
+
+    // Mint a fresh signed URL and POST the bytes. Returns null when no URL could
+    // be obtained (offline / server error); otherwise the raw upload result.
+    private suspend fun requestAndUpload(
+        documentId: String,
+        lineNumber: Int,
+        bytes: ByteArray
+    ): LinePhotoUploader.Result? {
+        val url = (requestLinePhotoUploadUrl(documentId, lineNumber) as? Result.Success)?.data
+            ?: return null
+        return linePhotoUploader.upload(url, bytes)
+    }
+
+    /**
+     * Upload every captured-but-unuploaded photo. Called on reconnect so photos
+     * taken offline flush once the socket is back.
+     */
+    suspend fun drainPendingPhotos() {
+        if (!webSocketManager.isConnected() || !webSocketManager.isUserAuthenticated()) return
+        val pending = documentLineDao.getLinesWithPendingPhotos()
+        if (pending.isEmpty()) return
+        AppLog.d(TAG, "Draining ${pending.size} pending line photo(s)")
+        for (line in pending) {
+            if (!webSocketManager.isConnected()) break
+            uploadLinePhoto(line.id)
+        }
+    }
+
+    // Delete cached photo files for a document before its lines are purged, so
+    // filesDir/line_photos/ doesn't accumulate orphans on stage-complete/purge.
+    private suspend fun purgeLinePhotoFiles(documentId: String) {
+        documentLineDao.getLinesByDocumentIdSync(documentId)
+            .forEach { linePhotoStore.delete(it.photoPath) }
     }
 
     // ============================================
@@ -1413,6 +1526,7 @@ class SyncOrchestrator @Inject constructor(
             )
             // Remove the completed document locally — the server no longer
             // includes it in this user's document set after stage completion.
+            purgeLinePhotoFiles(documentId)
             documentLineDao.deleteLinesByDocumentId(documentId)
             documentDao.deleteDocument(documentId)
             heldStageLocks.remove(documentId)
@@ -1463,6 +1577,7 @@ class SyncOrchestrator @Inject constructor(
             stage = stage,
             severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN
         )
+        purgeLinePhotoFiles(documentId)
         documentLineDao.deleteLinesByDocumentId(documentId)
         documentDao.deleteDocument(documentId)
         outgoingOperationRepository.deletePendingOperationsForEntity(documentId)
@@ -2476,8 +2591,12 @@ class SyncOrchestrator @Inject constructor(
         val serverIds = serverEntities.map { it.id }.toSet()
 
         localById.values
-            .filter { it.id !in serverIds && !it.isDirty }
-            .forEach { documentLineDao.deleteLine(it.id) }
+            .filter { it.id !in serverIds && !it.isDirty && !it.photoPending }
+            .forEach {
+                // Prune the local photo cache so purged lines don't leak files.
+                linePhotoStore.delete(it.photoPath)
+                documentLineDao.deleteLine(it.id)
+            }
 
         // Worker Data Invariant (mirrors the backend's preserveLineActuals):
         // while the document is in a worker-authoritative in-process state,
@@ -2500,6 +2619,9 @@ class SyncOrchestrator @Inject constructor(
         val workerInProcess = documentState.uppercase() in WORKER_AUTHORITATIVE_STATES
         val merged = serverEntities.map { server ->
             val local = localById[server.id]
+            // photoPath / photoPending are device-local: the server payload
+            // never carries them, so preserve the local values on every matched
+            // line. hasPhoto stays server-authoritative.
             when {
                 local == null -> server
                 local.isDirty -> server.copy(
@@ -2507,6 +2629,8 @@ class SyncOrchestrator @Inject constructor(
                     isCompleted = local.isCompleted,
                     batchNumber = local.batchNumber,
                     notes = local.notes ?: server.notes,
+                    photoPath = local.photoPath,
+                    photoPending = local.photoPending,
                     isDirty = true
                 )
                 workerInProcess -> {
@@ -2518,10 +2642,15 @@ class SyncOrchestrator @Inject constructor(
                         isCompleted = local.isCompleted,
                         batchNumber = local.batchNumber,
                         notes = local.notes ?: server.notes,
+                        photoPath = local.photoPath,
+                        photoPending = local.photoPending,
                         isDirty = serverBehind
                     )
                 }
-                else -> server
+                else -> server.copy(
+                    photoPath = local.photoPath,
+                    photoPending = local.photoPending
+                )
             }
         }
         documentLineDao.insertLines(merged)

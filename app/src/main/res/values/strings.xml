@@ -62,6 +62,14 @@
     <string name="document_lines">Lines</string>
     <string name="document_note_label">Note</string>
     <string name="line_note_label">Note</string>
+    <string name="line_photo_label">Photo</string>
+    <string name="take_photo">Take photo</string>
+    <string name="retake_photo">Retake photo</string>
+    <string name="capture_photo">Capture</string>
+    <string name="photo_attached">Photo attached</string>
+    <string name="error_photo_capture">Failed to capture photo</string>
+    <string name="error_photo_upload">Failed to upload photo</string>
+    <string name="camera_permission_required">Camera permission is required to take photos</string>
     <string name="no_lines_description">No lines in this document</string>
     <string name="lines_progress_fmt">%1$d / %2$d lines</string>
     <string name="error_saving">Error saving</string>

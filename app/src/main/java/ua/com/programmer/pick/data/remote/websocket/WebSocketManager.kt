@@ -512,6 +512,8 @@ class WebSocketManager @Inject constructor(
             // multiple DOCUMENT_UPDATEs for one doc can be in flight at once.
             is SyncMessage.DocumentUpdate -> message.id
             is SyncMessage.ProductLookup -> message.barcode
+            // Composite key: multiple lines' photo-URL requests can be in flight.
+            is SyncMessage.LinePhotoUploadUrl -> "${message.documentId}:${message.lineNumber}"
             is SyncMessage.UserLogin -> message.login
             else -> null
         }
@@ -736,6 +738,9 @@ class WebSocketManager @Inject constructor(
             is SyncMessage.StageCompleteResult -> message.documentId
             // Match against the request id the server echoed back.
             is SyncMessage.DocumentUpdateResult -> message.requestId
+            is SyncMessage.LinePhotoUploadUrlResult ->
+                if (message.documentId != null && message.lineNumber != null)
+                    "${message.documentId}:${message.lineNumber}" else null
             is SyncMessage.ProductLookupResult -> null  // no document-level correlation
             is SyncMessage.UserLoginResult -> null  // single login at a time
             is SyncMessage.SyncComplete -> null  // single sync at a time

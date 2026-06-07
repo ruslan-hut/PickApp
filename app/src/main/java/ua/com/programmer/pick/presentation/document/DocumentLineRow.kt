@@ -59,6 +59,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
 import com.bumptech.glide.integration.compose.GlideImage
 import ua.com.programmer.pick.R
+import java.io.File
 import ua.com.programmer.pick.domain.model.DocumentLine
 import ua.com.programmer.pick.domain.model.ProductImage
 import ua.com.programmer.pick.presentation.common.PickOutlinedCard
@@ -72,6 +73,7 @@ fun DocumentLineRow(
     onQuantityChange: (String, Double) -> Unit,
     onToggleCompleted: (String, Boolean) -> Unit,
     onNoteChange: (String, String) -> Unit,
+    onTakePhoto: (String) -> Unit,
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
     canEdit: Boolean = false,
@@ -79,6 +81,7 @@ fun DocumentLineRow(
     requiresPlan: Boolean = true
 ) {
     var showImagePreview by remember { mutableStateOf(false) }
+    var showPhotoPreview by remember { mutableStateOf(false) }
     // While the note field is focused, suppress the card's swipe gesture so
     // horizontal text interaction doesn't trip the acknowledge/clear swipe.
     var noteFieldFocused by remember { mutableStateOf(false) }
@@ -94,6 +97,8 @@ fun DocumentLineRow(
             onQuantityChange = onQuantityChange,
             onNoteChange = onNoteChange,
             onNoteFocusChanged = { noteFieldFocused = it },
+            onTakePhoto = { onTakePhoto(line.id) },
+            onPhotoPreview = { showPhotoPreview = true },
             onImagePreview = { showImagePreview = true }
         )
     }
@@ -154,6 +159,16 @@ fun DocumentLineRow(
             onDismiss = { showImagePreview = false }
         )
     }
+
+    // Full-screen preview of the locally captured line photo
+    val photoPath = line.photoPath
+    if (showPhotoPreview && photoPath != null) {
+        ZoomableImageDialog(
+            model = File(photoPath),
+            title = line.productName,
+            onDismiss = { showPhotoPreview = false }
+        )
+    }
 }
 
 @OptIn(ExperimentalGlideComposeApi::class)
@@ -168,6 +183,8 @@ private fun LineCardContent(
     onQuantityChange: (String, Double) -> Unit,
     onNoteChange: (String, String) -> Unit,
     onNoteFocusChanged: (Boolean) -> Unit,
+    onTakePhoto: () -> Unit,
+    onPhotoPreview: () -> Unit,
     onImagePreview: () -> Unit
 ) {
     val progress = if (requiresPlan && line.plannedQuantity > 0) {
@@ -290,7 +307,9 @@ private fun LineCardContent(
 
             val note = line.notes
             val hasNote = !note.isNullOrBlank()
-            var showNote by remember { mutableStateOf(false) }
+            val hasPhoto = line.photoPath != null || line.hasPhoto
+            val hasDetails = hasNote || hasPhoto
+            var showDetails by remember { mutableStateOf(false) }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -311,27 +330,28 @@ private fun LineCardContent(
                     Spacer(modifier = Modifier.width(0.dp))
                 }
 
-                // Note toggle, between the planned quantity and the fact input.
-                // Filled doc icon marks a line that already carries a note;
+                // Details toggle, between the planned quantity and the fact
+                // input — reveals the note editor and the photo control. Filled
+                // doc icon marks a line that already carries a note or photo;
                 // a plain "…" invites adding one.
-                if (canEdit || hasNote) {
-                    val noteTint = when {
+                if (canEdit || hasDetails) {
+                    val detailTint = when {
                         isOverCollected -> MaterialTheme.colorScheme.onErrorContainer
                         isAcknowledged -> MaterialTheme.colorScheme.onSecondaryContainer
                         else -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
-                    IconButton(onClick = { showNote = !showNote }) {
-                        if (hasNote) {
+                    IconButton(onClick = { showDetails = !showDetails }) {
+                        if (hasDetails) {
                             Icon(
                                 painter = painterResource(R.drawable.baseline_description_24),
                                 contentDescription = stringResource(R.string.line_note_label),
-                                tint = noteTint
+                                tint = detailTint
                             )
                         } else {
                             Text(
                                 text = "…",
                                 style = MaterialTheme.typography.titleLarge,
-                                color = noteTint
+                                color = detailTint
                             )
                         }
                     }
@@ -351,38 +371,45 @@ private fun LineCardContent(
                 )
             }
 
-            // Worker-owned line note: hidden until the worker taps the toggle.
-            if (showNote) {
-                when {
-                    canEdit -> {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        LineNoteField(
-                            note = note,
-                            onNoteCommit = { onNoteChange(line.id, it) },
-                            onFocusChanged = onNoteFocusChanged
-                        )
-                    }
-                    hasNote -> {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = stringResource(R.string.line_note_label),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = when {
-                                isOverCollected -> MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f)
-                                isAcknowledged -> MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
-                                else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                            }
-                        )
-                        Text(
-                            text = note.orEmpty(),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = when {
-                                isOverCollected -> MaterialTheme.colorScheme.onErrorContainer
-                                isAcknowledged -> MaterialTheme.colorScheme.onSecondaryContainer
-                                else -> MaterialTheme.colorScheme.onSurface
-                            }
-                        )
-                    }
+            // Worker note + photo: hidden until the worker taps the toggle.
+            if (showDetails) {
+                if (canEdit) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LineNoteField(
+                        note = note,
+                        onNoteCommit = { onNoteChange(line.id, it) },
+                        onFocusChanged = onNoteFocusChanged
+                    )
+                } else if (hasNote) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.line_note_label),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = when {
+                            isOverCollected -> MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f)
+                            isAcknowledged -> MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        }
+                    )
+                    Text(
+                        text = note.orEmpty(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = when {
+                            isOverCollected -> MaterialTheme.colorScheme.onErrorContainer
+                            isAcknowledged -> MaterialTheme.colorScheme.onSecondaryContainer
+                            else -> MaterialTheme.colorScheme.onSurface
+                        }
+                    )
+                }
+
+                if (canEdit || hasPhoto) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LinePhotoControl(
+                        line = line,
+                        canEdit = canEdit,
+                        onTakePhoto = onTakePhoto,
+                        onPhotoPreview = onPhotoPreview
+                    )
                 }
             }
         }
@@ -480,6 +507,28 @@ private fun FullScreenImagePreview(
     productName: String,
     onDismiss: () -> Unit
 ) {
+    val imageModel: Any? = when {
+        !productImage.url.isNullOrBlank() -> productImage.url
+        !productImage.base64.isNullOrBlank() -> {
+            try {
+                Base64.decode(productImage.base64, Base64.DEFAULT)
+            } catch (e: Exception) {
+                null
+            }
+        }
+        else -> null
+    }
+    ZoomableImageDialog(model = imageModel, title = productName, onDismiss = onDismiss)
+}
+
+/** Pinch-to-zoom full-screen dialog for any Glide-loadable model (URL, bytes, File). */
+@OptIn(ExperimentalGlideComposeApi::class)
+@Composable
+private fun ZoomableImageDialog(
+    model: Any?,
+    title: String,
+    onDismiss: () -> Unit
+) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
 
@@ -504,22 +553,10 @@ private fun FullScreenImagePreview(
                     }
                 }
         ) {
-            val imageModel: Any? = when {
-                !productImage.url.isNullOrBlank() -> productImage.url
-                !productImage.base64.isNullOrBlank() -> {
-                    try {
-                        Base64.decode(productImage.base64, Base64.DEFAULT)
-                    } catch (e: Exception) {
-                        null
-                    }
-                }
-                else -> null
-            }
-
-            if (imageModel != null) {
+            if (model != null) {
                 GlideImage(
-                    model = imageModel,
-                    contentDescription = productName,
+                    model = model,
+                    contentDescription = title,
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer(
@@ -550,7 +587,7 @@ private fun FullScreenImagePreview(
                 )
             }
 
-            // Product name overlay
+            // Title overlay
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -561,12 +598,79 @@ private fun FullScreenImagePreview(
                 shadowElevation = 4.dp
             ) {
                 Text(
-                    text = productName,
+                    text = title,
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
                 )
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalGlideComposeApi::class)
+@Composable
+private fun LinePhotoControl(
+    line: DocumentLine,
+    canEdit: Boolean,
+    onTakePhoto: () -> Unit,
+    onPhotoPreview: () -> Unit
+) {
+    val photoPath = line.photoPath
+    when {
+        photoPath != null -> {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box {
+                    GlideImage(
+                        model = File(photoPath),
+                        contentDescription = stringResource(R.string.line_photo_label),
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CardShape)
+                            .clickable { onPhotoPreview() }
+                    )
+                    if (line.photoPending) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(2.dp)
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.tertiary)
+                        )
+                    }
+                }
+                if (canEdit) {
+                    IconButton(onClick = onTakePhoto) {
+                        Icon(
+                            painter = painterResource(R.drawable.baseline_photo_camera_24),
+                            contentDescription = stringResource(R.string.retake_photo),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+        canEdit -> {
+            IconButton(onClick = onTakePhoto) {
+                Icon(
+                    painter = painterResource(R.drawable.baseline_photo_camera_24),
+                    contentDescription = stringResource(R.string.take_photo),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        line.hasPhoto -> {
+            Icon(
+                painter = painterResource(R.drawable.baseline_image_24),
+                contentDescription = stringResource(R.string.photo_attached),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.size(24.dp)
+            )
         }
     }
 }

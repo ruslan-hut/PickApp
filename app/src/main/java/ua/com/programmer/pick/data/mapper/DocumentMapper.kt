@@ -59,7 +59,9 @@ class DocumentMapper @Inject constructor() {
             locationPath = dto.locationPath,
             notes = dto.notes,
             isCompleted = dto.isCompleted,
-            isDirty = false
+            isDirty = false,
+            hasPhoto = dto.hasPhoto
+            // photoPath / photoPending are device-local — never populated from the DTO.
         )
     }
 }
@@ -138,7 +140,10 @@ fun DocumentLineEntity.toDomain(): DocumentLine {
         locationPath = locationPath,
         notes = notes,
         isCompleted = isCompleted,
-        isDirty = isDirty
+        isDirty = isDirty,
+        hasPhoto = hasPhoto,
+        photoPath = photoPath,
+        photoPending = photoPending
     )
 }
 
@@ -161,7 +166,10 @@ fun DocumentLine.toEntity(): DocumentLineEntity {
         locationPath = locationPath,
         notes = notes,
         isCompleted = isCompleted,
-        isDirty = isDirty
+        isDirty = isDirty,
+        hasPhoto = hasPhoto,
+        photoPath = photoPath,
+        photoPending = photoPending
     )
 }
 

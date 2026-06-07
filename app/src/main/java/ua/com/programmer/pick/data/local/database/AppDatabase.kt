@@ -48,7 +48,7 @@ import ua.com.programmer.pick.data.local.database.entity.WarehouseLocationEntity
         DocumentBoxEntity::class,
         DebugJournalEntity::class
     ],
-    version = 15, // Version 15: document_lines gains volume + volume_unit (per-item ERP sort key)
+    version = 16, // Version 16: document_lines gains has_photo + local photo_path/photo_pending
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -254,6 +254,16 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE document_lines ADD COLUMN volume INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE document_lines ADD COLUMN volume_unit TEXT DEFAULT NULL")
+            }
+        }
+
+        // Per-line photo: server-set has_photo marker + device-local photo_path
+        // cache and photo_pending upload flag (the latter two are never synced).
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE document_lines ADD COLUMN has_photo INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE document_lines ADD COLUMN photo_path TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE document_lines ADD COLUMN photo_pending INTEGER NOT NULL DEFAULT 0")
             }
         }
 

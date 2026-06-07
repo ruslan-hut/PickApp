@@ -163,6 +163,21 @@ class DocumentRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun updateLinePhoto(lineId: String, photoPath: String): Result<Unit> = withContext(ioDispatcher) {
+        try {
+            val rows = documentLineDao.updateLinePhoto(lineId, photoPath)
+            if (rows == 0) {
+                return@withContext Result.Error(
+                    StaleLineIdException(lineId),
+                    "Line $lineId no longer exists in local DB"
+                )
+            }
+            Result.Success(Unit)
+        } catch (e: Exception) {
+            Result.Error(e, e.message ?: "Failed to update line photo")
+        }
+    }
+
     override suspend fun incrementLineQuantity(lineId: String, delta: Double): Result<Unit> = withContext(ioDispatcher) {
         try {
             val rows = documentLineDao.incrementActualQuantity(lineId, delta)

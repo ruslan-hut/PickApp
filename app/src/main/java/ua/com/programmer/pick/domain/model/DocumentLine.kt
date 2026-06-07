@@ -18,5 +18,8 @@ data class DocumentLine(
     val locationPath: String?,
     val notes: String?,
     val isCompleted: Boolean = false,
-    val isDirty: Boolean = false
+    val isDirty: Boolean = false,
+    val hasPhoto: Boolean = false,
+    val photoPath: String? = null,
+    val photoPending: Boolean = false
 )

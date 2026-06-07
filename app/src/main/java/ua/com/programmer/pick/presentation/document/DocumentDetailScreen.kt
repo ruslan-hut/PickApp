@@ -103,6 +103,8 @@ fun DocumentDetailScreen(
     // (M5″ exhaustion). Holds the dropped counts captured at the moment the
     // event fired; the dialog text formats from these.
     var lockLost by remember { mutableStateOf<DocumentDetailUiEvent.LockLost?>(null) }
+    // Line currently capturing a photo — drives the camera overlay.
+    var capturingLineId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(documentId) {
         viewModel.load(documentId)
@@ -126,6 +128,20 @@ fun DocumentDetailScreen(
                 }
             }
         }
+    }
+
+    if (capturingLineId != null) {
+        LinePhotoCaptureOverlay(
+            onCaptured = { bytes, rotation ->
+                capturingLineId?.let { viewModel.onPhotoCaptured(it, bytes, rotation) }
+                capturingLineId = null
+            },
+            onError = {
+                capturingLineId = null
+                viewModel.notifyPhotoCaptureFailed()
+            },
+            onDismiss = { capturingLineId = null }
+        )
     }
 
     // Intercept back navigation when user owns an in-progress document
@@ -472,6 +488,9 @@ fun DocumentDetailScreen(
                                                     },
                                                     onNoteChange = { lineId, note ->
                                                         viewModel.updateLineNote(lineId, note)
+                                                    },
+                                                    onTakePhoto = { lineId ->
+                                                        capturingLineId = lineId
                                                     },
                                                     isSelected = uiState.selectedLineId == line.id,
                                                     // Line editing is allowed only during COLLECTING — during PACKING the
