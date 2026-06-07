@@ -330,7 +330,7 @@ class DocumentDetailViewModel @Inject constructor(
                         }
                         is Result.Error -> {
                             applyLineQtyOptimistically(existingLine.id, existingLine.actualQuantity)
-                            logLineEditFailure(existingLine.id, newQty, result, "inventory scan")
+                            logLineEditFailure(existingLine.id, result, "inventory scan", newQty)
                             _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
                         }
                         else -> Unit
@@ -446,7 +446,7 @@ class DocumentDetailViewModel @Inject constructor(
                         }
                         is Result.Error -> {
                             applyLineQtyOptimistically(line.id, line.actualQuantity)
-                            logLineEditFailure(line.id, newQty, result, "barcode scan", extra = mapOf("barcode" to identifier))
+                            logLineEditFailure(line.id, result, "barcode scan", newQty, extra = mapOf("barcode" to identifier))
                             _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
                         }
                         else -> Unit
@@ -498,7 +498,48 @@ class DocumentDetailViewModel @Inject constructor(
                         applyLineQtyOptimistically(lineId, priorQty)
                     }
                     _uiState.update { it.copy(isSaving = false) }
-                    logLineEditFailure(lineId, newQuantity, result, "manual edit")
+                    logLineEditFailure(lineId, result, "manual edit", newQuantity)
+                    _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
+                }
+                else -> _uiState.update { it.copy(isSaving = false) }
+            }
+        }
+    }
+
+    fun updateLineNote(lineId: String, text: String) {
+        if (!_uiState.value.canEditLines) {
+            viewModelScope.launch {
+                _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.CANNOT_EDIT_DOCUMENT))
+            }
+            return
+        }
+
+        val priorNote = _uiState.value.lines.find { it.id == lineId }?.notes
+        if (priorNote == text) return
+
+        viewModelScope.launch {
+            _uiState.update { current ->
+                val updated = current.lines.map { if (it.id == lineId) it.copy(notes = text) else it }
+                current.copy(lines = updated, isSaving = true)
+            }
+
+            when (val result = documentRepository.updateLineNote(lineId, text)) {
+                is Result.Success -> {
+                    debugJournal.log(
+                        eventType = DebugEventType.LINE_EDIT,
+                        message = "line note edit",
+                        documentId = currentDocumentId,
+                        payload = mapOf("line_id" to lineId)
+                    )
+                    _uiState.update { it.copy(isSaving = false) }
+                    notifyDocumentLinesChanged()
+                }
+                is Result.Error -> {
+                    _uiState.update { current ->
+                        val reverted = current.lines.map { if (it.id == lineId) it.copy(notes = priorNote) else it }
+                        current.copy(lines = reverted, isSaving = false)
+                    }
+                    logLineEditFailure(lineId, result, "note edit")
                     _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
                 }
                 else -> _uiState.update { it.copy(isSaving = false) }
@@ -623,14 +664,14 @@ class DocumentDetailViewModel @Inject constructor(
 
     private suspend fun logLineEditFailure(
         lineId: String,
-        attemptedQty: Double,
         error: Result.Error,
         source: String,
+        attemptedQty: Double? = null,
         extra: Map<String, Any?> = emptyMap()
     ) {
         val payload = buildMap<String, Any?> {
             put("line_id", lineId)
-            put("attempted_qty", attemptedQty)
+            attemptedQty?.let { put("attempted_qty", it) }
             put("source", source)
             put("reason", error.message ?: error.exception.message ?: "unknown")
             putAll(extra)

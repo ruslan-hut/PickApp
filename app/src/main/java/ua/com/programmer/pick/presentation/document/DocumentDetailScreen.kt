@@ -430,6 +430,7 @@ fun DocumentDetailScreen(
                                             DocumentHeaderCard(
                                                 clientName = uiState.document?.clientName ?: "",
                                                 warehouseName = uiState.document?.warehouseName ?: "",
+                                                notes = uiState.document?.notes,
                                                 totalPlanned = uiState.document?.totalPlanned ?: 0.0,
                                                 totalActual = uiState.document?.totalActual ?: 0.0,
                                                 linesTotal = uiState.lines.size,
@@ -468,6 +469,9 @@ fun DocumentDetailScreen(
                                                     },
                                                     onToggleCompleted = { lineId, completed ->
                                                         viewModel.setLineCompleted(lineId, completed)
+                                                    },
+                                                    onNoteChange = { lineId, note ->
+                                                        viewModel.updateLineNote(lineId, note)
                                                     },
                                                     isSelected = uiState.selectedLineId == line.id,
                                                     // Line editing is allowed only during COLLECTING — during PACKING the
@@ -588,6 +592,7 @@ private fun PinnedProgressBar(
 private fun DocumentHeaderCard(
     clientName: String,
     warehouseName: String,
+    notes: String?,
     totalPlanned: Double,
     totalActual: Double,
     linesTotal: Int,
@@ -645,6 +650,27 @@ private fun DocumentHeaderCard(
                         isComplete -> MaterialTheme.colorScheme.onSecondaryContainer
                         else -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            // ERP-owned document note (read-only)
+            if (!notes.isNullOrBlank()) {
+                val noteColor = when {
+                    filterActive -> MaterialTheme.colorScheme.onTertiaryContainer
+                    isOverCollected -> MaterialTheme.colorScheme.onErrorContainer
+                    isComplete -> MaterialTheme.colorScheme.onSecondaryContainer
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                Text(
+                    text = stringResource(R.string.document_note_label),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = noteColor.copy(alpha = 0.7f)
+                )
+                Text(
+                    text = notes,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = noteColor
                 )
                 Spacer(modifier = Modifier.height(12.dp))
             }

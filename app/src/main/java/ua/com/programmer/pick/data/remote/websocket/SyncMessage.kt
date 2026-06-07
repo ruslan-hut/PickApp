@@ -692,7 +692,11 @@ data class DocumentLineUpdate(
     val lineNumber: Int,
     val actualQuantity: Double,
     val batchNumber: String? = null,
-    val isCompleted: Boolean = false
+    val isCompleted: Boolean = false,
+    // Worker-owned line note. Sent full-state on every line update: the server
+    // overwrites its copy with whatever arrives, so an omitted/empty note clears
+    // it. Always carry the line's current note (see MessageParser serialization).
+    val notes: String? = null
 )
 
 /**

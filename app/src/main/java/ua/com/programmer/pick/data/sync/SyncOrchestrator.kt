@@ -1192,7 +1192,8 @@ class SyncOrchestrator @Inject constructor(
                 lineNumber = line.lineNumber,
                 actualQuantity = line.actualQuantity,
                 batchNumber = line.batchNumber,
-                isCompleted = line.isCompleted
+                isCompleted = line.isCompleted,
+                notes = line.notes
             )
         }
 
@@ -2838,7 +2839,8 @@ class SyncOrchestrator @Inject constructor(
                         lineNumber = line.lineNumber,
                         actualQuantity = line.actualQuantity,
                         batchNumber = line.batchNumber,
-                        isCompleted = line.isCompleted
+                        isCompleted = line.isCompleted,
+                        notes = line.notes
                     )
                 }
 

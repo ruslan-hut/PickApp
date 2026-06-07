@@ -52,6 +52,7 @@ class MessageParser @Inject constructor(
         private const val FIELD_ACTUAL_QUANTITY = "actual_quantity"
         private const val FIELD_BATCH_NUMBER = "batch_number"
         private const val FIELD_IS_COMPLETED = "is_completed"
+        private const val FIELD_NOTES = "notes"
         private const val FIELD_SUCCESS = "success"
         private const val FIELD_REQUEST_ID = "request_id"
         private const val FIELD_ERROR_CODE = "error_code"
@@ -234,6 +235,9 @@ class MessageParser @Inject constructor(
                         addProperty(FIELD_ACTUAL_QUANTITY, line.actualQuantity)
                         line.batchNumber?.let { addProperty(FIELD_BATCH_NUMBER, it) }
                         addProperty(FIELD_IS_COMPLETED, line.isCompleted)
+                        // Full-state: always emit the note (empty when unset) so
+                        // clearing a note propagates to the server.
+                        addProperty(FIELD_NOTES, line.notes ?: "")
                     }
                     linesArray.add(lineObj)
                 }

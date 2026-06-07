@@ -98,8 +98,9 @@ interface DocumentLineDao {
     @Query("UPDATE document_lines SET is_completed = :isCompleted, is_dirty = 1 WHERE id = :lineId")
     suspend fun updateLineCompleted(lineId: String, isCompleted: Boolean)
 
+    // Returns rows affected (0 = stale lineId, see updateActualQuantity).
     @Query("UPDATE document_lines SET notes = :notes, is_dirty = 1 WHERE id = :lineId")
-    suspend fun updateLineNotes(lineId: String, notes: String?)
+    suspend fun updateLineNotes(lineId: String, notes: String?): Int
 
     @Query("UPDATE document_lines SET batch_number = :batchNumber, expiration_date = :expirationDate, is_dirty = 1 WHERE id = :lineId")
     suspend fun updateLineBatchInfo(lineId: String, batchNumber: String?, expirationDate: Long?)

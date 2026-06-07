@@ -4,6 +4,8 @@ import android.util.Base64
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
@@ -23,12 +25,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -38,13 +42,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -64,6 +71,7 @@ fun DocumentLineRow(
     productImage: ProductImage?,
     onQuantityChange: (String, Double) -> Unit,
     onToggleCompleted: (String, Boolean) -> Unit,
+    onNoteChange: (String, String) -> Unit,
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
     canEdit: Boolean = false,
@@ -71,6 +79,9 @@ fun DocumentLineRow(
     requiresPlan: Boolean = true
 ) {
     var showImagePreview by remember { mutableStateOf(false) }
+    // While the note field is focused, suppress the card's swipe gesture so
+    // horizontal text interaction doesn't trip the acknowledge/clear swipe.
+    var noteFieldFocused by remember { mutableStateOf(false) }
 
     val cardContent: @Composable () -> Unit = {
         LineCardContent(
@@ -81,6 +92,8 @@ fun DocumentLineRow(
             allowsOverPlan = allowsOverPlan,
             requiresPlan = requiresPlan,
             onQuantityChange = onQuantityChange,
+            onNoteChange = onNoteChange,
+            onNoteFocusChanged = { noteFieldFocused = it },
             onImagePreview = { showImagePreview = true }
         )
     }
@@ -119,6 +132,7 @@ fun DocumentLineRow(
         Box(modifier = modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
             SwipeToDismissBox(
                 state = dismissState,
+                gesturesEnabled = !noteFieldFocused,
                 backgroundContent = {
                     SwipeBackground(direction = dismissState.dismissDirection)
                 }
@@ -152,6 +166,8 @@ private fun LineCardContent(
     allowsOverPlan: Boolean,
     requiresPlan: Boolean,
     onQuantityChange: (String, Double) -> Unit,
+    onNoteChange: (String, String) -> Unit,
+    onNoteFocusChanged: (Boolean) -> Unit,
     onImagePreview: () -> Unit
 ) {
     val progress = if (requiresPlan && line.plannedQuantity > 0) {
@@ -272,6 +288,10 @@ private fun LineCardContent(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            val note = line.notes
+            val hasNote = !note.isNullOrBlank()
+            var showNote by remember { mutableStateOf(false) }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -291,7 +311,33 @@ private fun LineCardContent(
                     Spacer(modifier = Modifier.width(0.dp))
                 }
 
-                Spacer(modifier = Modifier.width(16.dp))
+                // Note toggle, between the planned quantity and the fact input.
+                // Filled doc icon marks a line that already carries a note;
+                // a plain "…" invites adding one.
+                if (canEdit || hasNote) {
+                    val noteTint = when {
+                        isOverCollected -> MaterialTheme.colorScheme.onErrorContainer
+                        isAcknowledged -> MaterialTheme.colorScheme.onSecondaryContainer
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                    IconButton(onClick = { showNote = !showNote }) {
+                        if (hasNote) {
+                            Icon(
+                                painter = painterResource(R.drawable.baseline_description_24),
+                                contentDescription = stringResource(R.string.line_note_label),
+                                tint = noteTint
+                            )
+                        } else {
+                            Text(
+                                text = "…",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = noteTint
+                            )
+                        }
+                    }
+                } else {
+                    Spacer(modifier = Modifier.width(16.dp))
+                }
 
                 QuantityStepper(
                     value = line.actualQuantity,
@@ -304,8 +350,82 @@ private fun LineCardContent(
                     enabled = canEdit
                 )
             }
+
+            // Worker-owned line note: hidden until the worker taps the toggle.
+            if (showNote) {
+                when {
+                    canEdit -> {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LineNoteField(
+                            note = note,
+                            onNoteCommit = { onNoteChange(line.id, it) },
+                            onFocusChanged = onNoteFocusChanged
+                        )
+                    }
+                    hasNote -> {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(R.string.line_note_label),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = when {
+                                isOverCollected -> MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f)
+                                isAcknowledged -> MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            }
+                        )
+                        Text(
+                            text = note.orEmpty(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = when {
+                                isOverCollected -> MaterialTheme.colorScheme.onErrorContainer
+                                isAcknowledged -> MaterialTheme.colorScheme.onSecondaryContainer
+                                else -> MaterialTheme.colorScheme.onSurface
+                            }
+                        )
+                    }
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun LineNoteField(
+    note: String?,
+    onNoteCommit: (String) -> Unit,
+    onFocusChanged: (Boolean) -> Unit
+) {
+    val focusManager = LocalFocusManager.current
+    var focused by remember { mutableStateOf(false) }
+    var text by remember { mutableStateOf(note ?: "") }
+    // Adopt sync-driven note changes only while the field isn't focused, so an
+    // inbound sync never clobbers a half-typed note.
+    LaunchedEffect(note) {
+        if (!focused) text = note ?: ""
+    }
+    // If the field is removed (note collapsed) while still focused, onFocusChanged
+    // won't fire — release the card's swipe gesture explicitly on disposal.
+    DisposableEffect(Unit) {
+        onDispose { onFocusChanged(false) }
+    }
+
+    OutlinedTextField(
+        value = text,
+        onValueChange = { text = it },
+        label = { Text(stringResource(R.string.line_note_label)) },
+        singleLine = true,
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { state ->
+                // Commit on the focused→unfocused transition; the VM ignores a
+                // no-op (unchanged) note.
+                if (focused && !state.isFocused) onNoteCommit(text)
+                focused = state.isFocused
+                onFocusChanged(state.isFocused)
+            },
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() })
+    )
 }
 
 @Composable

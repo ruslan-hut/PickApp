@@ -148,6 +148,21 @@ class DocumentRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun updateLineNote(lineId: String, notes: String?): Result<Unit> = withContext(ioDispatcher) {
+        try {
+            val rows = documentLineDao.updateLineNotes(lineId, notes)
+            if (rows == 0) {
+                return@withContext Result.Error(
+                    StaleLineIdException(lineId),
+                    "Line $lineId no longer exists in local DB"
+                )
+            }
+            Result.Success(Unit)
+        } catch (e: Exception) {
+            Result.Error(e, e.message ?: "Failed to update line note")
+        }
+    }
+
     override suspend fun incrementLineQuantity(lineId: String, delta: Double): Result<Unit> = withContext(ioDispatcher) {
         try {
             val rows = documentLineDao.incrementActualQuantity(lineId, delta)

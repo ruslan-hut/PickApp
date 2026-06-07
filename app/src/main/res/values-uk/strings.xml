@@ -60,6 +60,8 @@
     <string name="error_loading_documents">Помилка завантаження документів</string>
     <string name="error_loading_document">Помилка завантаження документа</string>
     <string name="document_lines">Рядки</string>
+    <string name="document_note_label">Примітка</string>
+    <string name="line_note_label">Примітка</string>
     <string name="no_lines_description">Немає рядків у цьому документі</string>
     <string name="lines_progress_fmt">%1$d / %2$d рядків</string>
     <string name="error_saving">Помилка збереження</string>
