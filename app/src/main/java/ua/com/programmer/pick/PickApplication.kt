@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 import ua.com.programmer.pick.core.scanner.BarcodeService
 import ua.com.programmer.pick.core.util.AppLog
 import ua.com.programmer.pick.core.util.FileLogger
-import ua.com.programmer.pick.data.remote.websocket.WebSocketManager
+import ua.com.programmer.pick.data.remote.websocket.SyncTransport
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.data.sync.SyncScheduler
 import javax.inject.Inject
@@ -35,7 +35,7 @@ class PickApplication : Application(), Configuration.Provider {
     lateinit var barcodeService: BarcodeService
 
     @Inject
-    lateinit var webSocketManager: WebSocketManager
+    lateinit var webSocketManager: SyncTransport
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 

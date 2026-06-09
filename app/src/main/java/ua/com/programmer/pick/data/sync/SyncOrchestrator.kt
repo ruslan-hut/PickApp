@@ -51,7 +51,7 @@ import ua.com.programmer.pick.data.remote.websocket.DocumentLineUpdate
 import ua.com.programmer.pick.data.remote.websocket.MessageParser
 import ua.com.programmer.pick.data.remote.websocket.SyncMessage
 import ua.com.programmer.pick.data.remote.websocket.UserAuthState
-import ua.com.programmer.pick.data.remote.websocket.WebSocketManager
+import ua.com.programmer.pick.data.remote.websocket.SyncTransport
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.domain.repository.EntityType
 import ua.com.programmer.pick.domain.repository.OperationType
@@ -141,7 +141,7 @@ private fun isLockDeniedError(error: String?): Boolean =
  */
 @Singleton
 class SyncOrchestrator @Inject constructor(
-    private val webSocketManager: WebSocketManager,
+    private val webSocketManager: SyncTransport,
     private val messageParser: MessageParser,
     private val appPreferences: AppPreferences,
     private val syncStateDao: SyncStateDao,
@@ -195,6 +195,11 @@ class SyncOrchestrator @Inject constructor(
         // local read-only state and the dirty edits are dropped + journalled.
         private const val LOCK_LOSS_MAX_ATTEMPTS = 3
         private const val LOCK_LOSS_RETRY_BACKOFF_MS = 10_000L
+
+        // Active-poll cadence for the REST transport (no server push). Only runs
+        // while this device holds a stage lock (a document is being worked), so
+        // it stays quiet — and battery-cheap — when idle.
+        private const val ACTIVE_POLL_INTERVAL_MS = 8_000L
     }
 
     /**
@@ -312,6 +317,28 @@ class SyncOrchestrator @Inject constructor(
                 scrubLoadedDocActualQuantitiesOnStartup()
             } catch (e: Exception) {
                 AppLog.e(TAG, "Startup LOADED-actual scrub failed: ${e.message}", e)
+            }
+        }
+
+        // Active poll for transports without a server push (REST). Runs only
+        // while a stage lock is held so a worked document picks up server-side
+        // changes — including a cooperative `release_requested` — promptly,
+        // without a persistent connection. No-op for the WebSocket transport.
+        if (webSocketManager.requiresPolling) {
+            scope.launch {
+                while (true) {
+                    kotlinx.coroutines.delay(ACTIVE_POLL_INTERVAL_MS)
+                    if (heldStageLocks.isNotEmpty() &&
+                        webSocketManager.isUserAuthenticated() &&
+                        !_syncState.value.isSyncing
+                    ) {
+                        try {
+                            requestDeltaSync()
+                        } catch (e: Exception) {
+                            AppLog.w(TAG, "Active poll sync failed: ${e.message}")
+                        }
+                    }
+                }
             }
         }
 
@@ -2035,6 +2062,17 @@ class SyncOrchestrator @Inject constructor(
         val userIdMap = resolveExternalUserIdsForBoxes(allBoxes)
 
         documents.forEach { dto ->
+            // Cooperative force-release under polling (REST): the backend flags
+            // the held document `release_requested` — the equivalent of the
+            // FORCE_RELEASE_REQUEST push. Run exit-without-saving before any
+            // suppression/merge so the worker's lock is released and the server
+            // clears the marker on the resulting STAGE_UNLOCK. dto.id is already
+            // the local room id at this point (translated at the sync boundary).
+            if (dto.releaseRequested && dto.id in heldStageLocks) {
+                runCooperativeRelease(dto.id, dto.externalId ?: dto.id)
+                return@forEach
+            }
+
             val existing = documentDao.getDocumentById(dto.id)
 
             // Worker-authoritative window. Symmetric to the backend's
@@ -2312,7 +2350,17 @@ class SyncOrchestrator @Inject constructor(
         val externalId = message.documentId
         val roomId = toRoomDocumentId(externalId)
         AppLog.i(TAG, "Cooperative force-release request received for $externalId (room=$roomId)")
+        runCooperativeRelease(roomId, externalId)
+    }
 
+    /**
+     * Exit-without-saving: cancel the pending debounced sync, drop dirty edits,
+     * release the held lock, and send STAGE_UNLOCK so the server completes the
+     * cooperative force-release. Shared by the WebSocket FORCE_RELEASE_REQUEST
+     * push and the REST polling path (a synced document carrying
+     * `release_requested` while this device holds the lock).
+     */
+    private suspend fun runCooperativeRelease(roomId: String, externalId: String) {
         // Cancel any pending debounced sync so it doesn't fire mid-release.
         documentSyncJobs.remove(roomId)?.cancel()
 

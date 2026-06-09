@@ -78,6 +78,16 @@ data class DocumentDto(
     @SerializedName("recollection")
     val recollection: Boolean = false,
 
+    /**
+     * True when an admin/tenant user asked the worker holding this document to
+     * cooperatively release it. The polling (REST) equivalent of the
+     * FORCE_RELEASE_REQUEST push: while this device holds the lock, the
+     * orchestrator runs exit-without-saving (drop dirty edits + STAGE_UNLOCK)
+     * instead of treating the lock as still ours. Read-only — never sent back.
+     */
+    @SerializedName("release_requested")
+    val releaseRequested: Boolean = false,
+
     @SerializedName("lines")
     val lines: List<DocumentLineDto>? = null,
 

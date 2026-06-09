@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ua.com.programmer.pick.BuildConfig
+import ua.com.programmer.pick.core.Constants
 import ua.com.programmer.pick.core.util.FileLogger
 import ua.com.programmer.pick.data.local.database.dao.SyncStateDao
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
@@ -41,10 +42,12 @@ class SettingsViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true) }
             try {
                 val serverUrl = appPreferences.serverUrl.first() ?: ""
+                val transportRest = appPreferences.getTransportModeSync() == Constants.Transport.REST
                 _uiState.update {
                     it.copy(
                         serverUrl = serverUrl,
                         appVersion = BuildConfig.VERSION_NAME,
+                        transportRest = transportRest,
                         isLoading = false
                     )
                 }
@@ -61,6 +64,20 @@ class SettingsViewModel @Inject constructor(
 
     fun updateServerUrl(url: String) {
         _uiState.update { it.copy(serverUrl = url) }
+    }
+
+    /**
+     * Switch the backend transport. Persists the flag; the chosen
+     * implementation is bound once per process, so the change takes effect on
+     * the next app start.
+     */
+    fun setTransportRest(enabled: Boolean) {
+        _uiState.update { it.copy(transportRest = enabled) }
+        viewModelScope.launch {
+            appPreferences.setTransportMode(
+                if (enabled) Constants.Transport.REST else Constants.Transport.WEBSOCKET
+            )
+        }
     }
 
     fun saveSettings() {

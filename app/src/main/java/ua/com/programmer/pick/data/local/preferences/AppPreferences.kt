@@ -2,6 +2,7 @@ package ua.com.programmer.pick.data.local.preferences
 
 import android.content.Context
 import android.content.SharedPreferences
+import ua.com.programmer.pick.core.Constants
 import ua.com.programmer.pick.core.util.AppLog
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -42,6 +43,10 @@ class AppPreferences @Inject constructor(
         private val TENANT_ID = stringPreferencesKey("tenant_id")
         private val LAST_LOGIN = stringPreferencesKey("last_login")
         private val DEBUG_JOURNAL_ENABLED = booleanPreferencesKey("debug_journal_enabled")
+        // Backend transport: "websocket" (legacy push) or "rest" (device-initiated
+        // polling). Selects which SyncTransport implementation is bound. Defaults
+        // to websocket so existing installs are unaffected until opted in.
+        private val TRANSPORT_MODE = stringPreferencesKey("transport_mode")
         // Plaintext keys kept for migration only
         private val USER_LOGIN = stringPreferencesKey("user_login")
         private val USER_PASSWORD = stringPreferencesKey("user_password")
@@ -255,6 +260,19 @@ class AppPreferences @Inject constructor(
 
     fun getDebugJournalEnabledSync(): Boolean = runBlocking {
         context.dataStore.data.first()[DEBUG_JOURNAL_ENABLED] ?: false
+    }
+
+    /** Backend transport selector — "websocket" (default) or "rest". */
+    val transportMode: Flow<String> = context.dataStore.data.map {
+        it[TRANSPORT_MODE] ?: Constants.Transport.WEBSOCKET
+    }
+
+    fun getTransportModeSync(): String = runBlocking {
+        context.dataStore.data.first()[TRANSPORT_MODE] ?: Constants.Transport.WEBSOCKET
+    }
+
+    suspend fun setTransportMode(mode: String) {
+        context.dataStore.edit { it[TRANSPORT_MODE] = mode }
     }
 
     suspend fun setLastLogin(login: String) {

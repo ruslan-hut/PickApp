@@ -6,5 +6,8 @@ data class SettingsUiState(
     val isSaving: Boolean = false,
     val errorMessage: String? = null,
     val successMessage: String? = null,
-    val appVersion: String = ""
+    val appVersion: String = "",
+    // true = device-initiated REST transport, false = WebSocket (default).
+    // Changing it takes effect on next app start (the binding is resolved once).
+    val transportRest: Boolean = false
 )

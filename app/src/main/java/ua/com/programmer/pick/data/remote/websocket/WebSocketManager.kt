@@ -108,7 +108,7 @@ class WebSocketManager @Inject constructor(
     private val debugJournal: ua.com.programmer.pick.data.debug.DebugJournal,
     private val clock: Clock,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
-) {
+) : SyncTransport {
     companion object {
         private const val TAG = "WebSocketManager"
         private const val INITIAL_RECONNECT_DELAY_MS = 1000L
@@ -139,13 +139,13 @@ class WebSocketManager @Inject constructor(
     private var lastStaleEscalationAt = 0L
 
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
-    val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
+    override val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
     private val _userAuthState = MutableStateFlow<UserAuthState>(UserAuthState.NotAuthenticated)
-    val userAuthState: StateFlow<UserAuthState> = _userAuthState.asStateFlow()
+    override val userAuthState: StateFlow<UserAuthState> = _userAuthState.asStateFlow()
 
     private val _incomingMessages = MutableSharedFlow<SyncMessage>(extraBufferCapacity = 64)
-    val incomingMessages: SharedFlow<SyncMessage> = _incomingMessages.asSharedFlow()
+    override val incomingMessages: SharedFlow<SyncMessage> = _incomingMessages.asSharedFlow()
 
     // Pending responses awaiting server reply (for request/response correlation)
     private val pendingResponses = ConcurrentHashMap<String, PendingResponse>()
@@ -156,7 +156,7 @@ class WebSocketManager @Inject constructor(
      * Connect to WebSocket server (Stage 1: Device Connection)
      * Uses app_token + device_id for initial connection.
      */
-    fun connect() {
+    override fun connect() {
         if (_connectionState.value is ConnectionState.Connected ||
             _connectionState.value is ConnectionState.Connecting
         ) {
@@ -172,7 +172,7 @@ class WebSocketManager @Inject constructor(
     /**
      * Disconnect from WebSocket server
      */
-    fun disconnect() {
+    override fun disconnect() {
         isManuallyDisconnected = true
         reconnectJob?.cancel()
         reconnectJob = null
@@ -203,7 +203,7 @@ class WebSocketManager @Inject constructor(
      * reconnect if no PONG arrives; if the state is already non-connected it
      * kicks off a normal connect.
      */
-    fun verifyConnectionHealth() {
+    override fun verifyConnectionHealth() {
         if (healthCheckJob?.isActive == true) {
             AppLog.d(TAG, "Health check already running, skipping")
             return
@@ -256,7 +256,7 @@ class WebSocketManager @Inject constructor(
      * `Connected` — required to recover from a stale half-open socket left
      * behind by a long Doze sleep.
      */
-    fun forceReconnect() {
+    override fun forceReconnect() {
         AppLog.d(TAG, "Force reconnect requested")
         isManuallyDisconnected = false
         healthCheckJob?.cancel()
@@ -326,7 +326,7 @@ class WebSocketManager @Inject constructor(
      * @param password User password
      * @return UserLoginResult with success/failure and user info
      */
-    suspend fun loginUser(login: String, password: String): UserLoginResult {
+    override suspend fun loginUser(login: String, password: String): UserLoginResult {
         if (_connectionState.value !is ConnectionState.Connected) {
             return UserLoginResult(success = false, errorMessage = "WebSocket not connected")
         }
@@ -340,7 +340,7 @@ class WebSocketManager @Inject constructor(
             password = password
         )
 
-        val response = sendAndAwait(message, SyncMessage.UserLoginResult::class.java)
+        val response = sendAndAwait(message, SyncMessage.UserLoginResult::class.java, REQUEST_TIMEOUT_MS)
 
         return if (response != null && response.success) {
             _userAuthState.value = UserAuthState.Authenticated(
@@ -386,14 +386,14 @@ class WebSocketManager @Inject constructor(
     /**
      * Check if user is authenticated (Stage 2 complete)
      */
-    fun isUserAuthenticated(): Boolean = _userAuthState.value is UserAuthState.Authenticated
+    override fun isUserAuthenticated(): Boolean = _userAuthState.value is UserAuthState.Authenticated
 
     /**
      * Send a message through WebSocket.
      * Note: Some operations require user authentication (see protocol).
      * @return true if message was sent successfully
      */
-    fun sendMessage(message: SyncMessage): Boolean {
+    override fun sendMessage(message: SyncMessage): Boolean {
         val ws = webSocket
         if (ws == null || _connectionState.value !is ConnectionState.Connected) {
             AppLog.w(TAG, "Cannot send message - not connected")
@@ -464,10 +464,10 @@ class WebSocketManager @Inject constructor(
      * @param timeoutMs Timeout in milliseconds (default 30 seconds)
      * @return The response message, or null if timeout or error
      */
-    suspend fun <T : SyncMessage> sendAndAwait(
+    override suspend fun <T : SyncMessage> sendAndAwait(
         message: SyncMessage,
         responseType: Class<T>,
-        timeoutMs: Long = REQUEST_TIMEOUT_MS
+        timeoutMs: Long
     ): T? {
         // Extract correlation ID from outgoing message for response matching
         val correlationId = extractOutgoingCorrelationId(message)
@@ -522,7 +522,7 @@ class WebSocketManager @Inject constructor(
     /**
      * Check if connected
      */
-    fun isConnected(): Boolean = _connectionState.value is ConnectionState.Connected
+    override fun isConnected(): Boolean = _connectionState.value is ConnectionState.Connected
 
     private fun startConnection() {
         if (!networkMonitor.isCurrentlyConnected()) {

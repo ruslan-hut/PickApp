@@ -13,6 +13,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import ua.com.programmer.pick.BuildConfig
 import ua.com.programmer.pick.core.Constants
 import ua.com.programmer.pick.data.remote.api.AuthApi
+import ua.com.programmer.pick.data.remote.api.DeviceApi
 import ua.com.programmer.pick.data.remote.interceptor.AuthInterceptor
 import ua.com.programmer.pick.data.remote.interceptor.TokenAuthenticator
 import java.util.concurrent.TimeUnit
@@ -71,4 +72,8 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideAuthApi(retrofit: Retrofit): AuthApi = retrofit.create(AuthApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideDeviceApi(retrofit: Retrofit): DeviceApi = retrofit.create(DeviceApi::class.java)
 }

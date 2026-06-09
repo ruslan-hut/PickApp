@@ -18,7 +18,7 @@ import ua.com.programmer.pick.data.local.database.entity.UserEntity
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.mapper.toDomain
 import ua.com.programmer.pick.data.remote.websocket.ConnectionState
-import ua.com.programmer.pick.data.remote.websocket.WebSocketManager
+import ua.com.programmer.pick.data.remote.websocket.SyncTransport
 import ua.com.programmer.pick.domain.model.User
 import ua.com.programmer.pick.domain.model.UserRole
 import ua.com.programmer.pick.domain.repository.UserRepository
@@ -29,7 +29,7 @@ import javax.inject.Singleton
 
 @Singleton
 class UserRepositoryImpl @Inject constructor(
-    private val webSocketManager: WebSocketManager,
+    private val webSocketManager: SyncTransport,
     private val userDao: UserDao,
     private val appPreferences: AppPreferences,
     private val appDatabase: AppDatabase,

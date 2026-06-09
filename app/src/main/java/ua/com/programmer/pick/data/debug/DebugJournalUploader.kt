@@ -9,7 +9,7 @@ import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.remote.websocket.DebugEventPayload
 import ua.com.programmer.pick.data.remote.websocket.MessageParser
 import ua.com.programmer.pick.data.remote.websocket.SyncMessage
-import ua.com.programmer.pick.data.remote.websocket.WebSocketManager
+import ua.com.programmer.pick.data.remote.websocket.SyncTransport
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -22,7 +22,7 @@ import javax.inject.Singleton
 class DebugJournalUploader @Inject constructor(
     private val dao: DebugJournalDao,
     private val journal: DebugJournal,
-    private val webSocketManager: WebSocketManager,
+    private val webSocketManager: SyncTransport,
     private val messageParser: MessageParser,
     private val appPreferences: AppPreferences
 ) {

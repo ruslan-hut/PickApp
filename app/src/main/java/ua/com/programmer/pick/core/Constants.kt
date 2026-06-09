@@ -41,6 +41,12 @@ object Constants {
         const val APP_TOKEN = BuildConfig.BACK_API_TOKEN
     }
 
+    // Backend transport selector (AppPreferences.transportMode)
+    object Transport {
+        const val WEBSOCKET = "websocket"
+        const val REST = "rest"
+    }
+
     // WorkManager
     object Work {
         const val SYNC_WORK_NAME = "sync_work"
