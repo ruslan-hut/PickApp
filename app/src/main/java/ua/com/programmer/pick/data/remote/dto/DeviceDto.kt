@@ -37,6 +37,7 @@ object DeviceDto {
         @SerializedName("device_id") val deviceId: String,
         @SerializedName("login") val login: String,
         @SerializedName("password") val password: String,
+        @SerializedName("app_version") val appVersion: String,
     )
 
     data class LoginResponse(

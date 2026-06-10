@@ -2,6 +2,7 @@ package ua.com.programmer.pick.data.remote.api
 
 import com.google.gson.Gson
 import retrofit2.Response
+import ua.com.programmer.pick.BuildConfig
 import ua.com.programmer.pick.core.Constants
 import ua.com.programmer.pick.core.util.AppLog
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
@@ -44,6 +45,7 @@ class DeviceRestClient @Inject constructor(
             deviceId = appPreferences.getDeviceIdSync(),
             login = login,
             password = password,
+            appVersion = BuildConfig.VERSION_NAME,
         )
         // No refresh-retry: there is no session yet.
         val result = envelopeCall(allowRefresh = false) { deviceApi.login(request) }
