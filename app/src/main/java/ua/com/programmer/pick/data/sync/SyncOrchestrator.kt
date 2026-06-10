@@ -1201,9 +1201,9 @@ class SyncOrchestrator @Inject constructor(
         return if (sent) {
             Result.Success(Unit)
         } else {
-            // isConnected() was true but the write failed → half-open socket.
-            // WebSocketManager.sendMessage has already escalated to a forced
-            // reconnect; queue the pause (exactly as the offline branch above)
+            // isConnected() was true but the write failed. The transport's
+            // sendMessage has already handled the failure; queue the pause
+            // (exactly as the offline branch above)
             // so the worker's intent replays on the fresh socket instead of
             // being silently dropped. Treat as success — the pause will land.
             AppLog.w(TAG, "Pause send failed (half-open socket), queueing for replay: $documentId")
@@ -1640,7 +1640,7 @@ class SyncOrchestrator @Inject constructor(
                     handleServerError(message)
                 }
                 is SyncMessage.UserLoginResult -> {
-                    // UserLoginResult is handled by WebSocketManager's userAuthState flow
+                    // UserLoginResult is handled by the transport's userAuthState flow
                     // which SyncOrchestrator observes in initialize()
                     AppLog.d(TAG, "UserLoginResult received, handled via userAuthState flow")
                 }

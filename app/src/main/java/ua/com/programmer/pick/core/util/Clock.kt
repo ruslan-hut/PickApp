@@ -1,10 +1,8 @@
 package ua.com.programmer.pick.core.util
 
 /**
- * Wall-clock time source. Injectable so timing-sensitive logic — notably the
- * WebSocket half-open watchdog in [ua.com.programmer.pick.data.remote.websocket.WebSocketManager]
- * — can be driven by virtual time in unit tests instead of real
- * `System.currentTimeMillis()`.
+ * Wall-clock time source. Injectable so timing-sensitive logic can be driven by
+ * virtual time in unit tests instead of real `System.currentTimeMillis()`.
  */
 fun interface Clock {
     /** Current wall-clock time in milliseconds since the epoch. */

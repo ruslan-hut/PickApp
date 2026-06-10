@@ -4,16 +4,12 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * The backend transport seam. [SyncOrchestrator] and the repositories depend on
- * this interface rather than a concrete client, so the implementation can be
- * swapped by the `transport` flag (AppPreferences.transportMode) without
- * touching the business logic:
- *  - [WebSocketManager] — the legacy persistent-socket push transport.
- *  - RestTransport — device-initiated REST polling; it satisfies the same
- *    contract by emitting synthetic inbound [SyncMessage]s on [incomingMessages]
- *    so the orchestrator's existing handlers are unchanged.
- *
- * The surface mirrors exactly what callers used from WebSocketManager.
+ * The device transport seam. The orchestrator and repositories depend on this
+ * interface rather than a concrete client. The app speaks REST only —
+ * [RestTransport] is the sole implementation; it satisfies the contract by
+ * emitting synthetic inbound [SyncMessage]s on [incomingMessages] so the
+ * orchestrator's handlers stay transport-agnostic. (The legacy WebSocket
+ * implementation was removed at cutover; the interface is kept as the seam.)
  */
 interface SyncTransport {
 

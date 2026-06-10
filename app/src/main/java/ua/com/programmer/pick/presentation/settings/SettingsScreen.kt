@@ -24,7 +24,6 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
@@ -185,23 +184,6 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(24.dp))
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
-                // Connection Section (transport rollout toggle)
-                SectionHeader(
-                    title = "Connection",
-                    icon = R.drawable.baseline_link_24
-                )
-
-                SettingsSwitchItem(
-                    icon = R.drawable.baseline_link_24,
-                    title = "REST transport",
-                    subtitle = "Use device-initiated REST instead of WebSocket. Restart the app to apply.",
-                    checked = uiState.transportRest,
-                    onCheckedChange = viewModel::setTransportRest
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
                 SettingsItem(
                     icon = R.drawable.outline_settings_24,
                     title = stringResource(R.string.scanner_settings),
@@ -264,48 +246,6 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(32.dp))
             }
         }
-    }
-}
-
-@Composable
-private fun SettingsSwitchItem(
-    icon: Int,
-    title: String,
-    subtitle: String? = null,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = 16.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            painter = painterResource(icon),
-            contentDescription = null,
-            modifier = Modifier.size(24.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            if (subtitle != null) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        Spacer(modifier = Modifier.width(16.dp))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
