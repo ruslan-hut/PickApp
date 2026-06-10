@@ -22,6 +22,8 @@ class FakeUserRepository(private val user: User?) : UserRepository {
 
     override suspend fun login(login: String, password: String) = Result.Error(Exception("Not implemented"))
 
+    override suspend fun autoLogin(): Result<User>? = null
+
     override suspend fun loginOffline(login: String, password: String) = Result.Error(Exception("Not implemented"))
 
     override suspend fun logout() {}

@@ -64,15 +64,18 @@ class RestTransport @Inject constructor(
     // --- Connection (no socket; "connected" == reachable over HTTP) ---
 
     override fun connect() {
+        AppLog.i(TAG, "DOC_TRACE connect() -> Connected (auth=${_userAuthState.value::class.simpleName})")
         _connectionState.value = ConnectionState.Connected
     }
 
     override fun disconnect() {
+        AppLog.w(TAG, "DOC_TRACE disconnect() -> Disconnected + NotAuthenticated", Throwable("disconnect call site"))
         _connectionState.value = ConnectionState.Disconnected
         _userAuthState.value = UserAuthState.NotAuthenticated
     }
 
     override fun forceReconnect() {
+        AppLog.i(TAG, "DOC_TRACE forceReconnect() -> Connected (auth unchanged=${_userAuthState.value::class.simpleName})")
         _connectionState.value = ConnectionState.Connected
     }
 
@@ -301,11 +304,17 @@ class RestTransport @Inject constructor(
     private suspend fun runSync(entityTypes: List<String>, cursors: Map<String, String>?, full: Boolean) {
         var applied = cursors
         var isFull = full
+        AppLog.i(TAG, "DOC_TRACE delta sync start full=$full cursors=$cursors")
         while (true) {
             val resp = client.sync(entityTypes, applied, isFull).getOrElse {
-                AppLog.e(TAG, "sync request failed: ${it.message}")
+                AppLog.e(TAG, "DOC_TRACE delta sync HTTP FAILED: ${it.message}")
                 return
             }
+            val summary = resp.entities?.joinToString(separator = ", ") { e ->
+                val n = e.data?.takeIf { it.isJsonArray }?.asJsonArray?.size() ?: 0
+                "${e.entityType}=$n(full=${e.fullSet})"
+            } ?: "none"
+            AppLog.i(TAG, "DOC_TRACE delta sync page OK hasMore=${resp.hasMore} entities=[$summary] nextCursors=${resp.nextCursors}")
             isFull = false
             emitEntities(resp)
             resp.nextCursors?.let { applied = it }
@@ -318,9 +327,14 @@ class RestTransport @Inject constructor(
 
     private suspend fun runListRefresh(documentType: String?) {
         val resp = client.listDocuments(documentType).getOrElse {
-            AppLog.e(TAG, "document list refresh failed: ${it.message}")
+            AppLog.e(TAG, "DOC_TRACE listRefresh HTTP FAILED (type=$documentType): ${it.message}")
             return
         }
+        val summary = resp.entities?.joinToString(separator = ", ") { e ->
+            val n = e.data?.takeIf { it.isJsonArray }?.asJsonArray?.size() ?: 0
+            "${e.entityType}=$n(full=${e.fullSet})"
+        } ?: "none"
+        AppLog.i(TAG, "DOC_TRACE listRefresh HTTP OK (type=$documentType) entities=[$summary]")
         emitEntities(resp)
         emit(SyncMessage.SyncComplete(newId(), now(), newId(), resp.nextCursors ?: emptyMap()))
     }

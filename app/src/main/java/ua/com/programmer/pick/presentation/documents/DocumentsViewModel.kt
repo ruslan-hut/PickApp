@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import ua.com.programmer.pick.core.util.AppLog
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.repository.DocumentTypeConfigProvider
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
@@ -64,6 +65,7 @@ class DocumentsViewModel @Inject constructor(
             _uiState.update { it.copy(isRefreshing = true) }
 
             val documentType = appPreferences.selectedDocumentType.first()
+            AppLog.i("DocumentsViewModel", "DOC_TRACE onRefresh selectedType=$documentType docsInUi=${_uiState.value.documents.size}")
             syncOrchestrator.requestDocumentListRefresh(documentType)
 
             _uiState.update { it.copy(isRefreshing = false) }

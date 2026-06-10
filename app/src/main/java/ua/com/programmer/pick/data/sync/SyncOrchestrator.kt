@@ -584,11 +584,12 @@ class SyncOrchestrator @Inject constructor(
         AppLog.d(TAG, "Requesting delta sync")
 
         if (!webSocketManager.isConnected()) {
+            AppLog.w(TAG, "DOC_TRACE deltaSync BAILED: not connected")
             return Result.Error(Exception("WebSocket not connected"))
         }
 
         if (!webSocketManager.isUserAuthenticated()) {
-            AppLog.d(TAG, "User not authenticated, skipping sync request")
+            AppLog.w(TAG, "DOC_TRACE deltaSync BAILED: not authenticated")
             return Result.Error(Exception("User not authenticated"))
         }
 
@@ -813,9 +814,11 @@ class SyncOrchestrator @Inject constructor(
         AppLog.d(TAG, "Requesting document list refresh (type=$documentType)")
 
         if (!webSocketManager.isConnected()) {
+            AppLog.w(TAG, "DOC_TRACE listRefresh BAILED: not connected (type=$documentType)")
             return Result.Error(Exception("WebSocket not connected"))
         }
         if (!webSocketManager.isUserAuthenticated()) {
+            AppLog.w(TAG, "DOC_TRACE listRefresh BAILED: not authenticated (type=$documentType)")
             return Result.Error(Exception("User not authenticated"))
         }
 
@@ -827,9 +830,11 @@ class SyncOrchestrator @Inject constructor(
 
         val sent = webSocketManager.sendMessage(message)
         if (!sent) {
+            AppLog.w(TAG, "DOC_TRACE listRefresh BAILED: sendMessage=false (type=$documentType)")
             return Result.Error(Exception("Failed to send document list refresh"))
         }
 
+        AppLog.i(TAG, "DOC_TRACE listRefresh SENT (type=$documentType)")
         return Result.Success(Unit)
     }
 
@@ -2031,6 +2036,7 @@ class SyncOrchestrator @Inject constructor(
         val receivedIds = documents.map { it.id }.toSet()
 
         AppLog.i(TAG, "Sync documents: ${documents.size} upsert, ${deletedIds?.size ?: 0} delete, fullSet=$fullSet")
+        AppLog.i(TAG, "DOC_TRACE applyDocumentSync fullSet=$fullSet received=${documents.map { "#${it.number}/${it.type}/${it.state}" }}")
 
         // Purge only when the server marks this payload as the full authoritative
         // set for the current filter (e.g. DOCUMENT_LIST_REFRESH). Delta sync

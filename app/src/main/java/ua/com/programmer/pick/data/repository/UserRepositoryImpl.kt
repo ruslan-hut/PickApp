@@ -80,6 +80,19 @@ class UserRepositoryImpl @Inject constructor(
             }
         }
 
+    override suspend fun autoLogin(): Result<User>? = withContext(ioDispatcher) {
+        // Already authenticated (e.g. user just logged in manually) — nothing to do.
+        if (webSocketManager.isUserAuthenticated()) {
+            return@withContext null
+        }
+        val creds = appPreferences.getUserCredentialsSync() ?: run {
+            AppLog.d(TAG, "autoLogin: no stored credentials, skipping")
+            return@withContext null
+        }
+        AppLog.i(TAG, "DOC_TRACE autoLogin: re-authenticating stored session for ${creds.first}")
+        login(creds.first, creds.second)
+    }
+
     /**
      * Login via WebSocket using USER_LOGIN message (per protocol)
      */

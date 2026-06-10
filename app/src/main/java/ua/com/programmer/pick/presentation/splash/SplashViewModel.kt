@@ -35,6 +35,14 @@ class SplashViewModel @Inject constructor(
 
             try {
                 val user = userRepository.getCurrentUser().first()
+                if (user != null) {
+                    // Restore the transport's authenticated session from stored
+                    // credentials. The REST transport starts NotAuthenticated on a
+                    // cold start, so without this every sync gate bails and the
+                    // device shows stale data. Fire-and-forget: routing to Home
+                    // proceeds immediately and the sync starts once auth lands.
+                    launch { runCatching { userRepository.autoLogin() } }
+                }
                 val target = if (user != null) Screen.Home.route else Screen.Login.route
                 _uiState.update { it.copy(targetRoute = target, isLoading = false) }
             } catch (ex: Exception) {

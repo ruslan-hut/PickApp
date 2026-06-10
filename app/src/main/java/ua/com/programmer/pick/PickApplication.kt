@@ -17,6 +17,7 @@ import ua.com.programmer.pick.core.util.FileLogger
 import ua.com.programmer.pick.data.remote.websocket.SyncTransport
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.data.sync.SyncScheduler
+import ua.com.programmer.pick.domain.repository.UserRepository
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -36,6 +37,9 @@ class PickApplication : Application(), Configuration.Provider {
 
     @Inject
     lateinit var webSocketManager: SyncTransport
+
+    @Inject
+    lateinit var userRepository: UserRepository
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -77,6 +81,13 @@ class PickApplication : Application(), Configuration.Provider {
                 webSocketManager.verifyConnectionHealth()
                 appScope.launch {
                     try {
+                        // Re-establish auth if the session lapsed (process was
+                        // killed, or a disconnect cleared it). The REST transport
+                        // does not re-authenticate on its own, so without this the
+                        // sync below bails on the "not authenticated" gate.
+                        if (!webSocketManager.isUserAuthenticated()) {
+                            userRepository.autoLogin()
+                        }
                         syncOrchestrator.requestDeltaSyncIfStale(FOREGROUND_RESYNC_THRESHOLD_MS)
                     } catch (e: Exception) {
                         AppLog.w("PickApplication", "foreground resync failed: ${e.message}")
