@@ -17,6 +17,15 @@ plugins {
     alias(libs.plugins.secrets.gradle.plugin)
 }
 
+// Firebase activates only when the per-project config is present, so the
+// build stays green on checkouts without it. Drop google-services.json
+// (Firebase console → Project settings → your Android app) into app/ to
+// enable Crashlytics; runtime calls are guarded and no-op without it.
+if (file("google-services.json").exists()) {
+    apply(plugin = libs.plugins.google.services.get().pluginId)
+    apply(plugin = libs.plugins.firebase.crashlytics.get().pluginId)
+}
+
 android {
     namespace = "ua.com.programmer.pick"
     compileSdk = 36
@@ -83,6 +92,10 @@ tasks.matching { it.name.startsWith("assemble") || it.name.startsWith("bundle") 
 }
 
 dependencies {
+    // Firebase
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.crashlytics)
+
     // Core Android
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

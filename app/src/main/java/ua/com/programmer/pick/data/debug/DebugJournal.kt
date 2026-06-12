@@ -16,6 +16,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import ua.com.programmer.pick.core.Constants
 import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.util.AppLog
+import ua.com.programmer.pick.core.util.CrashReporter
 import ua.com.programmer.pick.data.local.database.dao.DebugJournalDao
 import ua.com.programmer.pick.data.local.database.entity.DebugJournalEntity
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
@@ -60,6 +61,9 @@ class DebugJournal @Inject constructor(
         severity: String = SEVERITY_INFO,
         payload: Any? = null
     ) {
+        // Breadcrumb for crash reports regardless of journal enablement —
+        // Crashlytics keeps these in memory and attaches them only to crashes
+        CrashReporter.breadcrumb("$eventType ${documentId ?: ""} $message")
         if (!enabled.value) return
         val createdAt = System.currentTimeMillis()
         val payloadJson = payload?.let {

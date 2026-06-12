@@ -13,6 +13,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import ua.com.programmer.pick.core.scanner.BarcodeService
 import ua.com.programmer.pick.core.util.AppLog
+import ua.com.programmer.pick.core.util.CrashReporter
 import ua.com.programmer.pick.core.util.FileLogger
 import ua.com.programmer.pick.data.debug.AppStartReporter
 import ua.com.programmer.pick.data.remote.websocket.SyncTransport
@@ -57,6 +58,9 @@ class PickApplication : Application(), Configuration.Provider {
 
         // Initialize file logger as early as possible so subsequent init is captured
         FileLogger.initialize(this)
+
+        // No-op unless the build was made with app/google-services.json present
+        CrashReporter.initialize(this)
 
         // Report the previous process's exit reason and install the crash
         // handler before any other init code can throw

@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import ua.com.programmer.pick.BuildConfig
 import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.util.AppLog
+import ua.com.programmer.pick.core.util.CrashReporter
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -48,6 +49,7 @@ class AppStartReporter @Inject constructor(
         installCrashHandler()
         scope.launch {
             try {
+                tagCrashReports()
                 reportStart()
             } catch (e: Exception) {
                 AppLog.w(TAG, "app start report failed: ${e.message}")
@@ -72,6 +74,17 @@ class AppStartReporter @Inject constructor(
             }
             platformHandler?.uncaughtException(thread, throwable)
         }
+    }
+
+    /**
+     * Attaches device/tenant identity to Crashlytics reports so a field crash
+     * can be matched to the journal export for the same device. Runs even when
+     * the journal is disabled — Crashlytics enablement is independent.
+     */
+    private suspend fun tagCrashReports() {
+        if (!CrashReporter.isAvailable) return
+        CrashReporter.setUserId(appPreferences.getDeviceIdSync())
+        appPreferences.getTenantIdSync()?.let { CrashReporter.setKey("tenant_id", it) }
     }
 
     private suspend fun reportStart() {

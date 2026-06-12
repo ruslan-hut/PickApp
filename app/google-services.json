@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "771418517148",
+    "project_id": "pickapp-ac805",
+    "storage_bucket": "pickapp-ac805.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:771418517148:android:a4d46c600b0b007146c759",
+        "android_client_info": {
+          "package_name": "ua.com.programmer.pick"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDTsW6u1eUzVgnTkU0Zo8Cn-UEXUvadk-s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
