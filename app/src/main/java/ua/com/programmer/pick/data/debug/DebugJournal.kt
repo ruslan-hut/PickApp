@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import ua.com.programmer.pick.core.Constants
 import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.util.AppLog
@@ -37,6 +40,7 @@ class DebugJournal @Inject constructor(
         const val SEVERITY_INFO = "INFO"
         const val SEVERITY_WARN = "WARN"
         const val SEVERITY_ERROR = "ERROR"
+        private const val BLOCKING_WRITE_TIMEOUT_MS = 2_000L
     }
 
     private val scope = CoroutineScope(ioDispatcher + SupervisorJob())
@@ -84,6 +88,50 @@ class DebugJournal @Inject constructor(
             } catch (e: Exception) {
                 AppLog.w(TAG, "Failed to write debug event: ${e.message}")
             }
+        }
+    }
+
+    /**
+     * Synchronous variant for process-death paths (uncaught exception handler),
+     * where a fire-and-forget coroutine would never get to run before the
+     * process is torn down. Bounded by a short timeout; never throws.
+     */
+    fun logBlocking(
+        eventType: String,
+        message: String,
+        severity: String = SEVERITY_ERROR,
+        payload: Any? = null
+    ) {
+        if (!enabled.value) return
+        val createdAt = System.currentTimeMillis()
+        val payloadJson = payload?.let {
+            try { gson.toJson(it) } catch (e: Exception) { null }
+        }
+        try {
+            runBlocking {
+                withTimeoutOrNull(BLOCKING_WRITE_TIMEOUT_MS) {
+                    withContext(ioDispatcher) {
+                        val tenantId = appPreferences.getTenantIdSync() ?: return@withContext
+                        dao.insert(
+                            DebugJournalEntity(
+                                id = UUID.randomUUID().toString(),
+                                tenantId = tenantId,
+                                deviceId = appPreferences.getDeviceIdSync(),
+                                userId = runCatching { appPreferences.currentUserId.firstOrNull() }.getOrNull(),
+                                documentId = null,
+                                stage = null,
+                                eventType = eventType,
+                                severity = severity,
+                                message = message,
+                                payloadJson = payloadJson,
+                                createdAt = createdAt
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            AppLog.w(TAG, "Failed to write blocking debug event: ${e.message}")
         }
     }
 

@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import ua.com.programmer.pick.core.scanner.BarcodeService
 import ua.com.programmer.pick.core.util.AppLog
 import ua.com.programmer.pick.core.util.FileLogger
+import ua.com.programmer.pick.data.debug.AppStartReporter
 import ua.com.programmer.pick.data.remote.websocket.SyncTransport
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.data.sync.SyncScheduler
@@ -41,6 +42,9 @@ class PickApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var userRepository: UserRepository
 
+    @Inject
+    lateinit var appStartReporter: AppStartReporter
+
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override val workManagerConfiguration: Configuration
@@ -53,6 +57,10 @@ class PickApplication : Application(), Configuration.Provider {
 
         // Initialize file logger as early as possible so subsequent init is captured
         FileLogger.initialize(this)
+
+        // Report the previous process's exit reason and install the crash
+        // handler before any other init code can throw
+        appStartReporter.onAppStart()
 
         // Initialize sync orchestrator
         syncOrchestrator.initialize()

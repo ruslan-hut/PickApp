@@ -81,4 +81,16 @@ object DebugEventType {
     // dropped quantities so admins can decide whether to reconcile.
     const val LOCK_LOST_EDIT_DROPPED = "LOCK_LOST_EDIT_DROPPED"
     const val JOURNAL_CONFIG_CHANGED = "JOURNAL_CONFIG_CHANGED"
+    // Cold-start marker. The journal writes nothing at the moment a process
+    // dies, so without this row a crash/OOM-kill is invisible — the export
+    // just shows normal scanning, then normal scanning again. Carries the
+    // previous process's exit reason from
+    // ActivityManager.getHistoricalProcessExitReasons() (API 30+): severity
+    // ERROR for CRASH/CRASH_NATIVE/ANR, WARN for LOW_MEMORY, INFO otherwise.
+    const val APP_START = "APP_START"
+    // Uncaught JVM exception, written synchronously by the default
+    // uncaught-exception handler before the process dies. Complements
+    // APP_START: it carries the actual stack trace, and works on devices
+    // below API 30 where exit reasons are unavailable.
+    const val APP_CRASH = "APP_CRASH"
 }

@@ -7,6 +7,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.security.crypto.EncryptedSharedPreferences
@@ -42,6 +43,7 @@ class AppPreferences @Inject constructor(
         private val TENANT_ID = stringPreferencesKey("tenant_id")
         private val LAST_LOGIN = stringPreferencesKey("last_login")
         private val DEBUG_JOURNAL_ENABLED = booleanPreferencesKey("debug_journal_enabled")
+        private val LAST_REPORTED_EXIT_TS = longPreferencesKey("last_reported_exit_ts")
         // Plaintext keys kept for migration only
         private val USER_LOGIN = stringPreferencesKey("user_login")
         private val USER_PASSWORD = stringPreferencesKey("user_password")
@@ -255,6 +257,17 @@ class AppPreferences @Inject constructor(
 
     fun getDebugJournalEnabledSync(): Boolean = runBlocking {
         context.dataStore.data.first()[DEBUG_JOURNAL_ENABLED] ?: false
+    }
+
+    /**
+     * Timestamp of the newest process exit already reported as an APP_START
+     * journal event, so the same exit is not re-reported on every launch.
+     */
+    suspend fun getLastReportedExitTimestamp(): Long =
+        context.dataStore.data.first()[LAST_REPORTED_EXIT_TS] ?: 0L
+
+    suspend fun setLastReportedExitTimestamp(timestamp: Long) {
+        context.dataStore.edit { it[LAST_REPORTED_EXIT_TS] = timestamp }
     }
 
 
