@@ -17,8 +17,8 @@ import ua.com.programmer.pick.data.local.database.dao.UserDao
 import ua.com.programmer.pick.data.local.database.entity.UserEntity
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.mapper.toDomain
-import ua.com.programmer.pick.data.remote.websocket.ConnectionState
-import ua.com.programmer.pick.data.remote.websocket.SyncTransport
+import ua.com.programmer.pick.data.remote.transport.ConnectionState
+import ua.com.programmer.pick.data.remote.transport.SyncTransport
 import ua.com.programmer.pick.domain.model.User
 import ua.com.programmer.pick.domain.model.UserRole
 import ua.com.programmer.pick.domain.repository.UserRepository
@@ -29,7 +29,7 @@ import javax.inject.Singleton
 
 @Singleton
 class UserRepositoryImpl @Inject constructor(
-    private val webSocketManager: SyncTransport,
+    private val transport: SyncTransport,
     private val userDao: UserDao,
     private val appPreferences: AppPreferences,
     private val appDatabase: AppDatabase,
@@ -40,7 +40,7 @@ class UserRepositoryImpl @Inject constructor(
 
     companion object {
         private const val TAG = "UserRepository"
-        private const val WEBSOCKET_CONNECT_TIMEOUT_MS = 10000L
+        private const val TRANSPORT_CONNECT_TIMEOUT_MS = 10000L
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -55,10 +55,10 @@ class UserRepositoryImpl @Inject constructor(
     }
 
     /**
-     * Login user via WebSocket.
+     * Login user via transport.
      *
      * Flow:
-     * 1. If online: Connect WebSocket, send USER_LOGIN, receive USER_LOGIN_RESULT
+     * 1. If online: Connect transport, send USER_LOGIN, receive USER_LOGIN_RESULT
      * 2. If offline: Use stored offline hash for local authentication
      */
     override suspend fun login(login: String, password: String): Result<User> =
@@ -66,8 +66,8 @@ class UserRepositoryImpl @Inject constructor(
             try {
                 // Check if online
                 if (networkMonitor.isCurrentlyConnected()) {
-                    // Try online login via WebSocket
-                    loginViaWebSocket(login, password)
+                    // Try online login via transport
+                    loginViaTransport(login, password)
                 } else {
                     // No network, try offline login
                     AppLog.d(TAG, "No network, attempting offline login")
@@ -82,7 +82,7 @@ class UserRepositoryImpl @Inject constructor(
 
     override suspend fun autoLogin(): Result<User>? = withContext(ioDispatcher) {
         // Already authenticated (e.g. user just logged in manually) — nothing to do.
-        if (webSocketManager.isUserAuthenticated()) {
+        if (transport.isUserAuthenticated()) {
             return@withContext null
         }
         val creds = appPreferences.getUserCredentialsSync() ?: run {
@@ -94,31 +94,31 @@ class UserRepositoryImpl @Inject constructor(
     }
 
     /**
-     * Login via WebSocket using USER_LOGIN message (per protocol)
+     * Login via transport using USER_LOGIN message (per protocol)
      */
-    private suspend fun loginViaWebSocket(login: String, password: String): Result<User> {
-        AppLog.d(TAG, "Attempting WebSocket login for user: $login")
+    private suspend fun loginViaTransport(login: String, password: String): Result<User> {
+        AppLog.d(TAG, "Attempting transport login for user: $login")
 
-        // Ensure WebSocket is connected
-        if (!webSocketManager.isConnected()) {
-            AppLog.d(TAG, "WebSocket not connected, connecting...")
-            webSocketManager.connect()
+        // Ensure transport is connected
+        if (!transport.isConnected()) {
+            AppLog.d(TAG, "transport not connected, connecting...")
+            transport.connect()
 
             // Wait for connection with timeout
-            val connectionError = waitForWebSocketConnection()
+            val connectionError = waitForTransportConnection()
             if (connectionError != null) {
-                AppLog.w(TAG, "WebSocket connection failed: $connectionError, falling back to offline login")
+                AppLog.w(TAG, "transport connection failed: $connectionError, falling back to offline login")
                 val offlineResult = loginOffline(login, password)
                 if (offlineResult is Result.Success) return offlineResult
                 return Result.Error(Exception(connectionError), connectionError)
             }
         }
 
-        // Send USER_LOGIN via WebSocket
-        val loginResult = webSocketManager.loginUser(login, password)
+        // Send USER_LOGIN via transport
+        val loginResult = transport.loginUser(login, password)
 
         return if (loginResult.success) {
-            AppLog.d(TAG, "WebSocket login successful: ${loginResult.userName}")
+            AppLog.d(TAG, "transport login successful: ${loginResult.userName}")
 
             // Detect tenant change and wipe local data if needed
             val newTenantId = loginResult.tenantId
@@ -186,7 +186,7 @@ class UserRepositoryImpl @Inject constructor(
                 appPreferences.setOfflineHash(hash)
             }
 
-            // Store credentials for WebSocket auto-login on reconnect
+            // Store credentials for transport auto-login on reconnect
             appPreferences.setUserCredentials(login, password)
             appPreferences.setLastLogin(login)
 
@@ -194,9 +194,9 @@ class UserRepositoryImpl @Inject constructor(
             Result.Success(user)
         } else {
             val error = loginResult.errorMessage ?: "Login failed"
-            AppLog.w(TAG, "WebSocket login failed: $error")
+            AppLog.w(TAG, "transport login failed: $error")
 
-            // If WebSocket login fails, try offline login as fallback
+            // If transport login fails, try offline login as fallback
             // (in case user exists locally with valid credentials)
             val offlineResult = loginOffline(login, password)
             if (offlineResult is Result.Success) {
@@ -208,15 +208,15 @@ class UserRepositoryImpl @Inject constructor(
     }
 
     /**
-     * Wait for WebSocket to connect with timeout.
+     * Wait for transport to connect with timeout.
      * Returns null on success, or the error message string on failure.
      *
      * Uses reactive Flow collection so the brief Error state set in onFailure
      * is captured even if handleDisconnection immediately overwrites it with Reconnecting.
      */
-    private suspend fun waitForWebSocketConnection(): String? {
-        val finalState = withTimeoutOrNull(WEBSOCKET_CONNECT_TIMEOUT_MS) {
-            webSocketManager.connectionState
+    private suspend fun waitForTransportConnection(): String? {
+        val finalState = withTimeoutOrNull(TRANSPORT_CONNECT_TIMEOUT_MS) {
+            transport.connectionState
                 .first { state ->
                     state is ConnectionState.Connected || state is ConnectionState.Error
                 }
@@ -260,7 +260,7 @@ class UserRepositoryImpl @Inject constructor(
                 // Set current user
                 appPreferences.setCurrentUserId(userEntity.id)
 
-                // Store credentials for WebSocket auto-login on reconnect
+                // Store credentials for transport auto-login on reconnect
                 appPreferences.setUserCredentials(login, password)
                 appPreferences.setLastLogin(login)
 
@@ -279,7 +279,7 @@ class UserRepositoryImpl @Inject constructor(
         appPreferences.clearSession()
         // Clear all local data
         appDatabase.clearAllTables()
-        // WebSocket will be disconnected by SyncOrchestrator when user logs out
+        // transport will be disconnected by SyncOrchestrator when user logs out
     }
 
     override suspend fun getUserById(id: String): User? = withContext(ioDispatcher) {

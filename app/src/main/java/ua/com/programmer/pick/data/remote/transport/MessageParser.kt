@@ -1,4 +1,4 @@
-package ua.com.programmer.pick.data.remote.websocket
+package ua.com.programmer.pick.data.remote.transport
 
 import ua.com.programmer.pick.core.util.AppLog
 import com.google.gson.Gson
@@ -13,7 +13,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Parser for WebSocket messages.
+ * Parser for transport messages.
  * Handles conversion between JSON and SyncMessage objects.
  *
  * All messages follow the envelope format:

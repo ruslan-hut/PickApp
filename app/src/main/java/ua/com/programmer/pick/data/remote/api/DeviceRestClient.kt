@@ -24,7 +24,7 @@ class DeviceApiException(val code: String?, message: String) : Exception(message
  * stores the JWT pair on login/refresh, and transparently refreshes once on a
  * 401 before retrying. This is the REST-operations core the RestTransport
  * delegates to; it holds no per-connection state and is independent of the
- * WebSocket layer.
+ * transport layer.
  */
 @Singleton
 class DeviceRestClient @Inject constructor(

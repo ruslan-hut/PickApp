@@ -41,10 +41,7 @@ object DebugEventType {
     // suppression was active. Catches phantom lines leaked from prior sessions
     // that would otherwise linger until the next unlock-driven resync.
     const val PHANTOM_LINE_PURGED = "PHANTOM_LINE_PURGED"
-    const val WS_SEND_FAIL = "WS_SEND_FAIL"
-    const val WS_ACK_TIMEOUT = "WS_ACK_TIMEOUT"
-    const val WS_DISCONNECT = "WS_DISCONNECT"
-    // WebSocket transitioned Disconnected/Reconnecting → Connected. Carries
+    // Transport transitioned Disconnected/Reconnecting → Connected. Carries
     // offline_ms, dirty_doc_count, and the list of currently-held stage locks
     // so we can correlate "what changed during the outage" with subsequent
     // SYNC_DATA / DOCUMENT_UPDATE traffic. Without this event the recent

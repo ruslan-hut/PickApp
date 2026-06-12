@@ -29,7 +29,7 @@ class SyncWorker @AssistedInject constructor(
         AppLog.d(TAG, "Starting sync work, attempt: $runAttemptCount")
 
         return try {
-            // First process any pending offline operations via WebSocket
+            // First process any pending offline operations via transport
             try {
                 syncOrchestrator.processPendingOperations()
                 AppLog.d(TAG, "Processed pending operations")
@@ -38,7 +38,7 @@ class SyncWorker @AssistedInject constructor(
                 // Continue with sync even if processing fails
             }
 
-            // Then request delta sync via WebSocket
+            // Then request delta sync via transport
             when (val syncResult = syncOrchestrator.requestDeltaSync()) {
                 is ua.com.programmer.pick.core.util.Result.Success -> {
                     AppLog.d(TAG, "Delta sync requested successfully")

@@ -276,8 +276,8 @@ class AppPreferences @Inject constructor(
     }
 
     /**
-     * Store user credentials for WebSocket login (encrypted at rest).
-     * These are used to re-authenticate after WebSocket reconnects.
+     * Store user credentials for transport login (encrypted at rest).
+     * These are used to re-authenticate after transport reconnects.
      */
     fun setUserCredentials(login: String, password: String) {
         encryptedPrefs?.edit()

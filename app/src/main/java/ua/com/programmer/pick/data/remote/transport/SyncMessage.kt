@@ -1,16 +1,16 @@
-package ua.com.programmer.pick.data.remote.websocket
+package ua.com.programmer.pick.data.remote.transport
 
 import com.google.gson.JsonElement
 
 /**
- * Types of messages in WebSocket protocol
+ * Types of messages in sync protocol
  */
 enum class MessageType {
     // Heartbeat
     PING,
     PONG,
 
-    // User authentication (after WebSocket connection)
+    // User authentication (after transport connection)
     USER_LOGIN,
     USER_LOGIN_RESULT,
 
@@ -117,7 +117,7 @@ sealed class SyncMessage {
     // ============================================
 
     /**
-     * Client request to authenticate user after WebSocket connection
+     * Client request to authenticate user after transport connection
      * Payload: login, password
      */
     data class UserLogin(

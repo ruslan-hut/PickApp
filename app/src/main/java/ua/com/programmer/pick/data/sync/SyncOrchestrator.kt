@@ -46,12 +46,12 @@ import ua.com.programmer.pick.data.remote.dto.BoxDto
 import ua.com.programmer.pick.data.remote.dto.DocumentBoxDto
 import ua.com.programmer.pick.data.remote.dto.UserDto
 import ua.com.programmer.pick.data.remote.dto.WarehouseDto
-import ua.com.programmer.pick.data.remote.websocket.ConnectionState
-import ua.com.programmer.pick.data.remote.websocket.DocumentLineUpdate
-import ua.com.programmer.pick.data.remote.websocket.MessageParser
-import ua.com.programmer.pick.data.remote.websocket.SyncMessage
-import ua.com.programmer.pick.data.remote.websocket.UserAuthState
-import ua.com.programmer.pick.data.remote.websocket.SyncTransport
+import ua.com.programmer.pick.data.remote.transport.ConnectionState
+import ua.com.programmer.pick.data.remote.transport.DocumentLineUpdate
+import ua.com.programmer.pick.data.remote.transport.MessageParser
+import ua.com.programmer.pick.data.remote.transport.SyncMessage
+import ua.com.programmer.pick.data.remote.transport.UserAuthState
+import ua.com.programmer.pick.data.remote.transport.SyncTransport
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.domain.repository.EntityType
 import ua.com.programmer.pick.domain.repository.OperationType
@@ -75,7 +75,7 @@ enum class SyncStatus {
  */
 data class SyncState(
     val isOnline: Boolean = false,
-    val isWebSocketConnected: Boolean = false,
+    val isTransportConnected: Boolean = false,
     val isUserAuthenticated: Boolean = false,
     val authenticatedUserId: String? = null,
     val authenticatedUserName: String? = null,
@@ -134,14 +134,14 @@ private fun isLockDeniedError(error: String?): Boolean =
     )
 
 /**
- * Coordinates all synchronization operations via WebSocket:
- * - Incoming data from WebSocket (sync data, push notifications)
+ * Coordinates all synchronization operations via transport:
+ * - Incoming data from transport (sync data, push notifications)
  * - Outgoing operations (document lock, update, complete)
  * - Product lookup
  */
 @Singleton
 class SyncOrchestrator @Inject constructor(
-    private val webSocketManager: SyncTransport,
+    private val transport: SyncTransport,
     private val messageParser: MessageParser,
     private val appPreferences: AppPreferences,
     private val syncStateDao: SyncStateDao,
@@ -323,13 +323,13 @@ class SyncOrchestrator @Inject constructor(
         // Active poll for transports without a server push (REST). Runs only
         // while a stage lock is held so a worked document picks up server-side
         // changes — including a cooperative `release_requested` — promptly,
-        // without a persistent connection. No-op for the WebSocket transport.
-        if (webSocketManager.requiresPolling) {
+        // without a persistent connection. No-op for the transport transport.
+        if (transport.requiresPolling) {
             scope.launch {
                 while (true) {
                     kotlinx.coroutines.delay(ACTIVE_POLL_INTERVAL_MS)
                     if (heldStageLocks.isNotEmpty() &&
-                        webSocketManager.isUserAuthenticated() &&
+                        transport.isUserAuthenticated() &&
                         !_syncState.value.isSyncing
                     ) {
                         try {
@@ -352,7 +352,7 @@ class SyncOrchestrator @Inject constructor(
             }
             .launchIn(scope)
 
-        // Observe WebSocket connection state. We resync dirty data on every
+        // Observe transport connection state. We resync dirty data on every
         // transition into Connected — even if the userAuthState observer also
         // catches it. Belt-and-braces: the userAuthState path only fires when
         // auth flips NotAuthenticated → Authenticated, which can be skipped
@@ -361,10 +361,10 @@ class SyncOrchestrator @Inject constructor(
         // Losing the worker's offline edits because one observer didn't fire
         // is the failure mode we're fixing.
         var wasConnected = false
-        webSocketManager.connectionState
+        transport.connectionState
             .onEach { connectionState ->
                 val isConnected = connectionState is ConnectionState.Connected
-                _syncState.value = _syncState.value.copy(isWebSocketConnected = isConnected)
+                _syncState.value = _syncState.value.copy(isTransportConnected = isConnected)
 
                 if (!isConnected && wasConnected) {
                     // Just lost connection — record the moment so the next
@@ -403,7 +403,7 @@ class SyncOrchestrator @Inject constructor(
                                     "dirty_doc_count" to dirtyDocs.size,
                                     "dirty_doc_ids" to dirtyDocs.toList(),
                                     "held_locks" to locks,
-                                    "user_authenticated" to webSocketManager.isUserAuthenticated()
+                                    "user_authenticated" to transport.isUserAuthenticated()
                                 )
                             )
                         } catch (_: Exception) {}
@@ -415,7 +415,7 @@ class SyncOrchestrator @Inject constructor(
                     // will fire its own pass when / if auto-login completes
                     // — resyncDirtyDocuments is a no-op when there's
                     // nothing dirty, so calling it twice is cheap.
-                    if (webSocketManager.isUserAuthenticated()) {
+                    if (transport.isUserAuthenticated()) {
                         try { resyncDirtyDocuments() } catch (_: Exception) {}
                         try { drainPendingPhotos() } catch (_: Exception) {}
                     }
@@ -425,7 +425,7 @@ class SyncOrchestrator @Inject constructor(
             .launchIn(scope)
 
         // Observe user authentication state (Stage 2 of protocol)
-        webSocketManager.userAuthState
+        transport.userAuthState
             .onEach { authState ->
                 when (authState) {
                     is UserAuthState.Authenticated -> {
@@ -503,10 +503,10 @@ class SyncOrchestrator @Inject constructor(
             }
             .launchIn(scope)
 
-        // Observe WebSocket messages
-        webSocketManager.incomingMessages
+        // Observe transport messages
+        transport.incomingMessages
             .onEach { message ->
-                handleWebSocketMessage(message)
+                handleIncomingMessage(message)
             }
             .launchIn(scope)
 
@@ -523,7 +523,7 @@ class SyncOrchestrator @Inject constructor(
                 AppLog.i(TAG, buildString {
                     append("SyncState | ")
                     append("online=${state.isOnline} ")
-                    append("ws=${state.isWebSocketConnected} ")
+                    append("conn=${state.isTransportConnected} ")
                     append("auth=${state.isUserAuthenticated} ")
                     append("syncing=${state.isSyncing} ")
                     append("pending=${state.pendingOperationsCount}")
@@ -562,14 +562,14 @@ class SyncOrchestrator @Inject constructor(
         }
     }
 
-    private fun connectWebSocket() {
+    private fun connectTransport() {
         if (networkMonitor.isCurrentlyConnected()) {
-            webSocketManager.connect()
+            transport.connect()
         }
     }
 
-    private fun disconnectWebSocket() {
-        webSocketManager.disconnect()
+    private fun disconnectTransport() {
+        transport.disconnect()
     }
 
     // ============================================
@@ -577,18 +577,18 @@ class SyncOrchestrator @Inject constructor(
     // ============================================
 
     /**
-     * Request delta sync for all entities via WebSocket.
+     * Request delta sync for all entities via transport.
      * Requires user authentication (per protocol).
      */
     suspend fun requestDeltaSync(): Result<Unit> {
         AppLog.d(TAG, "Requesting delta sync")
 
-        if (!webSocketManager.isConnected()) {
+        if (!transport.isConnected()) {
             AppLog.w(TAG, "DOC_TRACE deltaSync BAILED: not connected")
-            return Result.Error(Exception("WebSocket not connected"))
+            return Result.Error(Exception("transport not connected"))
         }
 
-        if (!webSocketManager.isUserAuthenticated()) {
+        if (!transport.isUserAuthenticated()) {
             AppLog.w(TAG, "DOC_TRACE deltaSync BAILED: not authenticated")
             return Result.Error(Exception("User not authenticated"))
         }
@@ -606,7 +606,7 @@ class SyncOrchestrator @Inject constructor(
             cursors = cursors.ifEmpty { null }
         )
 
-        val sent = webSocketManager.sendMessage(message)
+        val sent = transport.sendMessage(message)
         if (!sent) {
             _syncState.value = _syncState.value.copy(isSyncing = false, lastError = "Failed to send sync request")
             return Result.Error(Exception("Failed to send sync request"))
@@ -631,8 +631,8 @@ class SyncOrchestrator @Inject constructor(
      */
     suspend fun requestDeltaSyncIfStale(maxAgeMs: Long) {
         if (_syncState.value.isSyncing) return
-        if (!webSocketManager.isConnected()) return
-        if (!webSocketManager.isUserAuthenticated()) return
+        if (!transport.isConnected()) return
+        if (!transport.isUserAuthenticated()) return
         val last = _syncState.value.lastSyncTime ?: 0L
         if (System.currentTimeMillis() - last < maxAgeMs) return
         AppLog.d(TAG, "Cache stale (last=$last), requesting delta sync on resume")
@@ -657,17 +657,17 @@ class SyncOrchestrator @Inject constructor(
     }
 
     /**
-     * Request full sync for all entities via WebSocket.
+     * Request full sync for all entities via transport.
      * Requires user authentication (per protocol).
      */
     suspend fun requestFullSync(): Result<Unit> {
         AppLog.d(TAG, "Requesting full sync")
 
-        if (!webSocketManager.isConnected()) {
-            return Result.Error(Exception("WebSocket not connected"))
+        if (!transport.isConnected()) {
+            return Result.Error(Exception("transport not connected"))
         }
 
-        if (!webSocketManager.isUserAuthenticated()) {
+        if (!transport.isUserAuthenticated()) {
             AppLog.d(TAG, "User not authenticated, skipping full sync request")
             return Result.Error(Exception("User not authenticated"))
         }
@@ -681,7 +681,7 @@ class SyncOrchestrator @Inject constructor(
             entityTypes = Constants.SyncEntity.ALL
         )
 
-        val sent = webSocketManager.sendMessage(message)
+        val sent = transport.sendMessage(message)
         if (!sent) {
             _syncState.value = _syncState.value.copy(isSyncing = false, lastError = "Failed to send full sync request")
             return Result.Error(Exception("Failed to send full sync request"))
@@ -701,10 +701,10 @@ class SyncOrchestrator @Inject constructor(
      * Tokens expire quickly, so callers must request a fresh URL per attempt.
      */
     suspend fun requestLinePhotoUploadUrl(documentId: String, lineNumber: Int): Result<String> {
-        if (!webSocketManager.isConnected()) {
-            return Result.Error(Exception("WebSocket not connected"))
+        if (!transport.isConnected()) {
+            return Result.Error(Exception("transport not connected"))
         }
-        if (!webSocketManager.isUserAuthenticated()) {
+        if (!transport.isUserAuthenticated()) {
             return Result.Error(Exception("User not authenticated"))
         }
 
@@ -715,7 +715,7 @@ class SyncOrchestrator @Inject constructor(
             lineNumber = lineNumber
         )
 
-        val response = webSocketManager.sendAndAwait(
+        val response = transport.sendAndAwait(
             message,
             SyncMessage.LinePhotoUploadUrlResult::class.java
         )
@@ -785,12 +785,12 @@ class SyncOrchestrator @Inject constructor(
      * taken offline flush once the socket is back.
      */
     suspend fun drainPendingPhotos() {
-        if (!webSocketManager.isConnected() || !webSocketManager.isUserAuthenticated()) return
+        if (!transport.isConnected() || !transport.isUserAuthenticated()) return
         val pending = documentLineDao.getLinesWithPendingPhotos()
         if (pending.isEmpty()) return
         AppLog.d(TAG, "Draining ${pending.size} pending line photo(s)")
         for (line in pending) {
-            if (!webSocketManager.isConnected()) break
+            if (!transport.isConnected()) break
             uploadLinePhoto(line.id)
         }
     }
@@ -813,11 +813,11 @@ class SyncOrchestrator @Inject constructor(
     suspend fun requestDocumentListRefresh(documentType: String? = null): Result<Unit> {
         AppLog.d(TAG, "Requesting document list refresh (type=$documentType)")
 
-        if (!webSocketManager.isConnected()) {
+        if (!transport.isConnected()) {
             AppLog.w(TAG, "DOC_TRACE listRefresh BAILED: not connected (type=$documentType)")
-            return Result.Error(Exception("WebSocket not connected"))
+            return Result.Error(Exception("transport not connected"))
         }
-        if (!webSocketManager.isUserAuthenticated()) {
+        if (!transport.isUserAuthenticated()) {
             AppLog.w(TAG, "DOC_TRACE listRefresh BAILED: not authenticated (type=$documentType)")
             return Result.Error(Exception("User not authenticated"))
         }
@@ -828,7 +828,7 @@ class SyncOrchestrator @Inject constructor(
             documentType = documentType
         )
 
-        val sent = webSocketManager.sendMessage(message)
+        val sent = transport.sendMessage(message)
         if (!sent) {
             AppLog.w(TAG, "DOC_TRACE listRefresh BAILED: sendMessage=false (type=$documentType)")
             return Result.Error(Exception("Failed to send document list refresh"))
@@ -846,10 +846,10 @@ class SyncOrchestrator @Inject constructor(
     suspend fun requestDocumentProducts(documentId: String): Result<Unit> {
         AppLog.d(TAG, "Requesting products for document: $documentId")
 
-        if (!webSocketManager.isConnected()) {
-            return Result.Error(Exception("WebSocket not connected"))
+        if (!transport.isConnected()) {
+            return Result.Error(Exception("transport not connected"))
         }
-        if (!webSocketManager.isUserAuthenticated()) {
+        if (!transport.isUserAuthenticated()) {
             return Result.Error(Exception("User not authenticated"))
         }
 
@@ -860,7 +860,7 @@ class SyncOrchestrator @Inject constructor(
             documentId = externalId
         )
 
-        val sent = webSocketManager.sendMessage(message)
+        val sent = transport.sendMessage(message)
         if (!sent) {
             return Result.Error(Exception("Failed to send document products request"))
         }
@@ -870,7 +870,7 @@ class SyncOrchestrator @Inject constructor(
         // handleSyncData → applyProductSync. We wait for that message to arrive,
         // then yield briefly so the handler coroutine can apply the data.
         val received = withTimeoutOrNull(DOCUMENT_PRODUCTS_TIMEOUT_MS) {
-            webSocketManager.incomingMessages.first { msg ->
+            transport.incomingMessages.first { msg ->
                 (msg is SyncMessage.SyncData && msg.entityType == Constants.SyncEntity.PRODUCTS) ||
                         msg is SyncMessage.SyncComplete
             }
@@ -907,7 +907,7 @@ class SyncOrchestrator @Inject constructor(
             barcode = barcode,
             weight = weight
         )
-        val result = webSocketManager.sendAndAwait(
+        val result = transport.sendAndAwait(
             message,
             SyncMessage.BoxAddResult::class.java
         )
@@ -949,7 +949,7 @@ class SyncOrchestrator @Inject constructor(
             documentId = externalId,
             boxNumber = boxNumber
         )
-        val result = webSocketManager.sendAndAwait(
+        val result = transport.sendAndAwait(
             message,
             SyncMessage.BoxRemoveResult::class.java
         )
@@ -971,7 +971,7 @@ class SyncOrchestrator @Inject constructor(
             timestamp = messageParser.getCurrentTimestamp(),
             barcode = barcode
         )
-        val result = webSocketManager.sendAndAwait(
+        val result = transport.sendAndAwait(
             message,
             SyncMessage.BoxLookupResult::class.java
         )
@@ -992,10 +992,10 @@ class SyncOrchestrator @Inject constructor(
     suspend fun lockForStage(documentId: String, stage: String): Result<StageLockResult> {
         AppLog.d(TAG, "Locking document $documentId for stage: $stage")
 
-        if (!webSocketManager.isConnected()) {
+        if (!transport.isConnected()) {
             return Result.Error(Exception("Not connected to server"))
         }
-        if (!webSocketManager.isUserAuthenticated()) {
+        if (!transport.isUserAuthenticated()) {
             return Result.Error(Exception("User not authenticated"))
         }
 
@@ -1027,7 +1027,7 @@ class SyncOrchestrator @Inject constructor(
             payload = sentSnapshot
         )
 
-        val response = webSocketManager.sendAndAwait(
+        val response = transport.sendAndAwait(
             message,
             SyncMessage.StageLockResult::class.java
         )
@@ -1085,8 +1085,8 @@ class SyncOrchestrator @Inject constructor(
             // stale half-open connection (common right after a long Doze
             // sleep). Tear it down so the user's retry runs on a fresh socket
             // instead of timing out again.
-            AppLog.w(TAG, "Stage lock timed out, forcing WebSocket reconnect")
-            webSocketManager.forceReconnect()
+            AppLog.w(TAG, "Stage lock timed out, forcing transport reconnect")
+            transport.forceReconnect()
             Result.Error(Exception("Lock request timeout"))
         }
     }
@@ -1106,8 +1106,8 @@ class SyncOrchestrator @Inject constructor(
 
         val externalId = toExternalDocumentId(documentId)
 
-        if (!webSocketManager.isConnected()) {
-            AppLog.d(TAG, "WebSocket not connected, queueing unlock operation for document: $documentId")
+        if (!transport.isConnected()) {
+            AppLog.d(TAG, "transport not connected, queueing unlock operation for document: $documentId")
             outgoingOperationRepository.queueOperation(
                 operationType = OperationType.STAGE_UNLOCK,
                 entityType = EntityType.DOCUMENT,
@@ -1143,7 +1143,7 @@ class SyncOrchestrator @Inject constructor(
         // server truth and the suppression guard then blocked every recovery.
         heldStageLocks.remove(documentId)
 
-        val sent = webSocketManager.sendMessage(message)
+        val sent = transport.sendMessage(message)
         return if (sent) {
             Result.Success(Unit)
         } else {
@@ -1168,8 +1168,8 @@ class SyncOrchestrator @Inject constructor(
 
         val externalId = toExternalDocumentId(documentId)
 
-        if (!webSocketManager.isConnected()) {
-            AppLog.d(TAG, "WebSocket not connected, queueing pause operation for document: $documentId")
+        if (!transport.isConnected()) {
+            AppLog.d(TAG, "transport not connected, queueing pause operation for document: $documentId")
             outgoingOperationRepository.queueOperation(
                 operationType = OperationType.STAGE_PAUSE,
                 entityType = EntityType.DOCUMENT,
@@ -1202,7 +1202,7 @@ class SyncOrchestrator @Inject constructor(
         // null, active_work_ms incremented).
         heldStageLocks.remove(documentId)
 
-        val sent = webSocketManager.sendMessage(message)
+        val sent = transport.sendMessage(message)
         return if (sent) {
             Result.Success(Unit)
         } else {
@@ -1381,8 +1381,8 @@ class SyncOrchestrator @Inject constructor(
         // resyncDirtyDocuments(), which reads the current Room state — that
         // path is authoritative and always up-to-date, so the queue is
         // redundant for this operation type.
-        if (!webSocketManager.isConnected()) {
-            AppLog.d(TAG, "WebSocket not connected; relying on dirty-flag re-sync for document: $documentId")
+        if (!transport.isConnected()) {
+            AppLog.d(TAG, "transport not connected; relying on dirty-flag re-sync for document: $documentId")
             // Coalesce: log the first one fully, then a 60s heartbeat. A
             // long offline session previously emitted hundreds of identical
             // rows (189 in the 05-27.04.26 incident); the heartbeat keeps
@@ -1406,7 +1406,7 @@ class SyncOrchestrator @Inject constructor(
                 )
                 lastQueuedJournalAt[documentId] = now
             }
-            return Result.Error(Exception("WebSocket not connected, deferred to dirty re-sync"))
+            return Result.Error(Exception("transport not connected, deferred to dirty re-sync"))
         }
 
         val message = SyncMessage.DocumentUpdate(
@@ -1417,7 +1417,7 @@ class SyncOrchestrator @Inject constructor(
             lines = lines
         )
 
-        val sent = webSocketManager.sendMessage(message)
+        val sent = transport.sendMessage(message)
         return if (sent) {
             // Send succeeded → reset the offline-coalesce window so the next
             // disconnect starts fresh and emits a full row.
@@ -1435,7 +1435,7 @@ class SyncOrchestrator @Inject constructor(
             )
             Result.Success(Unit)
         } else {
-            AppLog.w(TAG, "WebSocket send failed for document $documentId; deferred to dirty re-sync")
+            AppLog.w(TAG, "transport send failed for document $documentId; deferred to dirty re-sync")
             // Same coalescing rule as the offline branch above: only log the
             // first failure of a burst; subsequent failures within the
             // heartbeat window are noise.
@@ -1457,7 +1457,7 @@ class SyncOrchestrator @Inject constructor(
                 )
                 lastQueuedJournalAt[documentId] = now
             }
-            Result.Error(Exception("WebSocket send failed, deferred to dirty re-sync"))
+            Result.Error(Exception("transport send failed, deferred to dirty re-sync"))
         }
     }
 
@@ -1481,15 +1481,15 @@ class SyncOrchestrator @Inject constructor(
 
         val externalId = toExternalDocumentId(documentId)
 
-        if (!webSocketManager.isConnected()) {
-            AppLog.d(TAG, "WebSocket not connected, queueing complete operation for document: $documentId")
+        if (!transport.isConnected()) {
+            AppLog.d(TAG, "transport not connected, queueing complete operation for document: $documentId")
             outgoingOperationRepository.queueOperation(
                 operationType = OperationType.STAGE_COMPLETE,
                 entityType = EntityType.DOCUMENT,
                 entityId = documentId,
                 payload = gson.toJson(mapOf("document_id" to externalId, "stage" to stage))
             )
-            return Result.Error(Exception("WebSocket not connected, operation queued"))
+            return Result.Error(Exception("transport not connected, operation queued"))
         }
 
         val message = SyncMessage.StageComplete(
@@ -1507,7 +1507,7 @@ class SyncOrchestrator @Inject constructor(
             payload = stageSnapshot(documentId) + mapOf("message_id" to message.id)
         )
 
-        val response = webSocketManager.sendAndAwait(
+        val response = transport.sendAndAwait(
             message,
             SyncMessage.StageCompleteResult::class.java
         )
@@ -1535,8 +1535,8 @@ class SyncOrchestrator @Inject constructor(
             // manager's send()==false escalation never fires); tear it down so
             // the user's retry runs on a fresh connection instead of timing out
             // against the same wedged one.
-            AppLog.w(TAG, "Stage complete timed out, forcing WebSocket reconnect")
-            webSocketManager.forceReconnect()
+            AppLog.w(TAG, "Stage complete timed out, forcing transport reconnect")
+            transport.forceReconnect()
             return Result.Error(Exception("Complete request timeout"))
         }
 
@@ -1623,7 +1623,7 @@ class SyncOrchestrator @Inject constructor(
     // Message Handling
     // ============================================
 
-    private fun handleWebSocketMessage(message: SyncMessage) {
+    private fun handleIncomingMessage(message: SyncMessage) {
         scope.launch {
             when (message) {
                 is SyncMessage.SyncData -> {
@@ -1691,7 +1691,7 @@ class SyncOrchestrator @Inject constructor(
             syncId = message.syncId,
             cursors = message.cursors
         )
-        webSocketManager.sendMessage(ackMessage)
+        transport.sendMessage(ackMessage)
 
         // Update sync state
         _syncState.value = _syncState.value.copy(
@@ -1792,11 +1792,11 @@ class SyncOrchestrator @Inject constructor(
 
         // If FORBIDDEN, trigger reconnect (which will refresh the token)
         if (message.code == "FORBIDDEN") {
-            AppLog.d(TAG, "FORBIDDEN error received, triggering WebSocket reconnect with token refresh")
-            webSocketManager.disconnect()
+            AppLog.d(TAG, "FORBIDDEN error received, triggering transport reconnect with token refresh")
+            transport.disconnect()
             scope.launch {
                 kotlinx.coroutines.delay(500)
-                webSocketManager.connect()
+                transport.connect()
             }
         }
     }
@@ -2362,7 +2362,7 @@ class SyncOrchestrator @Inject constructor(
     /**
      * Exit-without-saving: cancel the pending debounced sync, drop dirty edits,
      * release the held lock, and send STAGE_UNLOCK so the server completes the
-     * cooperative force-release. Shared by the WebSocket FORCE_RELEASE_REQUEST
+     * cooperative force-release. Shared by the transport FORCE_RELEASE_REQUEST
      * push and the REST polling path (a synced document carrying
      * `release_requested` while this device holds the lock).
      */
@@ -2403,7 +2403,7 @@ class SyncOrchestrator @Inject constructor(
             )
         }
 
-        if (stage != null && webSocketManager.isConnected()) {
+        if (stage != null && transport.isConnected()) {
             val unlockMsg = SyncMessage.StageUnlock(
                 id = messageParser.generateMessageId(),
                 timestamp = messageParser.getCurrentTimestamp(),
@@ -2411,7 +2411,7 @@ class SyncOrchestrator @Inject constructor(
                 stage = stage,
             )
             try {
-                webSocketManager.sendMessage(unlockMsg)
+                transport.sendMessage(unlockMsg)
                 debugJournal.log(
                     eventType = ua.com.programmer.pick.data.debug.DebugEventType.STAGE_UNLOCK_SENT,
                     message = "stage unlock sent (cooperative force-release)",
@@ -2422,7 +2422,7 @@ class SyncOrchestrator @Inject constructor(
                 AppLog.w(TAG, "Cooperative force-release: failed to send STAGE_UNLOCK: ${e.message}")
             }
         } else {
-            AppLog.w(TAG, "Cooperative force-release: cannot send STAGE_UNLOCK (stage=$stage, connected=${webSocketManager.isConnected()})")
+            AppLog.w(TAG, "Cooperative force-release: cannot send STAGE_UNLOCK (stage=$stage, connected=${transport.isConnected()})")
         }
 
         debugJournal.log(
@@ -2895,8 +2895,8 @@ class SyncOrchestrator @Inject constructor(
     // ============================================
 
     private suspend fun requestEntitySync(entityType: String) {
-        if (!webSocketManager.isConnected()) return
-        if (!webSocketManager.isUserAuthenticated()) return
+        if (!transport.isConnected()) return
+        if (!transport.isUserAuthenticated()) return
 
         val cursor = syncStateDao.getCursor(entityType)
         val cursors = if (cursor != null) mapOf(entityType to cursor) else null
@@ -2908,14 +2908,14 @@ class SyncOrchestrator @Inject constructor(
             cursors = cursors
         )
 
-        webSocketManager.sendMessage(message)
+        transport.sendMessage(message)
         updateEntitySyncStatus(entityType, SyncStatus.SYNCING)
     }
 
     private fun onNetworkAvailable() {
-        AppLog.d(TAG, "Network available, connecting WebSocket")
+        AppLog.d(TAG, "Network available, connecting transport")
         scope.launch {
-            connectWebSocket()
+            connectTransport()
         }
     }
 
@@ -2930,17 +2930,17 @@ class SyncOrchestrator @Inject constructor(
     // ============================================
 
     /**
-     * Process all pending outgoing operations via WebSocket.
+     * Process all pending outgoing operations via transport.
      * Called after user authentication and from SyncWorker.
      * Requires user authentication (per protocol).
      */
     suspend fun processPendingOperations() {
-        if (!webSocketManager.isConnected()) {
-            AppLog.d(TAG, "Cannot process pending operations - WebSocket not connected")
+        if (!transport.isConnected()) {
+            AppLog.d(TAG, "Cannot process pending operations - transport not connected")
             return
         }
 
-        if (!webSocketManager.isUserAuthenticated()) {
+        if (!transport.isUserAuthenticated()) {
             AppLog.d(TAG, "Cannot process pending operations - user not authenticated")
             return
         }
@@ -2966,8 +2966,8 @@ class SyncOrchestrator @Inject constructor(
         resyncDirtyDocuments()
 
         for (operation in pendingOps) {
-            if (!webSocketManager.isConnected()) {
-                AppLog.w(TAG, "WebSocket disconnected during pending operations processing, stopping")
+            if (!transport.isConnected()) {
+                AppLog.w(TAG, "transport disconnected during pending operations processing, stopping")
                 break
             }
 
@@ -2997,7 +2997,7 @@ class SyncOrchestrator @Inject constructor(
      * Returns the number of documents that successfully re-sent their data.
      */
     suspend fun resyncDirtyDocuments(): Int {
-        if (!webSocketManager.isConnected() || !webSocketManager.isUserAuthenticated()) return 0
+        if (!transport.isConnected() || !transport.isUserAuthenticated()) return 0
 
         return try {
             // Union: docs flagged dirty + docs with any dirty line. Map by id so
@@ -3012,7 +3012,7 @@ class SyncOrchestrator @Inject constructor(
 
             var sentCount = 0
             for (doc in dirtyDocuments) {
-                if (!webSocketManager.isConnected()) break
+                if (!transport.isConnected()) break
 
                 val lineEntities = documentLineDao.getLinesByDocumentIdSync(doc.id)
                 if (lineEntities.isEmpty()) continue
@@ -3042,7 +3042,7 @@ class SyncOrchestrator @Inject constructor(
                     // below cleared on buffer-accept, so a socket drop between
                     // buffer and server orphaned the edits with is_dirty already
                     // off, and a later server pull merged over them.
-                    val ack = webSocketManager.sendAndAwait(message, SyncMessage.DocumentUpdateResult::class.java)
+                    val ack = transport.sendAndAwait(message, SyncMessage.DocumentUpdateResult::class.java)
                     val confirmed = ack?.success == true
                     debugJournal.log(
                         eventType = ua.com.programmer.pick.data.debug.DebugEventType.RESYNC_DIRTY,
@@ -3100,7 +3100,7 @@ class SyncOrchestrator @Inject constructor(
                     }
                 } else {
                     // Legacy fallback (old server, no ack): clear on buffer-accept.
-                    val sent = webSocketManager.sendMessage(message)
+                    val sent = transport.sendMessage(message)
                     debugJournal.log(
                         eventType = ua.com.programmer.pick.data.debug.DebugEventType.RESYNC_DIRTY,
                         message = if (sent) "re-synced dirty document" else "re-sync send failed",
@@ -3139,7 +3139,7 @@ class SyncOrchestrator @Inject constructor(
 
         when (operation.operationType) {
             OperationType.STAGE_LOCK -> {
-                val response = webSocketManager.sendAndAwait(
+                val response = transport.sendAndAwait(
                     message,
                     SyncMessage.StageLockResult::class.java
                 )
@@ -3165,7 +3165,7 @@ class SyncOrchestrator @Inject constructor(
                 }
             }
             OperationType.STAGE_COMPLETE -> {
-                val response = webSocketManager.sendAndAwait(
+                val response = transport.sendAndAwait(
                     message,
                     SyncMessage.StageCompleteResult::class.java
                 )
@@ -3202,12 +3202,12 @@ class SyncOrchestrator @Inject constructor(
                 // Fire-and-forget for DOCUMENT_UNLOCK etc.
                 // (DOCUMENT_UPDATE is no longer queued — buildMessageFromOperation
                 // returns null for it, so it never reaches this branch.)
-                val sent = webSocketManager.sendMessage(message)
+                val sent = transport.sendMessage(message)
                 if (sent) {
                     outgoingOperationRepository.markOperationCompleted(operation.id)
                     AppLog.d(TAG, "Pending operation sent: ${operation.operationType} for ${operation.entityId}")
                 } else {
-                    outgoingOperationRepository.markOperationFailed(operation.id, "Failed to send via WebSocket")
+                    outgoingOperationRepository.markOperationFailed(operation.id, "Failed to send via transport")
                     AppLog.w(TAG, "Failed to send pending operation: ${operation.id}")
                 }
             }

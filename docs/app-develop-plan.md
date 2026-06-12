@@ -117,7 +117,7 @@ Terminal states: **Sent** (confirmed by ERP) and **Error / Conflict**.
 
 > The original MVP scope used a single in-process stage (Loaded → In progress →
 > Completed → Sent). It was superseded by the three-stage model above. See
-> [websocket-protocol.md](websocket-protocol.md) and
+> [sync-protocol.md](sync-protocol.md) and
 > [backend-spec.md](backend-spec.md) for the implemented state machine.
 
 ### 5.2 Stage Locking
@@ -255,4 +255,4 @@ Explicitly excluded from MVP:
 MVP shipped. This document is kept as a frozen product-spec reference for
 scope, business scenarios, roles, and offline-first requirements. Current
 implementation details (layer structure, message catalog, debug journal) live
-in [CLAUDE.md](../CLAUDE.md), [websocket-protocol.md](websocket-protocol.md), and [backend-spec.md](backend-spec.md).
+in [CLAUDE.md](../CLAUDE.md), [sync-protocol.md](sync-protocol.md), and [backend-spec.md](backend-spec.md).

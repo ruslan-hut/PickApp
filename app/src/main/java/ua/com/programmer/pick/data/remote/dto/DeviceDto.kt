@@ -5,9 +5,9 @@ import com.google.gson.annotations.SerializedName
 
 /**
  * Wire DTOs for the device REST transport (the backend's `/device` surface, the
- * REST replacement for the WebSocket protocol). Field shapes mirror the Go
+ * REST replacement for the sync protocol). Field shapes mirror the Go
  * `ws/protocol` payload structs the backend reuses, so a value parsed here is
- * byte-for-byte what the WebSocket path delivered — only the framing differs.
+ * byte-for-byte what the legacy wire path delivered — only the framing differs.
  *
  * Every endpoint wraps its result in [ApiEnvelope]: `{"status":"ok","data":…}`
  * on success, `{"status":"error","error":{code,message}}` on failure.
@@ -86,7 +86,7 @@ object DeviceDto {
         @SerializedName("has_more") val hasMore: Boolean = false,
     )
 
-    /** One entity batch. `data` is the raw entity-row array (same shape the WS
+    /** One entity batch. `data` is the raw entity-row array (same shape the legacy wire
      *  SYNC_DATA frame carried); the existing per-entity mappers parse it. */
     data class SyncEntity(
         @SerializedName("entity_type") val entityType: String,

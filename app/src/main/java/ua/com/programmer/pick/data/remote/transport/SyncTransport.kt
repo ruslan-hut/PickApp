@@ -1,4 +1,4 @@
-package ua.com.programmer.pick.data.remote.websocket
+package ua.com.programmer.pick.data.remote.transport
 
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
  * interface rather than a concrete client. The app speaks REST only —
  * [RestTransport] is the sole implementation; it satisfies the contract by
  * emitting synthetic inbound [SyncMessage]s on [incomingMessages] so the
- * orchestrator's handlers stay transport-agnostic. (The legacy WebSocket
+ * orchestrator's handlers stay transport-agnostic. (The legacy transport
  * implementation was removed at cutover; the interface is kept as the seam.)
  */
 interface SyncTransport {
@@ -24,8 +24,8 @@ interface SyncTransport {
 
     /**
      * True when there is no server push and the orchestrator must actively poll
-     * for updates while a document is being worked. WebSocket = false (pushes),
-     * REST = true.
+     * for updates while a document is being worked. A pushing transport
+     * returns false; REST returns true.
      */
     val requiresPolling: Boolean get() = false
 

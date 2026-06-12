@@ -5,7 +5,7 @@ import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
-import ua.com.programmer.pick.data.remote.websocket.AvailableDocumentTypeDto
+import ua.com.programmer.pick.data.remote.transport.AvailableDocumentTypeDto
 import ua.com.programmer.pick.domain.model.AvailableDocumentType
 import javax.inject.Inject
 import javax.inject.Singleton

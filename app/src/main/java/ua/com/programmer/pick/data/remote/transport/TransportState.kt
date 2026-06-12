@@ -1,8 +1,8 @@
-package ua.com.programmer.pick.data.remote.websocket
+package ua.com.programmer.pick.data.remote.transport
 
 /**
  * Transport-level state and result types shared by [SyncTransport] and its
- * implementations. (Formerly defined in WebSocketManager, which has been
+ * implementations. (Formerly defined in the legacy transport client, which has been
  * removed — the device speaks REST only.)
  */
 

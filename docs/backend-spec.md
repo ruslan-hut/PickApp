@@ -5,58 +5,74 @@ This document defines the backend contract for the PickApp Android application.
 ## Overview
 
 The backend is an intermediate server between the Android TSD devices and an
-external ERP system. It is **WebSocket-first**: the app authenticates,
-synchronizes data, and runs all document, stage and box operations over a single
-WebSocket connection.
+external ERP system. The app is a **REST client** of the backend's `/device`
+surface (Retrofit 3 + OkHttp 5): it authenticates, synchronizes data, and runs
+all document, stage and box operations over plain REST request/response. There
+is no persistent connection — the app is no longer WebSocket-first.
 
-- **WebSocket** — authentication, delta/full synchronization, real-time updates,
-  document/stage/box operations, diagnostics. This is the only data path used in
-  production.
+Every `/device` response is wrapped in an `ApiEnvelope`:
+`{"status":"ok","data":…}` on success, `{"status":"error","error":{code,message}}`
+on failure. The protocol envelopes (payload schemas) are unchanged from the
+previous wire path — only the transport changed from a persistent WebSocket to
+REST.
+
+- **REST/HTTPS** — authentication, delta/full synchronization, document/stage/box
+  operations, lookups, debug-journal upload. This is the only data path.
 - **Offline-first sync** — delta updates with server-managed cursors and
   conflict resolution.
 
-The detailed wire protocol lives in [websocket-protocol.md](websocket-protocol.md).
-This document covers the entity contract, the document state machine, the sync
-model, security and the ERP integration boundary.
+The detailed wire protocol (per-message payload schemas) lives in
+[sync-protocol.md](sync-protocol.md). This document covers the entity contract,
+the document state machine, the sync model, security and the ERP integration
+boundary.
 
 ---
 
 ## 1. Authentication
 
-Authentication is performed entirely over the WebSocket connection — there is no
-REST authentication path in the production flow.
+The device authenticates over REST and is issued a JWT pair.
 
-- **Stage 1 — Device connection:** the device connects with an `app_token`
-  (hardcoded in the app build) and a `device_id`. New devices are auto-registered
-  PENDING and must be approved via the admin panel.
-- **Stage 2 — User login:** after the socket is open, the device sends a
-  `USER_LOGIN` message with `login` + `password`. The server replies with
-  `USER_LOGIN_RESULT` carrying the user identity, role, tenant, an
-  `offline_hash` for offline re-authentication, the per-type capability flags,
-  the per-device `debug_journal_enabled` flag, and any `held_stage_locks`.
+- **`POST device/login`** — a single request that carries both device and user
+  credentials: `app_token` (hardcoded in the app build), `device_id`, the user
+  `login` + `password`, and `app_version`. New devices are auto-registered
+  PENDING and must be approved via the admin panel. On success the response
+  carries an **access + refresh JWT pair** plus the `USER_LOGIN_RESULT` payload:
+  user identity, role, tenant, an `offline_hash` for offline re-authentication,
+  the per-type capability flags (`available_document_types`), the per-device
+  `debug_journal_enabled` flag, and any `held_stage_locks`.
+- **`POST device/refresh`** — exchanges the stored refresh token for a fresh
+  access/refresh pair (token rotation).
+- **Access-token attachment & retry:** the auth interceptor attaches
+  `Authorization: Bearer <access JWT>` to every call except the public
+  login/refresh endpoints. A `401` triggers one transparent `device/refresh` +
+  retry; if the refresh also fails the failure surfaces to the caller.
 
-See [websocket-protocol.md](websocket-protocol.md) §"USER_LOGIN" for payloads.
+The user (worker) auth is the `USER_LOGIN` payload carried over
+`POST device/login` — there is no separate user-login endpoint; one request
+authenticates both the device and the worker.
 
-> **Legacy note.** The codebase still contains a REST auth scaffold
-> (`AuthApi`: `POST /auth/login`, `/auth/refresh`, `/auth/logout`, with JWT
-> access/refresh tokens). It is **not used** by the production flow and is not
-> part of this contract. New work should not depend on it.
+See [sync-protocol.md](sync-protocol.md) §"USER_LOGIN" for payloads.
 
 ---
 
 ## 2. Synchronization
 
-All synchronization runs over the WebSocket. See
-[websocket-protocol.md](websocket-protocol.md) for message envelopes.
+All synchronization runs over REST. See [sync-protocol.md](sync-protocol.md) for
+message envelopes.
 
-- `SYNC_REQUEST` — delta sync since the client's per-entity cursors.
-- `FULL_SYNC_REQUEST` — full resync (after a local failure or inconsistency).
-- `SYNC_DATA` — one batch per entity type; carries `full_set`, `data`, and
-  `deleted_ids`.
-- `SYNC_COMPLETE` — round complete, returns the new cursors.
-- `ACK` — client confirms receipt; the server persists the device cursors only
-  after the ACK.
-- `DOCUMENT_LIST_REFRESH` / `DOCUMENT_PRODUCTS` — targeted refreshes.
+- **`POST device/sync`** — delta pull since the client's per-entity cursors
+  (`SYNC_REQUEST`). `full=1` query resets the cursors first (`FULL_SYNC_REQUEST`
+  / full resync after a local failure or inconsistency). The response carries one
+  entity batch per type (each with `full_set`, `data`, `deleted_ids`), the new
+  `next_cursors`, and `has_more`; the client loops while `has_more` is true.
+- **`GET device/documents`** — the role-filtered authoritative complete document
+  set (the `DOCUMENT_LIST_REFRESH` equivalent), with an optional `document_type`
+  filter.
+- **`GET device/documents/{id}/products`** — targeted product refresh for one
+  document (`DOCUMENT_PRODUCTS`).
+
+The server persists the device cursors as part of the sync response; there is no
+separate client ACK round-trip.
 
 Entity types: `users`, `products`, `clients`, `warehouses`, `documents`,
 `boxes`.
@@ -277,17 +293,18 @@ policy (who may write document data in each regime).
 
 ### Sync Flow
 
-1. Client sends `SYNC_REQUEST` (with cursors) or `FULL_SYNC_REQUEST`, or a
-   targeted `DOCUMENT_LIST_REFRESH`.
-2. Server returns one `SYNC_DATA` per entity type, then `SYNC_COMPLETE` with new
-   cursors.
-3. `SYNC_DATA.full_set` decides purge behavior:
+1. Client calls `POST device/sync` (with cursors), `POST device/sync?full=1`, or
+   the targeted `GET device/documents`.
+2. The response returns one entity batch per type plus the new `next_cursors`,
+   and `has_more`. While `has_more` is true the client repeats `device/sync`
+   with the returned cursors.
+3. Each entity batch's `full_set` decides purge behavior:
    - `false` (delta) — merge only; local rows outside the payload are kept.
    - `true` (full set) — authoritative; local rows of that entity outside the
      payload are deleted. Worker-owned / locally-dirty documents are exempt.
-4. `SYNC_DATA.deleted_ids` carries explicit server-side removals.
-5. Client applies changes and sends `ACK`.
-6. Server persists the device cursors only after the `ACK`.
+4. The batch `deleted_ids` carries explicit server-side removals.
+5. Client applies changes. The server persists the device cursors as part of
+   serving the response.
 
 ### Conflict Resolution
 
@@ -308,31 +325,34 @@ Documents use optimistic locking via the `version` field:
 - **Periodic:** every 15 minutes via a background worker.
 - **On-demand:** when network becomes available, on app foreground, and after
   stage operations.
-- **Real-time:** WebSocket `PUSH` for immediate updates.
+- **While a document is being worked:** there is no server push. The device
+  polls (`POST device/sync` + `GET device/documents`) to pick up server-side
+  changes while a document is open.
 
 ---
 
 ## 6. Error Handling
 
-### WebSocket errors
+### Application errors (in-envelope)
 
-Errors are delivered as `SERVER_ERROR` messages. See
-[websocket-protocol.md](websocket-protocol.md) §"SERVER_ERROR" for the full code
-list (`NOT_AUTHENTICATED`, `INVALID_PAYLOAD`, `DOCUMENT_LOCKED`, `LOCK_LOST`,
-`WRONG_STATE`, `FORBIDDEN`, `INTERNAL_ERROR`, …).
+A failed request returns the error envelope shape
+`{"status":"error","error":{code,message}}`. The `SERVER_ERROR` code semantics
+are unchanged — see [sync-protocol.md](sync-protocol.md) §"SERVER_ERROR" for the
+full code list (`NOT_AUTHENTICATED`, `INVALID_PAYLOAD`, `DOCUMENT_LOCKED`,
+`LOCK_LOST`, `WRONG_STATE`, `FORBIDDEN`, `INTERNAL_ERROR`, …). The document
+write-path codes `LOCK_LOST` / `WRONG_STATE` drive the app's lock-loss recovery.
 
-### Connection-upgrade errors
-
-The initial WebSocket upgrade can fail with HTTP status codes:
+### HTTP status codes
 
 | Code | Meaning |
 |------|---------|
-| 101  | Switching Protocols (success) |
-| 401  | Unauthorized (invalid/missing app token) |
-| 403  | Forbidden (device PENDING/REJECTED, or no tenant) |
+| 401  | Unauthorized — triggers one transparent `device/refresh` + retry |
+| 403  | Forbidden (device PENDING/REJECTED, no tenant, or RBAC denial) |
+| 409  | Conflict — optimistic-lock / `version` compare-and-set failure |
+| 5xx  | Server error |
 
-After the upgrade, device-status close codes `4003` (PENDING) and `4004`
-(REJECTED) stop the client from auto-reconnecting.
+On a non-2xx response the client parses the error envelope from the body to
+recover the backend `code`; a 401 is retried once after a refresh.
 
 ---
 
@@ -340,14 +360,16 @@ After the upgrade, device-status close codes `4003` (PENDING) and `4004`
 
 ### Authentication
 
-- Two-stage auth: app-token device validation, then per-tenant user login.
+- Device-JWT auth: `POST device/login` validates the app token + device and the
+  per-tenant user credentials in one request, issuing an access + refresh JWT
+  pair; `POST device/refresh` rotates the pair.
 - `offline_hash` returned on login enables offline re-authentication for
   previously authenticated users.
 - Password storage: SHA-256 hash (for offline fallback on the client).
 
 ### Transport
 
-- WSS required for WebSocket connections in production.
+- HTTPS required in production.
 - Certificate pinning recommended for production.
 
 ### Authorization
@@ -409,10 +431,10 @@ batches, `is_completed` flags and boxes become the new baseline and are
 immutable from the ERP side.
 
 ```
-ERP ◀──REST/SOAP──▶ Backend ◀──WebSocket──▶ Mobile App
-         │                         │
-    Batch sync               Real-time, offline-first sync
-    (scheduled)              (delta + full)
+ERP ◀──REST/SOAP──▶ Backend ◀──REST──▶ Mobile App
+         │                       │
+    Batch sync             Polled, offline-first sync
+    (scheduled)            (delta + full)
 ```
 
 ---
@@ -427,7 +449,7 @@ ERP ◀──REST/SOAP──▶ Backend ◀──WebSocket──▶ Mobile App
 
 | Area | Status |
 |------|--------|
-| Two-stage WebSocket authentication | ✅ Shipped |
+| REST device-JWT auth (`device/login` / `device/refresh`) + `USER_LOGIN` payload | ✅ Shipped |
 | Delta / full synchronization (`SYNC_REQUEST` / `FULL_SYNC_REQUEST`) | ✅ Shipped |
 | Three-stage document workflow (`STAGE_LOCK` / `PAUSE` / `COMPLETE` / `UNLOCK`) | ✅ Shipped |
 | Box operations (add / remove / lookup, courier pickup / delivery) | ✅ Shipped |

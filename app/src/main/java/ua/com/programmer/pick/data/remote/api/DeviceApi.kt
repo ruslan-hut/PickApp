@@ -13,8 +13,7 @@ import ua.com.programmer.pick.data.remote.dto.DeviceDto
 
 /**
  * Retrofit binding for the backend device REST transport (the `/device`
- * endpoints). The
- * device-initiated replacement for the WebSocket protocol; every response is an
+ * endpoints): the device-initiated REST surface; every response is an
  * [ApiEnvelope]. Authorization is the device access JWT (added by
  * AuthInterceptor) except for the public login/refresh endpoints. Document
  * `{id}` accepts an ERP external_id (or ObjectID hex) per the canonical-ID rule.

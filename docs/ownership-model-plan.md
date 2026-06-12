@@ -313,7 +313,7 @@ Server:
   point for **M10**.
 
 Contract docs:
-- [backend-spec.md](backend-spec.md), [websocket-protocol.md](websocket-protocol.md) — would need updates for
+- [backend-spec.md](backend-spec.md), [sync-protocol.md](sync-protocol.md) — would need updates for
   M2's broadcast section.
 
 ## 7. What this analysis does not cover

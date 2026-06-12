@@ -1,4 +1,4 @@
-package ua.com.programmer.pick.data.remote.websocket
+package ua.com.programmer.pick.data.remote.transport
 
 import com.google.gson.JsonNull
 import kotlinx.coroutines.CoroutineDispatcher
@@ -26,9 +26,9 @@ import javax.inject.Singleton
  * transport "connected" and [loginUser] authenticates over HTTP. Every other
  * operation maps a request [SyncMessage] to a [DeviceRestClient] call and then
  * **emits the corresponding result message on [incomingMessages]** — exactly as
- * the WebSocket path delivered server frames — so [SyncOrchestrator]'s existing
+ * the legacy push path delivered server frames — so [SyncOrchestrator]'s existing
  * handlers run unchanged. [sendAndAwait] additionally returns the correlated
- * result to its caller (mirroring the WS dual-delivery of results).
+ * result to its caller (mirroring the legacy dual-delivery of results).
  *
  * Sync requests fan a poll loop into synthetic SYNC_DATA + SYNC_COMPLETE frames;
  * the ACK is folded into the next request's applied_cursors by DeviceRestClient,
@@ -203,7 +203,7 @@ class RestTransport @Inject constructor(
                     },
                     onFailure = { e ->
                         val code = (e as? DeviceApiException)?.code
-                        // Mirror the WS write-path rejection: a typed SERVER_ERROR
+                        // Mirror the legacy write-path rejection: a typed SERVER_ERROR
                         // drives M5″ lock-loss recovery, plus the failed ack so the
                         // awaiter fails fast.
                         if (code == LOCK_LOST || code == WRONG_STATE) {

@@ -13,9 +13,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.scanner.BarcodeService
-import ua.com.programmer.pick.data.remote.websocket.MessageParser
-import ua.com.programmer.pick.data.remote.websocket.SyncMessage
-import ua.com.programmer.pick.data.remote.websocket.SyncTransport
+import ua.com.programmer.pick.data.remote.transport.MessageParser
+import ua.com.programmer.pick.data.remote.transport.SyncMessage
+import ua.com.programmer.pick.data.remote.transport.SyncTransport
 import ua.com.programmer.pick.domain.model.Document
 import ua.com.programmer.pick.domain.model.DocumentBox
 import ua.com.programmer.pick.domain.model.DocumentState
@@ -50,7 +50,7 @@ sealed class CourierEvent {
 class CourierViewModel @Inject constructor(
     private val documentRepository: DocumentRepository,
     private val boxRepository: BoxRepository,
-    private val webSocketManager: SyncTransport,
+    private val transport: SyncTransport,
     private val messageParser: MessageParser,
     private val outgoingOperationRepository: OutgoingOperationRepository,
     private val barcodeService: BarcodeService,
@@ -145,8 +145,8 @@ class CourierViewModel @Inject constructor(
                 clientTs = System.currentTimeMillis()
             )
 
-            if (webSocketManager.isConnected()) {
-                val response = webSocketManager.sendAndAwait(
+            if (transport.isConnected()) {
+                val response = transport.sendAndAwait(
                     message,
                     SyncMessage.BoxPickupConfirmResult::class.java
                 )
@@ -190,8 +190,8 @@ class CourierViewModel @Inject constructor(
                 clientTs = System.currentTimeMillis()
             )
 
-            if (webSocketManager.isConnected()) {
-                val response = webSocketManager.sendAndAwait(
+            if (transport.isConnected()) {
+                val response = transport.sendAndAwait(
                     message,
                     SyncMessage.BoxDeliveryConfirmResult::class.java
                 )

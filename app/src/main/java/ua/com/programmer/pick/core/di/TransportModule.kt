@@ -4,12 +4,12 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import ua.com.programmer.pick.data.remote.websocket.RestTransport
-import ua.com.programmer.pick.data.remote.websocket.SyncTransport
+import ua.com.programmer.pick.data.remote.transport.RestTransport
+import ua.com.programmer.pick.data.remote.transport.SyncTransport
 import javax.inject.Singleton
 
 /**
- * Binds the device transport. The app speaks REST only — the WebSocket
+ * Binds the device transport. The app speaks REST only — the legacy push
  * transport was removed at cutover — so [RestTransport] is the sole
  * [SyncTransport]. The interface is kept as the orchestrator/repository seam.
  */

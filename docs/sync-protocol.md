@@ -1,85 +1,54 @@
-# TSD WebSocket Protocol
+# TSD Sync Protocol
 
 ## Overview
 
-This document is the authoritative reference for the WebSocket protocol between
-Android TSD devices and the intermediate server. The app is **WebSocket-first**:
-authentication, synchronization, document/stage operations, box operations and
-diagnostics all run over a single WebSocket connection. There is no REST data
-path in the production flow (see [backend-spec.md](backend-spec.md) §1).
+This document is the authoritative reference for the sync protocol between
+Android TSD devices and the intermediate server. The app speaks **REST only**
+(Retrofit / OkHttp) to the backend `/device` surface — authentication,
+synchronization, document/stage operations, box operations and diagnostics all
+run over plain HTTP requests (see [backend-spec.md](backend-spec.md) §1). There
+is no WebSocket / push channel.
 
-The protocol supports real-time synchronization, a three-stage document
+Every REST response is wrapped in an `ApiEnvelope`:
+
+```json
+{ "status": "ok", "data": { ... } }
+```
+
+The message-envelope schemas in this document are the **canonical payload
+shapes**. `RestTransport` maps each REST call to and from these `SyncMessage`
+types — emitting the correlated result on its `incomingMessages` flow exactly as
+the legacy push path delivered server frames — so `SyncOrchestrator` stays
+transport-agnostic. The schemas below therefore describe *payloads*; the
+transport framing around each is "request → REST endpoint, result emitted as the
+correlated message".
+
+The protocol supports synchronization (poll-based), a three-stage document
 workflow (collect → pack → deliver), and offline-first patterns.
 
-## Connection
+### Authentication
 
-### Endpoint
+Two independent layers, both over HTTP:
 
-```
-ws://{host}:{port}/ws/connect?app_token={app_token}&device_id={device_id}&protocol_version=v2
-```
+- **Device auth = JWT.** `POST device/login` returns an access + refresh JWT
+  pair; `AuthInterceptor` attaches the access token as a bearer on every
+  subsequent `/device` call. `POST device/refresh` exchanges the refresh token
+  for a new pair when the access token expires. The old two-stage socket
+  handshake (`app_token` + `device_id` query params) is gone.
+- **User auth = `USER_LOGIN` payload.** `POST device/login` also carries the
+  user `login` / `password` and returns the `USER_LOGIN_RESULT` payload (user
+  id, role, capability flags, held stage locks). See the
+  [USER_LOGIN](#user_login) section.
 
-The `app_token` is also sent as an `X-App-Token` header (fallback).
-
-| Query param | Description |
-|-------------|-------------|
-| `app_token` | Hardcoded in the Android app build; validates the app against server config |
-| `device_id` | Unique hardware identifier |
-| `protocol_version` | `v2` — marks the client as carrying the ERP `external_id` translation logic. The server defaults to `v1` when absent. |
-
-> `protocol_version=v2` is a forward marker for the eventual cleanup of the
-> server's dual-accept ID heuristic. The backend currently emits the same DTO
-> format regardless of the value.
-
-### Authentication Flow
-
-Authentication happens in two stages:
-
-1. **Device Connection** — `app_token` validates the Android app, `device_id`
-   identifies the device.
-2. **User Login** — after the WebSocket is established, the user authenticates
-   via a `USER_LOGIN` message.
-
-#### Stage 1: Device Connection
-
-**Connection responses:**
-- `401 Unauthorized` — invalid or missing app token
-- `403 Forbidden` — device is PENDING approval, REJECTED, or has no tenant assigned
-- `101 Switching Protocols` — success, WebSocket established
-
-After a successful upgrade the server may still close the socket with a
-device-status close code:
-
-| Close code | Meaning |
-|------------|---------|
-| `4003` | Device is PENDING approval — client does not auto-reconnect |
-| `4004` | Device is REJECTED — client does not auto-reconnect |
-| `4000` | PONG timeout (client-initiated) — client reconnects |
-
-**New devices** are auto-registered with PENDING status and must be approved
-via the admin panel.
-
-#### Stage 2: User Login
-
-After connection, send `USER_LOGIN` to authenticate the user. See the
-[USER_LOGIN](#user_login) section for payloads.
-
-The app auto-logs-in on every (re)connect using credentials stored after the
-first successful login.
-
-**Operations requiring user authentication** — everything except the three
-below.
-
-**Operations allowed without user login:**
-- `PING`
-- `USER_LOGIN`
-- `ERROR_REPORT`
+`device/login` and `device/refresh` are the only public endpoints; every other
+`/device` call requires the device access JWT.
 
 ---
 
 ## Message Format
 
-All messages follow a common envelope structure:
+All payloads share a common envelope structure (preserved verbatim by
+`RestTransport` when it synthesizes result messages onto its message flow):
 
 ```json
 {
@@ -95,64 +64,56 @@ All messages follow a common envelope structure:
 | id | string | Unique message identifier (nanosecond timestamp) |
 | type | string | Message type (see types below) |
 | timestamp | string | ISO 8601 timestamp (UTC) |
-| payload | object | Type-specific payload (`null` for `PING`/`PONG`) |
+| payload | object | Type-specific payload |
 
-Request/response correlation is by message `type` plus, for document-scoped
-operations, the `document_id` in the payload. Only one in-flight request per
-correlation key is assumed.
+Each request maps to one REST endpoint; the result is emitted as the correlated
+message. Correlation is by message `type` plus, for document-scoped operations,
+the `document_id` in the payload. Only one in-flight request per correlation key
+is assumed.
 
 ---
 
 ## Message Types
 
-### Client → Server
+### Request → result
 
-| Type | Description | Requires User Auth |
-|------|-------------|-------------------|
-| `PING` | Keep-alive ping | No |
-| `USER_LOGIN` | Authenticate user after connection | No |
-| `ERROR_REPORT` | Report client-side error | No |
-| `SYNC_REQUEST` | Request delta synchronization | **Yes** |
-| `FULL_SYNC_REQUEST` | Request a full data resync | **Yes** |
-| `ACK` | Acknowledge received sync data | **Yes** |
-| `DOCUMENT_LIST_REFRESH` | Refresh the document list (+ related warehouses/clients) | **Yes** |
-| `DOCUMENT_PRODUCTS` | Request products referenced by one document | **Yes** |
-| `DOCUMENT_UPDATE` | Push document line updates (debounced) | **Yes** |
-| `STAGE_LOCK` | Lock a document for a stage ("Take into work" / resume) | **Yes** |
-| `STAGE_UNLOCK` | Release a stage lock (revert to start state) | **Yes** |
-| `STAGE_PAUSE` | Pause a stage: release lock, keep in-process state | **Yes** |
-| `STAGE_COMPLETE` | Complete the current stage | **Yes** |
-| `PRODUCT_LOOKUP` | Search a product by barcode | **Yes** |
-| `BOX_ADD` | Link a scanned box to a document (PACK stage) | **Yes** |
-| `BOX_REMOVE` | Remove a box from a document (PACKING stage) | **Yes** |
-| `BOX_LOOKUP` | Resolve a box barcode missing from the local catalog | **Yes** |
-| `BOX_PICKUP_CONFIRM` | Courier confirms box pickup (offline-capable) | **Yes** |
-| `BOX_DELIVERY_CONFIRM` | Courier confirms box delivery (offline-capable) | **Yes** |
-| `DEBUG_EVENT_BATCH` | Upload a batch of debug-journal events | **Yes** |
+Each request `SyncMessage` is mapped by `RestTransport` to the REST endpoint
+below; the response is parsed and emitted as the listed result message.
 
-### Server → Client
+| Request | REST endpoint | Result message |
+|---------|---------------|----------------|
+| `USER_LOGIN` | `POST device/login` (also returns device JWT pair) | `USER_LOGIN_RESULT` |
+| — token refresh | `POST device/refresh` | (JWT pair, no message) |
+| `SYNC_REQUEST` | `POST device/sync` (loop while `has_more`) | `SYNC_DATA` × N + `SYNC_COMPLETE` |
+| `FULL_SYNC_REQUEST` | `POST device/sync?full=1` (reset cursors, then loop) | `SYNC_DATA` × N + `SYNC_COMPLETE` |
+| `ACK` | — (cursor commit rides `applied_cursors` on the next sync) | none |
+| `DOCUMENT_LIST_REFRESH` | `GET device/documents?document_type=…` | `SYNC_DATA` × N + `SYNC_COMPLETE` |
+| `DOCUMENT_PRODUCTS` | `GET device/documents/{id}/products` | `SYNC_DATA` + `SYNC_COMPLETE` |
+| `DOCUMENT_UPDATE` | `PATCH device/documents/{id}` | `DOCUMENT_UPDATE_RESULT` (+ `SERVER_ERROR` on `LOCK_LOST`/`WRONG_STATE`) |
+| `STAGE_LOCK` | `POST device/documents/{id}/lock` | `STAGE_LOCK_RESULT` |
+| `STAGE_UNLOCK` | `POST device/documents/{id}/unlock` | `STAGE_LOCK_RESULT` |
+| `STAGE_PAUSE` | `POST device/documents/{id}/pause` | `STAGE_LOCK_RESULT` |
+| `STAGE_COMPLETE` | `POST device/documents/{id}/complete` | `STAGE_COMPLETE_RESULT` |
+| `PRODUCT_LOOKUP` | `GET device/products/lookup?barcode=…` | `PRODUCT_LOOKUP_RESULT` |
+| `BOX_ADD` | `POST device/documents/{id}/boxes` | `BOX_ADD_RESULT` |
+| `BOX_REMOVE` | `DELETE device/documents/{id}/boxes/{boxNumber}` | `BOX_REMOVE_RESULT` |
+| `BOX_LOOKUP` | `GET device/boxes/lookup?barcode=…` | `BOX_LOOKUP_RESULT` |
+| `BOX_PICKUP_CONFIRM` | `POST device/boxes/pickup` | `BOX_PICKUP_CONFIRM_RESULT` |
+| `BOX_DELIVERY_CONFIRM` | `POST device/boxes/delivery` | `BOX_DELIVERY_CONFIRM_RESULT` |
+| `LINE_PHOTO_UPLOAD_URL` | `POST device/documents/{id}/lines/{lineNumber}/photo-url` | `LINE_PHOTO_UPLOAD_URL_RESULT` |
+| (shipment label) | `GET device/documents/{id}/shipment/label` | shipment label result |
+| (shipment track) | `POST device/documents/{id}/shipment/track` | shipment track result |
+| `ERROR_REPORT` | `POST device/error-report` | none (fire-and-forget) |
+| `DEBUG_EVENT_BATCH` | `POST device/debug-events` | `DEBUG_EVENT_BATCH_RESULT` |
 
-| Type | Description |
-|------|-------------|
-| `PONG` | Keep-alive pong (carries `debug_journal_enabled`) |
-| `USER_LOGIN_RESULT` | User login result |
-| `SYNC_DATA` | Synchronization data batch (one per entity type) |
-| `SYNC_COMPLETE` | Synchronization complete with cursors |
-| `STAGE_LOCK_RESULT` | Stage lock / pause / resume result |
-| `STAGE_COMPLETE_RESULT` | Stage completion result |
-| `PRODUCT_LOOKUP_RESULT` | Product barcode lookup result |
-| `BOX_ADD_RESULT` | Box add result |
-| `BOX_REMOVE_RESULT` | Box remove result |
-| `BOX_LOOKUP_RESULT` | Box barcode lookup result |
-| `BOX_PICKUP_CONFIRM_RESULT` | Box pickup confirmation result |
-| `BOX_DELIVERY_CONFIRM_RESULT` | Box delivery confirmation result |
-| `SERVER_ERROR` | Error response |
-| `PUSH` | Real-time push notification |
-| `FORCE_RELEASE_REQUEST` | Admin-initiated cooperative force-release |
-| `DEBUG_EVENT_BATCH_RESULT` | Ack for a debug-journal batch upload |
+> There is no `STAGE_UNLOCK_RESULT` or `STAGE_PAUSE_RESULT`. Both unlock and
+> pause map to endpoints that return a `STAGE_LOCK_RESULT` payload.
 
-> There is no `STAGE_UNLOCK_RESULT` or `STAGE_PAUSE_RESULT`. `STAGE_UNLOCK` is
-> fire-and-forget; `STAGE_PAUSE` is answered with a `STAGE_LOCK_RESULT`.
+### Server-initiated
+
+`FORCE_RELEASE_REQUEST` is an admin-initiated cooperative force-release. With no
+push channel it is surfaced by the server in a sync/poll response rather than
+delivered live; the orchestrator handles it identically once observed.
 
 ---
 
@@ -160,9 +121,13 @@ correlation key is assumed.
 
 ### USER_LOGIN
 
-Authenticate the user after the WebSocket connection is established.
+**Endpoint:** `POST device/login` — also returns the device access + refresh JWT
+pair (consumed by `AuthInterceptor`); the body below is the `USER_LOGIN_RESULT`
+payload.
 
-**Client sends:**
+Authenticate the user.
+
+**Request payload:**
 ```json
 {
   "id": "123",
@@ -175,7 +140,7 @@ Authenticate the user after the WebSocket connection is established.
 }
 ```
 
-**Server responds (success):**
+**Result (success):**
 ```json
 {
   "id": "124",
@@ -215,7 +180,8 @@ Authenticate the user after the WebSocket connection is established.
 | tenant_id | string? | Tenant the session belongs to |
 | available_document_types | array? | Per-type capability flags (see below) |
 | debug_journal_enabled | bool? | When `true`, the device records and uploads debug-journal events. Looked up server-side per `(tenant_id, device_id)`. Absent on older server builds. |
-| held_stage_locks | string[]? | ERP `external_id`s of documents this `(user, device)` pair already holds an in-process stage lock for. The app rebuilds its `heldStageLocks` set from this on connect, closing the post-restart race where inbound `SYNC_DATA` could overwrite worker-owned line data. Null/empty on a fresh login. |
+| held_stage_locks | string[]? | ERP `external_id`s of documents this `(user, device)` pair already holds an in-process stage lock for. The app rebuilds its `heldStageLocks` set from this on login, closing the post-restart race where inbound `SYNC_DATA` could overwrite worker-owned line data. Null/empty on a fresh login. |
+| supports_update_ack | bool | When `true` the backend confirms each `DOCUMENT_UPDATE` with a `DOCUMENT_UPDATE_RESULT`, so the orchestrator clears `is_dirty` only on ack. `RestTransport` always sets this `true` — every REST write returns a 2xx body it surfaces as a result — so an updated client never waits on an ack that never arrives. |
 
 `available_document_types[]` entries carry `code`, `description`, and three
 optional capability flags. Each flag is nullable — `null` means the ERP did not
@@ -227,7 +193,7 @@ specify it and the client applies its own default:
 | `allows_extra_lines` | `false` | Scanning an unknown product creates a new line |
 | `requires_plan` | `true` | Lines carry a plan; UI shows plan labels and progress |
 
-**Server responds (failure):**
+**Result (failure):**
 ```json
 {
   "id": "124",
@@ -242,39 +208,16 @@ specify it and the client applies its own default:
 
 ---
 
-### PING / PONG
-
-Keep-alive mechanism. The client sends `PING` every 30s; the server responds
-with `PONG`.
-
-**Client sends:**
-```json
-{ "id": "123", "type": "PING", "timestamp": "2024-01-01T12:00:00Z", "payload": null }
-```
-
-**Server responds:**
-```json
-{
-  "id": "124",
-  "type": "PONG",
-  "timestamp": "2024-01-01T12:00:00Z",
-  "payload": { "debug_journal_enabled": true }
-}
-```
-
-`PONG.payload` may be `null`. When present, `debug_journal_enabled` piggybacks
-the per-device debug-journal toggle so an admin flip propagates within one ping
-interval (~30s) without requiring re-login. The client only persists the value
-when it actually changed. Absent field = older server build → leave the local
-flag as-is.
-
----
-
 ### SYNC_REQUEST
+
+**Endpoint:** `POST device/sync` — the device loops, re-issuing the call while
+the response carries `has_more`, applying `next_cursors` each iteration.
+`RestTransport` fans each page into synthetic `SYNC_DATA` batches and closes the
+round with a `SYNC_COMPLETE`.
 
 Request delta updates since the last synchronization.
 
-**Client sends:**
+**Request payload:**
 ```json
 {
   "id": "123",
@@ -295,16 +238,20 @@ Request delta updates since the last synchronization.
 | entity_types | string[] | Any of: `users`, `products`, `clients`, `warehouses`, `documents`, `boxes` |
 | cursors | object? | Last sync timestamp (ISO 8601) per entity type. Omit / empty for an initial sync. |
 
-The server streams one `SYNC_DATA` message per entity type, then a
-`SYNC_COMPLETE`.
+Each `device/sync` page yields one `SYNC_DATA` per entity type; the final page
+(`has_more=false`) is followed by a synthetic `SYNC_COMPLETE`.
 
 ---
 
 ### FULL_SYNC_REQUEST
 
+**Endpoint:** `POST device/sync?full=1` — `full=1` resets the server-side
+cursors first, then the device loops over `device/sync` (without `full`) while
+`has_more`, exactly as the delta path.
+
 Request a complete resync (used after a local failure or data inconsistency).
 
-**Client sends:**
+**Request payload:**
 ```json
 {
   "id": "123",
@@ -320,10 +267,11 @@ The server sends full datasets (`full_set: true`) instead of deltas.
 
 ### SYNC_DATA
 
-A batch of entity records for one entity type. The server sends one per entity
-type before `SYNC_COMPLETE`.
+A batch of entity records for one entity type. `RestTransport` emits one per
+entity type carried by a `device/sync` / `device/documents` /
+`device/documents/{id}/products` response, before `SYNC_COMPLETE`.
 
-**Server sends:**
+**Result payload:**
 ```json
 {
   "id": "200",
@@ -359,9 +307,10 @@ when `full_set` is `true`.
 
 ### SYNC_COMPLETE
 
-Server notification that a sync round is finished, carrying the new cursors.
+Marks a sync round finished, carrying the new cursors. Synthesized by
+`RestTransport` once the poll loop drains (`has_more=false`).
 
-**Server sends:**
+**Result payload:**
 ```json
 {
   "id": "124",
@@ -385,11 +334,14 @@ Server notification that a sync round is finished, carrying the new cursors.
 
 ### ACK
 
-Acknowledge successful receipt of sync data. The server persists the device's
-sync cursors **only** after receiving the ACK. ACK confirms network delivery,
-not local DB persistence.
+**Endpoint:** none. Over REST the cursor commit rides the `applied_cursors`
+field of the *next* `device/sync` request, so `RestTransport` treats an `ACK`
+message as a no-op. The schema is retained because `SyncOrchestrator` still
+produces it transport-agnostically.
 
-**Client sends:**
+Acknowledge successful receipt of sync data.
+
+**Payload:**
 ```json
 {
   "id": "125",
@@ -406,11 +358,12 @@ not local DB persistence.
 
 ### DOCUMENT_LIST_REFRESH
 
-Request a refresh of the document list together with the warehouses and clients
-they reference. The server answers with `SYNC_DATA` batches and a
+**Endpoint:** `GET device/documents?document_type=…` — returns the role-filtered
+authoritative complete set of documents together with the warehouses and clients
+they reference. `RestTransport` emits the entities as `SYNC_DATA` batches and a
 `SYNC_COMPLETE`.
 
-**Client sends:**
+**Request payload:**
 ```json
 {
   "id": "126",
@@ -426,10 +379,12 @@ they reference. The server answers with `SYNC_DATA` batches and a
 
 ### DOCUMENT_PRODUCTS
 
+**Endpoint:** `GET device/documents/{id}/products`
+
 Request the products referenced by the lines of a single document (used when a
 document is opened and some products are missing locally).
 
-**Client sends:**
+**Request payload:**
 ```json
 {
   "id": "127",
@@ -439,17 +394,20 @@ document is opened and some products are missing locally).
 }
 ```
 
-The server answers with a `SYNC_DATA` (`entity_type: "products"`) batch.
+The response yields a `SYNC_DATA` (`entity_type: "products"`) batch and a
+`SYNC_COMPLETE`.
 
 ---
 
 ### STAGE_LOCK
 
+**Endpoint:** `POST device/documents/{id}/lock`
+
 Lock a document for a stage ("Take into work", or resume after a pause). A stage
 lock can be acquired on a stage **start state** (`LOADED`, `PACK`, `DELIVERY`)
 or on the matching in-process state when resuming.
 
-**Client sends:**
+**Request payload:**
 ```json
 {
   "id": "128",
@@ -464,7 +422,7 @@ or on the matching in-process state when resuming.
 | document_id | string | ERP `external_id` of the document |
 | stage | string | `collect` / `pack` / `deliver` |
 
-**Server responds (success):**
+**Result (success):**
 ```json
 {
   "id": "129",
@@ -503,10 +461,13 @@ the source of truth.
 
 ### STAGE_UNLOCK
 
-Release a stage lock and revert the document to its stage start state. Drops the
-worker's in-process ownership. Fire-and-forget — no result message.
+**Endpoint:** `POST device/documents/{id}/unlock` — returns a `STAGE_LOCK_RESULT`
+payload.
 
-**Client sends:**
+Release a stage lock and revert the document to its stage start state. Drops the
+worker's in-process ownership.
+
+**Request payload:**
 ```json
 {
   "id": "130",
@@ -519,6 +480,9 @@ worker's in-process ownership. Fire-and-forget — no result message.
 ---
 
 ### STAGE_PAUSE
+
+**Endpoint:** `POST device/documents/{id}/pause` — returns a `STAGE_LOCK_RESULT`
+payload.
 
 Pause work on a stage: release the lock **without** reverting the document
 state. The document stays in its in-process state (`COLLECTING` / `PACKING` /
@@ -540,16 +504,18 @@ document.
 }
 ```
 
-The server answers with a `STAGE_LOCK_RESULT`.
+The endpoint returns a `STAGE_LOCK_RESULT` payload.
 
 ---
 
 ### STAGE_COMPLETE
 
+**Endpoint:** `POST device/documents/{id}/complete`
+
 Complete the current stage. The document must be locked by the current user and
 in the matching in-process state.
 
-**Client sends:**
+**Request payload:**
 ```json
 {
   "id": "132",
@@ -559,7 +525,7 @@ in the matching in-process state.
 }
 ```
 
-**Server responds (success):**
+**Result (success):**
 ```json
 {
   "id": "133",
@@ -576,7 +542,7 @@ in the matching in-process state.
 }
 ```
 
-**Server responds (error):**
+**Result (error):**
 ```json
 {
   "id": "133",
@@ -600,11 +566,16 @@ ERP side.
 
 ### DOCUMENT_UPDATE
 
+**Endpoint:** `PATCH device/documents/{id}` — returns a `DOCUMENT_UPDATE_RESULT`
+payload (`success`, `document_id`, `request_id`, `version`, `error_code`). The
+`request_id` echoes the originating update's `id` so concurrent updates on the
+same document can be disambiguated.
+
 Push document line updates while a stage lock is held. Sent debounced from the
 device, and flushed before `STAGE_LOCK` / `STAGE_COMPLETE` / `STAGE_UNLOCK`
 (not before `STAGE_PAUSE`).
 
-**Client sends:**
+**Request payload:**
 ```json
 {
   "id": "134",
@@ -621,18 +592,26 @@ device, and flushed before `STAGE_LOCK` / `STAGE_COMPLETE` / `STAGE_UNLOCK`
 }
 ```
 
+Each line may also carry `notes` (worker-owned line note, sent full-state: an
+omitted/empty note clears the server's copy).
+
 `actual_quantity` is **absolute** (the post-increment total), not a delta — so
-retries are idempotent. There is no dedicated success message; the server
-applies the update and rejects with a `SERVER_ERROR` (`LOCK_LOST` /
-`WRONG_STATE`, see below) if the write is no longer valid.
+retries are idempotent. On success the endpoint returns a
+`DOCUMENT_UPDATE_RESULT` (the orchestrator clears `is_dirty` for the confirmed
+lines and adopts `version`); on a `LOCK_LOST` / `WRONG_STATE` rejection
+`RestTransport` additionally emits a `SERVER_ERROR` (see below) carrying the
+`document_id` so lock-loss recovery can run for that document, plus a failed
+`DOCUMENT_UPDATE_RESULT` so the awaiter fails fast.
 
 ---
 
 ### PRODUCT_LOOKUP
 
+**Endpoint:** `GET device/products/lookup?barcode=…`
+
 Search for a product by barcode.
 
-**Client sends:**
+**Request payload:**
 ```json
 {
   "id": "135",
@@ -642,7 +621,7 @@ Search for a product by barcode.
 }
 ```
 
-**Server responds (found):**
+**Result (found):**
 ```json
 {
   "id": "136",
@@ -655,7 +634,7 @@ Search for a product by barcode.
 }
 ```
 
-**Server responds (not found):**
+**Result (not found):**
 ```json
 {
   "id": "136",
@@ -669,10 +648,12 @@ Search for a product by barcode.
 
 ### BOX_ADD
 
+**Endpoint:** `POST device/documents/{id}/boxes`
+
 Worker scans a box barcode during the PACK stage to link it to a document.
 Parcel boxes require `weight > 0`; for packages the server forces `weight = 0`.
 
-**Client sends:**
+**Request payload:**
 ```json
 {
   "id": "137",
@@ -682,7 +663,7 @@ Parcel boxes require `weight > 0`; for packages the server forces `weight = 0`.
 }
 ```
 
-**Server responds:**
+**Result:**
 ```json
 {
   "id": "138",
@@ -703,10 +684,13 @@ round-trip. On failure `error` is set.
 
 ### BOX_REMOVE
 
-Remove a previously-added box while the document is still in `PACKING`.
-`box_number` is the in-document sequence assigned by the server on `BOX_ADD`.
+**Endpoint:** `DELETE device/documents/{id}/boxes/{boxNumber}`
 
-**Client sends:**
+Remove a previously-added box while the document is still in `PACKING`.
+`box_number` is the in-document sequence assigned by the server on `BOX_ADD`,
+sent as the `{boxNumber}` path segment.
+
+**Request payload:**
 ```json
 {
   "id": "139",
@@ -716,7 +700,7 @@ Remove a previously-added box while the document is still in `PACKING`.
 }
 ```
 
-**Server responds:**
+**Result:**
 ```json
 {
   "id": "140",
@@ -730,11 +714,13 @@ Remove a previously-added box while the document is still in `PACKING`.
 
 ### BOX_LOOKUP
 
+**Endpoint:** `GET device/boxes/lookup?barcode=…`
+
 Client fallback when a scanned box barcode misses the local box catalog. The
 server resolves it against the master catalog and, on a hit, returns the full
 `Box` DTO so the client can cache it and continue the add flow.
 
-**Client sends:**
+**Request payload:**
 ```json
 {
   "id": "141",
@@ -744,7 +730,7 @@ server resolves it against the master catalog and, on a hit, returns the full
 }
 ```
 
-**Server responds:**
+**Result:**
 ```json
 {
   "id": "142",
@@ -758,11 +744,13 @@ server resolves it against the master catalog and, on a hit, returns the full
 
 ### BOX_PICKUP_CONFIRM / BOX_DELIVERY_CONFIRM
 
-Courier confirms box pickup / delivery. Both are offline-capable: the device
-assigns an `offline_seq` and a `client_ts` and replays queued confirmations on
-reconnect.
+**Endpoints:** `POST device/boxes/pickup` / `POST device/boxes/delivery`
 
-**Client sends:**
+Courier confirms box pickup / delivery. Both are offline-capable: the device
+assigns an `offline_seq` and a `client_ts`, queues the call when the REST request
+fails, and replays queued confirmations once connectivity returns.
+
+**Request payload:**
 ```json
 {
   "id": "143",
@@ -774,7 +762,7 @@ reconnect.
 
 `BOX_DELIVERY_CONFIRM` has the identical payload shape.
 
-**Server responds:**
+**Result:**
 ```json
 {
   "id": "144",
@@ -792,10 +780,12 @@ replay) — not an error.
 ### FORCE_RELEASE_REQUEST
 
 Server-initiated request to release the worker's stage lock cooperatively.
-Triggered by an admin clicking "Force release" in the tenant UI while the device
-is connected.
+Triggered by an admin clicking "Force release" in the tenant UI. With no push
+channel, the server surfaces this in a sync/poll response (the device polls
+`device/sync` while a document is held); the orchestrator handles it the same
+way once observed.
 
-**Server sends:**
+**Payload shape:**
 ```json
 {
   "id": "145",
@@ -805,7 +795,7 @@ is connected.
 }
 ```
 
-On receipt the device runs the equivalent of "exit without saving":
+On observing it the device runs the equivalent of "exit without saving":
 1. Cancels pending debounced sync for the document.
 2. Drops locally-dirty edits (zeroes actuals / `is_completed` / batch).
 3. Sends `STAGE_UNLOCK` so the server completes the cooperative flow.
@@ -818,9 +808,11 @@ within ~10s; otherwise the admin side falls back to a hard release.
 
 ### ERROR_REPORT
 
-Report client-side errors for diagnostics. Allowed without user login.
+**Endpoint:** `POST device/error-report` — fire-and-forget, no result message.
 
-**Client sends:**
+Report client-side errors for diagnostics.
+
+**Request payload:**
 ```json
 {
   "id": "146",
@@ -839,9 +831,12 @@ Report client-side errors for diagnostics. Allowed without user login.
 
 ### SERVER_ERROR
 
-Server error response.
+Server error result. A failing REST call (non-`ok` `ApiEnvelope` / non-2xx) is
+surfaced by `RestTransport` as this message; for write-path rejections
+(`LOCK_LOST` / `WRONG_STATE`) the error code is carried through from the response
+body.
 
-**Server sends:**
+**Payload shape:**
 ```json
 {
   "id": "147",
@@ -883,37 +878,27 @@ success it drains the dirty edits, on give-up it drops them, journals at
 
 ---
 
-### PUSH
+### Server-initiated updates (no push)
 
-Real-time push notification from the server.
-
-**Server sends:**
-```json
-{
-  "id": "148",
-  "type": "PUSH",
-  "timestamp": "2024-01-01T12:00:00Z",
-  "payload": {
-    "event": "document_updated",
-    "entity_type": "documents",
-    "entity_id": "DOC-1001",
-    "data": { ... }
-  }
-}
-```
-
-Push events include `document_updated`, `document_locked`, `document_unlocked`,
-`reference_updated`.
+REST has **no server push**. There is no live `PUSH` message. Server-initiated
+updates — a document changed, locked, or unlocked on another device or via ERP
+sync — reach the client only by **active polling**: while a document is being
+worked, `SyncOrchestrator` repeatedly pulls `device/sync` and
+`device/documents` (`SyncTransport.requiresPolling = true`). Each poll response
+is the authoritative complete set and carries `deleted_ids`, so the client
+converges on the server state without any pushed frame.
 
 ---
 
 ### DEBUG_EVENT_BATCH
 
+**Endpoint:** `POST device/debug-events`
+
 Upload a batch of per-document debug-journal events from the device.
 Best-effort, fire-and-retry. Enabled per device via `debug_journal_enabled`
 (see [USER_LOGIN_RESULT](#user_login) and the Debug Journal section).
 
-**Client sends:**
+**Request payload:**
 ```json
 {
   "id": "<nanosec>",
@@ -950,7 +935,7 @@ Best-effort, fire-and-retry. Enabled per device via `debug_journal_enabled`
 | events[].payload_json | string? | Opaque structured blob (stringified JSON) |
 | events[].created_at | long | Device epoch ms |
 
-**Server responds:**
+**Result:**
 ```json
 {
   "id": "<same-as-request>",
@@ -1016,94 +1001,60 @@ policy and the mechanisms that enforce it.
 
 ## Synchronization Flow
 
-### Initial Sync (First Connection)
+### Initial Sync (first run after login)
 
 ```
-Client                          Server
-   |--[WS connect: app_token]----->|  (device must be APPROVED)
-   |<-----[101 Switching]----------|
-   |------- USER_LOGIN ----------->|  (login + password)
-   |<----- USER_LOGIN_RESULT ------|  (success + user info + held_stage_locks)
-   |------ FULL_SYNC_REQUEST ----->|  (or SYNC_REQUEST with empty cursors)
-   |<-------- SYNC_DATA -----------|  (one per entity type)
-   |<-------- SYNC_DATA -----------|
-   |<------- SYNC_COMPLETE --------|  (cursors)
-   |----------- ACK -------------->|  (confirm cursors)
+Client                                    Server
+   |--- POST device/login -------------->|  (login + password)
+   |<-- USER_LOGIN_RESULT + JWT pair -----|  (user info + held_stage_locks)
+   |--- POST device/sync?full=1 -------->|  (reset cursors, then loop)
+   |<-- SyncResponse (entities,has_more)-|
+   |--- POST device/sync ---------------->|  (applied_cursors, while has_more)
+   |<-- SyncResponse (has_more=false) ---|
+   |   (RestTransport emits SYNC_DATA × N + SYNC_COMPLETE)
 ```
 
-### Delta Sync (Reconnect)
+### Delta Sync (subsequent pulls)
 
 ```
-Client                          Server
-   |--[WS connect: app_token]----->|
-   |<-----[101 Switching]----------|
-   |------- USER_LOGIN ----------->|  (auto re-authenticate)
-   |<----- USER_LOGIN_RESULT ------|
-   |------- SYNC_REQUEST --------->|  (with last cursors)
-   |<-------- SYNC_DATA -----------|  (delta only)
-   |<------- SYNC_COMPLETE --------|  (new cursors)
-   |----------- ACK -------------->|
+Client                                    Server
+   |--- POST device/sync ---------------->|  (applied_cursors = last next_cursors)
+   |<-- SyncResponse (delta + deleted_ids)|
+   |   (loops while has_more; emits SYNC_DATA × N + SYNC_COMPLETE)
 ```
+
+Delta pulls omit `full`; only `full=1` resets the server-side cursors.
 
 ### Document Stage Workflow
 
 ```
-Client                          Server                    ERP
-   |------- STAGE_LOCK ---------->|                        |
-   |                              |--- erp_sync_blocked -->|
-   |<---- STAGE_LOCK_RESULT ------|                        |
-   |----- DOCUMENT_UPDATE ------->|  (debounced, repeated) |
-   |----- DOCUMENT_UPDATE ------->|                        |
-   |----- STAGE_COMPLETE -------->|                        |
-   |<-- STAGE_COMPLETE_RESULT ----|                        |
-   |                              |--- stage done -------->|
+Client                                         Server                ERP
+   |--- POST device/documents/{id}/lock ----->|                      |
+   |                                           |--- erp_sync_blocked ->|
+   |<-- STAGE_LOCK_RESULT --------------------|                      |
+   |--- PATCH device/documents/{id} --------->|  (debounced, repeated)|
+   |<-- DOCUMENT_UPDATE_RESULT ---------------|                      |
+   |--- POST device/documents/{id}/complete ->|                      |
+   |<-- STAGE_COMPLETE_RESULT ----------------|                      |
+   |                                           |--- stage done ------->|
 ```
-
----
-
-## Connection Lifecycle
-
-1. **Connect** — establish the WebSocket with `app_token` + `device_id` + `protocol_version`.
-2. **User Login** — authenticate via `USER_LOGIN` (auto-login from stored credentials).
-3. **Initial Sync** — `FULL_SYNC_REQUEST` or `SYNC_REQUEST`.
-4. **Work** — lock stages, push `DOCUMENT_UPDATE`, complete / unlock / pause.
-5. **Keep-Alive** — `PING` / `PONG` every 30s.
-6. **Reconnect** — on disconnect, reconnect with the same `device_id`; the user
-   is re-authenticated automatically.
-
-### Resume health check
-
-After a long Doze sleep the PING timer can be frozen while the socket is
-already dead server-side. On app foreground the client probes a `Connected`
-socket with an immediate `PING` and forces a reconnect if no `PONG` arrives
-within ~7s.
-
-### Timeouts
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| Ping Interval | 30s | Client sends `PING` |
-| Pong Wait | 60s | Max time to wait for `PONG` before reconnecting |
-| Write Wait | 10s | Max time to write a message |
-| Request Timeout | 30s | Max wait for a correlated response |
-| Max Message Size | 512 KB | Maximum message size |
-| Max Reconnect Attempts | 10 | Exponential backoff: 1s → 60s |
 
 ---
 
 ## Offline Handling
 
 1. Stored on the device:
-   - `app_token` — hardcoded in the app build
-   - `device_id` — unique hardware ID
-   - `user_id`, `role`, `offline_hash` — after a successful `USER_LOGIN`
-2. Queue operations locally when disconnected:
+   - Device access + refresh JWT — issued by `device/login`, refreshed via
+     `device/refresh`.
+   - `user_id`, `role`, `offline_hash` — after a successful `USER_LOGIN`.
+2. Offline = REST calls fail; queue operations locally:
    - Stage-lifecycle ops (`STAGE_LOCK` / `STAGE_COMPLETE` / `STAGE_UNLOCK` /
      `STAGE_PAUSE`) go through the `OutgoingOperationEntity` queue.
    - Line edits are carried as per-line `is_dirty` rows and reconciled by the
      resync worker.
    - Courier box confirmations carry an `offline_seq` for idempotent replay.
-3. On reconnect: connect → `USER_LOGIN` → sync → drain the queue.
+3. On the next successful request: drain the `OutgoingOperationEntity` queue and
+   resync.
 4. Conflicts: server wins for documents not locked by this device; for
    worker-owned documents, dirty line preservation protects the worker's edits.
 
@@ -1117,7 +1068,7 @@ The app records per-document debug events into a local Room table
 reachable from Profile for users with the `ADMINISTRATOR` role.
 
 Enablement is per-device, driven by `debug_journal_enabled` in
-`USER_LOGIN_RESULT` and re-confirmed on every `PONG`. When disabled,
+`USER_LOGIN_RESULT` (re-read on each login). When disabled,
 `DebugJournal.log()` is a no-op. Retention: a rolling cap of 7 days or 5000
 rows, pruned by a background worker every 15 minutes; batches are capped at 200
 events.
@@ -1133,7 +1084,7 @@ Event-type catalog (the `event_type` field of `DEBUG_EVENT_BATCH` events):
 | Stage ops | `STAGE_LOCK_SENT`, `STAGE_LOCK_RESULT`, `STAGE_UNLOCK_SENT`, `STAGE_PAUSE_SENT`, `STAGE_COMPLETE_SENT`, `STAGE_COMPLETE_RESULT` |
 | Sync apply | `DOC_SYNC_SUPPRESSED`, `DOC_SYNC_APPLIED`, `PHANTOM_LINE_PURGED`, `LOADED_ACTUAL_REJECTED` |
 | Lock-loss recovery | `LOCK_LOST_RECOVERED` (INFO), `LOCK_LOST_EDIT_DROPPED` (ERROR) |
-| Local / WS | `DOC_DELETED_LOCAL`, `RESYNC_DIRTY`, `WS_SEND_FAIL`, `WS_ACK_TIMEOUT`, `WS_DISCONNECT`, `WS_RECONNECT` |
+| Local / transport | `DOC_DELETED_LOCAL`, `RESYNC_DIRTY`, `WS_SEND_FAIL`, `WS_ACK_TIMEOUT`, `WS_DISCONNECT`, `WS_RECONNECT` (legacy `WS_`-prefixed constants, retained as event-type identifiers) |
 | Config | `JOURNAL_CONFIG_CHANGED` |
 
 Server-side implementation is tracked in the server repository.

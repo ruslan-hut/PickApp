@@ -12,7 +12,7 @@ interface UserRepository {
 
     /**
      * Re-authenticate a persisted session from stored credentials. Needed by the
-     * REST transport, which (unlike the old WebSocket handshake) does not
+     * REST transport, which (unlike the old transport handshake) does not
      * re-authenticate on connect — after a process restart the transport is
      * Connected but NotAuthenticated, gating off all sync until this runs.
      * Returns null when no credentials are stored (no session to restore).

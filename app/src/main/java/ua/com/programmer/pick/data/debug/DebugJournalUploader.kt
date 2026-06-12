@@ -6,23 +6,23 @@ import ua.com.programmer.pick.core.Constants
 import ua.com.programmer.pick.core.util.AppLog
 import ua.com.programmer.pick.data.local.database.dao.DebugJournalDao
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
-import ua.com.programmer.pick.data.remote.websocket.DebugEventPayload
-import ua.com.programmer.pick.data.remote.websocket.MessageParser
-import ua.com.programmer.pick.data.remote.websocket.SyncMessage
-import ua.com.programmer.pick.data.remote.websocket.SyncTransport
+import ua.com.programmer.pick.data.remote.transport.DebugEventPayload
+import ua.com.programmer.pick.data.remote.transport.MessageParser
+import ua.com.programmer.pick.data.remote.transport.SyncMessage
+import ua.com.programmer.pick.data.remote.transport.SyncTransport
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
  * Batches unuploaded debug journal events and pushes them to the server via
- * WebSocket. Best-effort: on failure, attempts counter is bumped and we retry
+ * transport. Best-effort: on failure, attempts counter is bumped and we retry
  * on the next trigger. No queueing into OutgoingOperationEntity.
  */
 @Singleton
 class DebugJournalUploader @Inject constructor(
     private val dao: DebugJournalDao,
     private val journal: DebugJournal,
-    private val webSocketManager: SyncTransport,
+    private val transport: SyncTransport,
     private val messageParser: MessageParser,
     private val appPreferences: AppPreferences
 ) {
@@ -44,11 +44,11 @@ class DebugJournalUploader @Inject constructor(
             AppLog.i(TAG, "flush skipped: debug journal disabled")
             return 0
         }
-        if (!webSocketManager.isConnected()) {
+        if (!transport.isConnected()) {
             AppLog.i(TAG, "flush skipped: WS not connected")
             return 0
         }
-        if (!webSocketManager.isUserAuthenticated()) {
+        if (!transport.isUserAuthenticated()) {
             AppLog.i(TAG, "flush skipped: user not authenticated")
             return 0
         }
@@ -89,7 +89,7 @@ class DebugJournalUploader @Inject constructor(
                     }
                 )
 
-                val response = webSocketManager.sendAndAwait(
+                val response = transport.sendAndAwait(
                     message,
                     SyncMessage.DebugEventBatchResult::class.java
                 )

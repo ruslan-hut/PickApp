@@ -8,7 +8,7 @@
 
 PickApp is an advanced, enterprise-grade **Android Terminal Scanner Device (TSD)** application designed for modern warehouse environments. It facilitates seamless inventory management, order picking, box packing, and goods receipt. 
 
-Operating as an **offline-first client**, PickApp maintains total productivity in low-connectivity areas by processing operations locally and synchronizing in real time via WebSockets with an intermediate ERP-connected middleware server.
+Operating as an **offline-first client**, PickApp maintains total productivity in low-connectivity areas by processing operations locally and synchronizing over a REST device API with an intermediate ERP-connected middleware server.
 
 ---
 
@@ -17,7 +17,7 @@ Operating as an **offline-first client**, PickApp maintains total productivity i
 *   **Offline-First Architecture**: All scanning, location mapping, and document edits are stored in a local Room database, ensuring zero downtime. Changes are safely queued via `OutgoingOperationEntity` and synced when online.
 *   **Robust Concurrency & Locking (Ownership Model)**: Utilizes a sophisticated lock negotiation mechanism (`DOCUMENT_LOCK`, `cooperative force-release`, `silent re-lock` state-machine) preventing race conditions between ERP updates and active TSD collectors.
 *   **Intelligent Barcode Resolution**: Supports high-throughput hardware barcode scanners and camera-based fallbacks (via CameraX & ML Kit) to automatically resolve barcodes, GS1 DataMatrix, and QR codes.
-*   **Diagnostic Telemetry (Debug Journal)**: A rolling 7-day in-app journal tracks system events, WebSocket status, and sync payloads, uploading them in batches via background WorkManager workers for tenant-wide administrative visibility.
+*   **Diagnostic Telemetry (Debug Journal)**: A rolling 7-day in-app journal tracks system events, transport status, and sync payloads, uploading them in batches via background WorkManager workers for tenant-wide administrative visibility.
 
 ---
 
@@ -26,7 +26,7 @@ Operating as an **offline-first client**, PickApp maintains total productivity i
 *   **UI Framework**: Jetpack Compose (Material 3) with MVVM Architecture and reactive `StateFlow` bindings.
 *   **Dependency Injection**: Hilt (Dagger) for modern, testable class structures.
 *   **Local Storage**: Room Persistence Library (SQLite) and DataStore Preferences.
-*   **Networking & Sync**: Retrofit + OkHttp for REST endpoints, OkHttp WebSockets for real-time delta updates, and WorkManager for resilient background sync scheduling.
+*   **Networking & Sync**: Retrofit 3 + OkHttp 5 for the REST device transport (full/delta sync, polling while a document is worked), and WorkManager for resilient background sync scheduling.
 *   **Hardware Integration**: CameraX and Google ML Kit for automated barcode scanner resolution.
 
 ---
@@ -38,7 +38,7 @@ PickApp/
 ├── app/                           # Android Application Source Code
 │   ├── src/main/java/ua/com/programmer/pick/
 │   │   ├── core/                  # Dependency Injection (Hilt), Scanner integration, and Utilities
-│   │   ├── data/                  # Repositories, Database (Room), WebSocket Managers, Sync Orchestrator
+│   │   ├── data/                  # Repositories, Database (Room), REST transport, Sync Orchestrator
 │   │   ├── domain/                # Pure Business Entities and Repository Interfaces
 │   │   └── presentation/          # Jetpack Compose UI Screens (Auth, Docs, Profile, Settings, Debug)
 │   └── src/test/ /androidTest/    # Unit Tests and Instrumented UI/Integration Tests
@@ -46,7 +46,7 @@ PickApp/
 │   ├── app-develop-plan.md        # MVP Product Specification & Frozen Business Scope
 │   ├── backend-spec.md            # REST API Contracts & ERP Integration Guidelines
 │   ├── ownership-model-plan.md    # Document Concurrency, Policy, & Bottleneck Analysis
-│   └── websocket-protocol.md      # Real-Time WebSocket Message Schemas & Handshakes
+│   └── sync-protocol.md           # REST Sync Message Envelope Schemas
 ├── CLAUDE.md                      # Developer Reference for Build, Test, and Formatting Commands
 ├── LICENSE                        # Project MIT License
 └── README.md                      # Repository Entry Point (This Document)
@@ -60,8 +60,8 @@ For in-depth technical references and implementation details, check out the spec
 
 1.  **[API Specification](docs/backend-spec.md)**  
     Defines the REST endpoints for user authentication, full/delta sync batching, database schemas, and external ERP integration contracts.
-2.  **[WebSocket Protocol](docs/websocket-protocol.md)**  
-    Provides the single source of truth for the real-time two-stage connection flow, message envelope schemas (`USER_LOGIN`, `DOCUMENT_LOCK`, `DOCUMENT_UPDATE`), and `DEBUG_EVENT_BATCH` telemetry uploads.
+2.  **[Sync Protocol](docs/sync-protocol.md)**  
+    The single source of truth for the message envelope schemas (`USER_LOGIN`, `STAGE_LOCK`, `DOCUMENT_UPDATE`, `SYNC_DATA`, `DEBUG_EVENT_BATCH`) and how each maps onto a REST `/device` endpoint.
 3.  **[Document Ownership Model](docs/ownership-model-plan.md)**  
     A rolling analysis and formalization of who owns document data and when (ERP vs. Device), detailing CAS versioning, cooperative release negotiations, and edge-case mitigations.
 4.  **[Product Development Plan](docs/app-develop-plan.md)**  

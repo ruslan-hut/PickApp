@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ua.com.programmer.pick.core.util.NetworkMonitor
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
-import ua.com.programmer.pick.data.remote.websocket.AvailableDocumentTypeDto
+import ua.com.programmer.pick.data.remote.transport.AvailableDocumentTypeDto
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.domain.model.AvailableDocumentType
 import ua.com.programmer.pick.domain.repository.UserRepository
@@ -113,7 +113,7 @@ class HomeViewModel @Inject constructor(
     }
 
     /**
-     * Observe WebSocket auth state. If the user was authenticated and then
+     * Observe transport auth state. If the user was authenticated and then
      * becomes unauthenticated (session expired, server kicked), navigate
      * back to the login screen so they can re-authenticate.
      */
