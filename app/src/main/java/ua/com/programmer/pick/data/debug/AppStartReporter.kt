@@ -1,7 +1,5 @@
 package ua.com.programmer.pick.data.debug
 
-import android.app.ActivityManager
-import android.app.ApplicationExitInfo
 import android.content.Context
 import android.os.Build
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -101,29 +99,18 @@ class AppStartReporter @Inject constructor(
         var message = "app process started"
 
         val exit = unreportedLastExit()
-        if (exit != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            payload["last_exit_reason"] = exitReasonName(exit.reason)
+        if (exit != null) {
+            payload["last_exit_reason"] = exit.reasonName
             payload["last_exit_at"] = exit.timestamp
             payload["last_exit_description"] = exit.description
             payload["last_exit_importance"] = exit.importance
-            if (exit.reason == ApplicationExitInfo.REASON_SIGNALED) {
-                payload["last_exit_signal"] = exit.status
-            }
+            exit.signal?.let { payload["last_exit_signal"] = it }
             // System-captured trace exists for ANRs and native crashes —
             // exactly the deaths our own JVM crash handler cannot see.
-            runCatching {
-                exit.traceInputStream?.bufferedReader()?.use { it.readText() }
-            }.getOrNull()?.let { payload["last_exit_trace"] = it.take(MAX_TRACE_CHARS) }
+            exit.trace?.let { payload["last_exit_trace"] = it }
 
-            severity = when (exit.reason) {
-                ApplicationExitInfo.REASON_CRASH,
-                ApplicationExitInfo.REASON_CRASH_NATIVE,
-                ApplicationExitInfo.REASON_ANR -> DebugJournal.SEVERITY_ERROR
-                ApplicationExitInfo.REASON_LOW_MEMORY,
-                ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> DebugJournal.SEVERITY_WARN
-                else -> DebugJournal.SEVERITY_INFO
-            }
-            message = "app process started; previous exit: ${exitReasonName(exit.reason)}"
+            severity = exit.severity
+            message = "app process started; previous exit: ${exit.reasonName}"
         }
 
         debugJournal.log(
@@ -134,35 +121,11 @@ class AppStartReporter @Inject constructor(
         )
     }
 
-    private suspend fun unreportedLastExit(): ApplicationExitInfo? {
+    private suspend fun unreportedLastExit(): ExitInfoReader.Exit? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
-        val activityManager =
-            context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return null
-        val latest = runCatching {
-            activityManager.getHistoricalProcessExitReasons(context.packageName, 0, 1).firstOrNull()
-        }.getOrNull() ?: return null
+        val latest = ExitInfoReader.latestExit(context) ?: return null
         if (latest.timestamp <= appPreferences.getLastReportedExitTimestamp()) return null
         appPreferences.setLastReportedExitTimestamp(latest.timestamp)
         return latest
-    }
-
-    private fun exitReasonName(reason: Int): String = when (reason) {
-        ApplicationExitInfo.REASON_EXIT_SELF -> "EXIT_SELF"
-        ApplicationExitInfo.REASON_SIGNALED -> "SIGNALED"
-        ApplicationExitInfo.REASON_LOW_MEMORY -> "LOW_MEMORY"
-        ApplicationExitInfo.REASON_CRASH -> "CRASH"
-        ApplicationExitInfo.REASON_CRASH_NATIVE -> "CRASH_NATIVE"
-        ApplicationExitInfo.REASON_ANR -> "ANR"
-        ApplicationExitInfo.REASON_INITIALIZATION_FAILURE -> "INITIALIZATION_FAILURE"
-        ApplicationExitInfo.REASON_PERMISSION_CHANGE -> "PERMISSION_CHANGE"
-        ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> "EXCESSIVE_RESOURCE_USAGE"
-        ApplicationExitInfo.REASON_USER_REQUESTED -> "USER_REQUESTED"
-        ApplicationExitInfo.REASON_USER_STOPPED -> "USER_STOPPED"
-        ApplicationExitInfo.REASON_DEPENDENCY_DIED -> "DEPENDENCY_DIED"
-        ApplicationExitInfo.REASON_OTHER -> "OTHER"
-        ApplicationExitInfo.REASON_FREEZER -> "FREEZER"
-        ApplicationExitInfo.REASON_PACKAGE_STATE_CHANGE -> "PACKAGE_STATE_CHANGE"
-        ApplicationExitInfo.REASON_PACKAGE_UPDATED -> "PACKAGE_UPDATED"
-        else -> "UNKNOWN($reason)"
     }
 }
