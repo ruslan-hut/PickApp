@@ -229,7 +229,7 @@ class SyncOrchestrator @Inject constructor(
     val syncState: StateFlow<SyncState> = _syncState.asStateFlow()
 
     private var syncTimeoutJob: Job? = null
-    private val syncReceivedCounts = mutableMapOf<String, Int>()
+    private val syncReceivedCounts = java.util.concurrent.ConcurrentHashMap<String, Int>()
     private val documentSyncJobs = mutableMapOf<String, Job>()
 
     // Session-scoped claim of stage-lock ownership. Populated only after a
@@ -1662,7 +1662,7 @@ class SyncOrchestrator @Inject constructor(
     private suspend fun handleSyncData(message: SyncMessage.SyncData) {
         val itemCount = if (message.data.isJsonArray) message.data.asJsonArray.size() else 0
         val deletedCount = message.deletedIds?.size ?: 0
-        syncReceivedCounts[message.entityType] = (syncReceivedCounts[message.entityType] ?: 0) + itemCount
+        syncReceivedCounts.merge(message.entityType, itemCount, Int::plus)
         AppLog.i(TAG, "SYNC_DATA entity=${message.entityType} upsert=$itemCount delete=$deletedCount fullSet=${message.fullSet}")
 
         try {
