@@ -35,6 +35,16 @@ class BarcodeService @Inject constructor(
 ) {
     companion object {
         private const val TAG = "BarcodeService"
+
+        // Many TSD scanners are configured to deliver one physical trigger as
+        // BOTH a vendor broadcast intent and a keyboard-wedge keystroke stream.
+        // Those two paths funnel into handleScanResult near-simultaneously and
+        // would each drive a delta-based quantity increment, double-counting the
+        // scan in the DB while the UI only reflects one. Collapse identical
+        // barcodes arriving within this window to a single emission. The window
+        // is far below human re-scan cadence, so intentional repeat scans of the
+        // same item are preserved.
+        private const val SCAN_DEDUP_WINDOW_MS = 300L
     }
 
     private val scope = CoroutineScope(ioDispatcher)
@@ -60,6 +70,11 @@ class BarcodeService @Inject constructor(
     private val hardwareBarcodeBuffer = StringBuilder()
     private var hardwareLastKeystrokeTime = 0L
     private var barcodeConsumed = false
+
+    // Dedup state for the dual-path (intent + keyboard wedge) double-emit guard.
+    private val dedupLock = Any()
+    private var lastEmittedValue: String? = null
+    private var lastEmittedAtMs = 0L
 
     // Test mode listener — when set, key events are forwarded here instead of processing
     private var keyEventTestListener: ((KeyEvent) -> Boolean)? = null
@@ -262,6 +277,11 @@ class BarcodeService @Inject constructor(
         when (result) {
             is ScanResult.Success -> {
                 AppLog.d(TAG, "Scan success: ${result.rawValue}")
+                if (isDuplicateScan(result.rawValue)) {
+                    AppLog.d(TAG, "Duplicate scan suppressed: ${result.rawValue}")
+                    diagnostics.recordNote("duplicate scan suppressed: ${result.rawValue}")
+                    return
+                }
                 val scannedBarcode = enrichWithProductInfo(result)
                 _scannedBarcodes.emit(scannedBarcode)
             }
@@ -273,6 +293,21 @@ class BarcodeService @Inject constructor(
                 // No action needed
             }
         }
+    }
+
+    /**
+     * True if [value] matches the previous scan within [SCAN_DEDUP_WINDOW_MS].
+     * Check-and-set is atomic so the two hardware paths (broadcast intent +
+     * keyboard wedge) racing on the same physical trigger can't both pass.
+     */
+    private fun isDuplicateScan(value: String): Boolean = synchronized(dedupLock) {
+        val now = System.currentTimeMillis()
+        val duplicate = value == lastEmittedValue && now - lastEmittedAtMs < SCAN_DEDUP_WINDOW_MS
+        if (!duplicate) {
+            lastEmittedValue = value
+            lastEmittedAtMs = now
+        }
+        duplicate
     }
 
     private suspend fun enrichWithProductInfo(scanResult: ScanResult.Success): ScannedBarcode {
