@@ -43,6 +43,7 @@ class AppPreferences @Inject constructor(
         private val TENANT_ID = stringPreferencesKey("tenant_id")
         private val LAST_LOGIN = stringPreferencesKey("last_login")
         private val DEBUG_JOURNAL_ENABLED = booleanPreferencesKey("debug_journal_enabled")
+        private val DEMO_MODE = booleanPreferencesKey("demo_mode")
         private val LAST_REPORTED_EXIT_TS = longPreferencesKey("last_reported_exit_ts")
         // Plaintext keys kept for migration only
         private val USER_LOGIN = stringPreferencesKey("user_login")
@@ -189,6 +190,7 @@ class AppPreferences @Inject constructor(
             preferences.remove(AUTH_TOKEN)
             preferences.remove(REFRESH_TOKEN)
             preferences.remove(CURRENT_USER_ID)
+            preferences.remove(DEMO_MODE)
         }
     }
 
@@ -224,6 +226,7 @@ class AppPreferences @Inject constructor(
             preferences.remove(REFRESH_TOKEN)
             preferences.remove(CURRENT_USER_ID)
             preferences.remove(TENANT_ID)
+            preferences.remove(DEMO_MODE)
         }
         encryptedPrefs?.edit()?.clear()?.apply()
     }
@@ -248,6 +251,22 @@ class AppPreferences @Inject constructor(
     }
 
     val lastLogin: Flow<String?> = context.dataStore.data.map { it[LAST_LOGIN] }
+
+    /**
+     * Offline demo session marker. When true the app runs entirely against a
+     * local fake server (no network) — see RoutingTransport / DemoTransport.
+     * Read synchronously by the transport router at construction so a demo
+     * session survives process death.
+     */
+    val demoMode: Flow<Boolean> = context.dataStore.data.map { it[DEMO_MODE] ?: false }
+
+    fun getDemoModeSync(): Boolean = runBlocking {
+        context.dataStore.data.first()[DEMO_MODE] ?: false
+    }
+
+    suspend fun setDemoMode(enabled: Boolean) {
+        context.dataStore.edit { it[DEMO_MODE] = enabled }
+    }
 
     val debugJournalEnabled: Flow<Boolean> = context.dataStore.data.map { it[DEBUG_JOURNAL_ENABLED] ?: false }
 

@@ -41,6 +41,8 @@ class UserRepositoryImpl @Inject constructor(
     companion object {
         private const val TAG = "UserRepository"
         private const val TRANSPORT_CONNECT_TIMEOUT_MS = 10000L
+        private const val DEMO_LOGIN = "demo"
+        private const val DEMO_PASSWORD = "demo"
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -63,6 +65,12 @@ class UserRepositoryImpl @Inject constructor(
      */
     override suspend fun login(login: String, password: String): Result<User> =
         withContext(ioDispatcher) {
+            // Offline demo session: no network, fully local fake server.
+            if (login == DEMO_LOGIN && password == DEMO_PASSWORD) {
+                return@withContext loginDemo()
+            }
+            // Leaving (or never entering) demo — make sure the router points at REST.
+            appPreferences.setDemoMode(false)
             try {
                 // Check if online
                 if (networkMonitor.isCurrentlyConnected()) {
@@ -79,6 +87,48 @@ class UserRepositoryImpl @Inject constructor(
                 loginOffline(login, password)
             }
         }
+
+    /**
+     * Enter the offline demo session. Flips the persisted demo flag so the
+     * transport router routes to the local fake server, authenticates against it
+     * (which generates fresh random documents), and seeds a local demo user. No
+     * network is touched. Credentials are stored so a relaunch's autoLogin
+     * re-enters demo mode automatically.
+     */
+    private suspend fun loginDemo(): Result<User> {
+        AppLog.i(TAG, "Entering demo session")
+        appPreferences.setDemoMode(true)
+
+        if (!transport.isConnected()) transport.connect()
+        val result = transport.loginUser(DEMO_LOGIN, DEMO_PASSWORD)
+        if (!result.success) {
+            appPreferences.setDemoMode(false)
+            return Result.Error(
+                Exception(result.errorMessage ?: "Demo login failed"),
+                result.errorMessage
+            )
+        }
+
+        val userId = result.userId ?: "demo-user"
+        val now = System.currentTimeMillis()
+        val userEntity = UserEntity(
+            id = userId,
+            externalId = result.userExternalId,
+            login = DEMO_LOGIN,
+            name = result.userName ?: DEMO_LOGIN,
+            passwordHash = "",
+            role = result.role ?: UserRole.COLLECTOR.name,
+            isActive = true,
+            lastLoginAt = now,
+            lastUpdated = now
+        )
+        userDao.insertUser(userEntity)
+        appPreferences.setCurrentUserId(userId)
+        appPreferences.setUserCredentials(DEMO_LOGIN, DEMO_PASSWORD)
+        appPreferences.setLastLogin(DEMO_LOGIN)
+
+        return Result.Success(userEntity.toDomain())
+    }
 
     override suspend fun autoLogin(): Result<User>? = withContext(ioDispatcher) {
         // Already authenticated (e.g. user just logged in manually) — nothing to do.

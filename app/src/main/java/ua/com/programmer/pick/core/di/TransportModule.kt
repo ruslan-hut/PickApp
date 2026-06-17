@@ -1,23 +1,23 @@
 package ua.com.programmer.pick.core.di
 
+import dagger.Binds
 import dagger.Module
-import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import ua.com.programmer.pick.data.remote.transport.RestTransport
+import ua.com.programmer.pick.data.remote.transport.RoutingTransport
 import ua.com.programmer.pick.data.remote.transport.SyncTransport
 import javax.inject.Singleton
 
 /**
- * Binds the device transport. The app speaks REST only — the legacy push
- * transport was removed at cutover — so [RestTransport] is the sole
- * [SyncTransport]. The interface is kept as the orchestrator/repository seam.
+ * Binds the device transport. [RoutingTransport] is the seam the orchestrator
+ * and repositories see; it delegates to the real REST transport or the offline
+ * demo transport based on the persisted demo-mode flag.
  */
 @Module
 @InstallIn(SingletonComponent::class)
-object TransportModule {
+abstract class TransportModule {
 
-    @Provides
+    @Binds
     @Singleton
-    fun provideSyncTransport(restTransport: RestTransport): SyncTransport = restTransport
+    abstract fun bindSyncTransport(routingTransport: RoutingTransport): SyncTransport
 }
