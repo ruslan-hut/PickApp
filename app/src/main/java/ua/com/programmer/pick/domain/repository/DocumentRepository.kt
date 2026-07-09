@@ -53,6 +53,21 @@ interface DocumentRepository {
 
     suspend fun getLineByProductId(documentId: String, productId: String): DocumentLine?
 
+    /**
+     * All lines of the document carrying [barcode] among their ERP-supplied
+     * per-line scan codes. A unique stamp code yields one line; a group-package
+     * code yields every line packed inside it. Empty when the document has no
+     * per-line codes at all — the caller then falls back to product lookup.
+     */
+    suspend fun getLinesByBarcode(documentId: String, barcode: String): List<DocumentLine>
+
+    /**
+     * True when the document's lines carry ERP-supplied scan codes. Such a
+     * document must be scanned by line code only — falling back to the product
+     * catalogue would close an arbitrary line.
+     */
+    suspend fun hasLineBarcodes(documentId: String): Boolean
+
     suspend fun updateLine(lineId: String, actualQuantity: Double, notes: String?): Result<Unit>
 
     suspend fun updateLineNote(lineId: String, notes: String?): Result<Unit>

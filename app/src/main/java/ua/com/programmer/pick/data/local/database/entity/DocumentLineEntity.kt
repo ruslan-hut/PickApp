@@ -72,6 +72,13 @@ data class DocumentLineEntity(
     @ColumnInfo(name = "notes")
     val notes: String?,
 
+    // First entry of the line's ERP barcode list, denormalized for display the
+    // same way product_code / product_name are. On e-excise documents it is the
+    // unique stamp code — the only thing that tells apart lines that all carry
+    // the same product name. Null when the ERP sent no per-line barcodes.
+    @ColumnInfo(name = "mark_code")
+    val markCode: String? = null,
+
     @ColumnInfo(name = "is_completed")
     val isCompleted: Boolean = false,
 

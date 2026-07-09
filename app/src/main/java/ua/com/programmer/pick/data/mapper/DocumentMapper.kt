@@ -58,6 +58,7 @@ class DocumentMapper @Inject constructor() {
             locationId = dto.locationId,
             locationPath = dto.locationPath,
             notes = dto.notes,
+            markCode = dto.barcodes?.firstOrNull()?.takeIf { it.isNotBlank() },
             isCompleted = dto.isCompleted,
             isDirty = false,
             hasPhoto = dto.hasPhoto
@@ -139,6 +140,7 @@ fun DocumentLineEntity.toDomain(): DocumentLine {
         locationId = locationId,
         locationPath = locationPath,
         notes = notes,
+        markCode = markCode,
         isCompleted = isCompleted,
         isDirty = isDirty,
         hasPhoto = hasPhoto,
@@ -165,6 +167,7 @@ fun DocumentLine.toEntity(): DocumentLineEntity {
         locationId = locationId,
         locationPath = locationPath,
         notes = notes,
+        markCode = markCode,
         isCompleted = isCompleted,
         isDirty = isDirty,
         hasPhoto = hasPhoto,

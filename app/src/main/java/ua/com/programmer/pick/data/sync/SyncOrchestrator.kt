@@ -26,7 +26,9 @@ import ua.com.programmer.pick.data.local.database.entity.ProductBarcodeEntity
 import ua.com.programmer.pick.data.local.database.dao.ClientDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentBoxDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentDao
+import ua.com.programmer.pick.data.local.database.dao.DocumentLineBarcodeDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentLineDao
+import ua.com.programmer.pick.data.local.database.entity.DocumentLineBarcodeEntity
 import ua.com.programmer.pick.data.local.database.dao.ProductDao
 import ua.com.programmer.pick.data.local.database.dao.ProductImageDao
 import ua.com.programmer.pick.data.local.database.dao.SyncStateDao
@@ -147,6 +149,7 @@ class SyncOrchestrator @Inject constructor(
     private val syncStateDao: SyncStateDao,
     private val documentDao: DocumentDao,
     private val documentLineDao: DocumentLineDao,
+    private val documentLineBarcodeDao: DocumentLineBarcodeDao,
     private val productDao: ProductDao,
     private val productImageDao: ProductImageDao,
     private val clientDao: ClientDao,
@@ -2708,6 +2711,19 @@ class SyncOrchestrator @Inject constructor(
             }
         }
         documentLineDao.insertLines(merged)
+
+        // Per-line scan codes are ERP-owned with no local counterpart, so they
+        // are simply rebuilt from the payload. Must run after insertLines: the
+        // rows carry a foreign key onto document_lines.id.
+        documentLineBarcodeDao.deleteByDocumentId(documentId)
+        val barcodeRows = merged.zip(serverLineDtos).flatMap { (line, dto) ->
+            dto.barcodes.orEmpty()
+                .filter { it.isNotBlank() }
+                .map { DocumentLineBarcodeEntity(lineId = line.id, barcode = it) }
+        }
+        if (barcodeRows.isNotEmpty()) {
+            documentLineBarcodeDao.insertAll(barcodeRows)
+        }
 
         val preservedDirty = merged.count { it.isDirty }
         if (preservedDirty > 0) {

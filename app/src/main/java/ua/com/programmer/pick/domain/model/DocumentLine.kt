@@ -17,6 +17,10 @@ data class DocumentLine(
     val locationId: String?,
     val locationPath: String?,
     val notes: String?,
+    // Unique scan code of this line, when the ERP supplied per-line barcodes.
+    // On e-excise documents it is the stamp code and the only thing that
+    // distinguishes lines sharing one product name.
+    val markCode: String? = null,
     val isCompleted: Boolean = false,
     val isDirty: Boolean = false,
     val hasPhoto: Boolean = false,

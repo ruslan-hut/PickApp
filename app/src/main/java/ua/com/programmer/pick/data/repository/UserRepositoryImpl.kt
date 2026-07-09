@@ -20,6 +20,7 @@ import ua.com.programmer.pick.data.mapper.toDomain
 import ua.com.programmer.pick.data.remote.transport.ConnectionState
 import ua.com.programmer.pick.data.remote.transport.SyncTransport
 import ua.com.programmer.pick.domain.model.User
+import ua.com.programmer.pick.data.remote.transport.demo.DemoVariant
 import ua.com.programmer.pick.domain.model.UserRole
 import ua.com.programmer.pick.domain.repository.UserRepository
 import kotlinx.coroutines.CoroutineDispatcher
@@ -41,8 +42,6 @@ class UserRepositoryImpl @Inject constructor(
     companion object {
         private const val TAG = "UserRepository"
         private const val TRANSPORT_CONNECT_TIMEOUT_MS = 10000L
-        private const val DEMO_LOGIN = "demo"
-        private const val DEMO_PASSWORD = "demo"
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -66,7 +65,7 @@ class UserRepositoryImpl @Inject constructor(
     override suspend fun login(login: String, password: String): Result<User> =
         withContext(ioDispatcher) {
             // Offline demo session: no network, fully local fake server.
-            if (login == DEMO_LOGIN && password == DEMO_PASSWORD) {
+            if (login == DemoVariant.LOGIN && password == DemoVariant.PASSWORD) {
                 return@withContext loginDemo()
             }
             // Leaving (or never entering) demo — make sure the router points at REST.
@@ -100,7 +99,7 @@ class UserRepositoryImpl @Inject constructor(
         appPreferences.setDemoMode(true)
 
         if (!transport.isConnected()) transport.connect()
-        val result = transport.loginUser(DEMO_LOGIN, DEMO_PASSWORD)
+        val result = transport.loginUser(DemoVariant.LOGIN, DemoVariant.PASSWORD)
         if (!result.success) {
             appPreferences.setDemoMode(false)
             return Result.Error(
@@ -114,8 +113,8 @@ class UserRepositoryImpl @Inject constructor(
         val userEntity = UserEntity(
             id = userId,
             externalId = result.userExternalId,
-            login = DEMO_LOGIN,
-            name = result.userName ?: DEMO_LOGIN,
+            login = DemoVariant.LOGIN,
+            name = result.userName ?: DemoVariant.LOGIN,
             passwordHash = "",
             role = result.role ?: UserRole.COLLECTOR.name,
             isActive = true,
@@ -124,8 +123,8 @@ class UserRepositoryImpl @Inject constructor(
         )
         userDao.insertUser(userEntity)
         appPreferences.setCurrentUserId(userId)
-        appPreferences.setUserCredentials(DEMO_LOGIN, DEMO_PASSWORD)
-        appPreferences.setLastLogin(DEMO_LOGIN)
+        appPreferences.setUserCredentials(DemoVariant.LOGIN, DemoVariant.PASSWORD)
+        appPreferences.setLastLogin(DemoVariant.LOGIN)
 
         return Result.Success(userEntity.toDomain())
     }

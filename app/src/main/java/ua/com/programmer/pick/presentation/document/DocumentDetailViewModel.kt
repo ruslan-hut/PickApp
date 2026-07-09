@@ -307,6 +307,20 @@ class DocumentDetailViewModel @Inject constructor(
             return
         }
 
+        // Per-line ERP scan codes come first. On an e-excise document the same
+        // product repeats on every line, so a product lookup could not tell the
+        // lines apart — only the stamp code can. A code shared by several lines
+        // is a group package: all of them close at once.
+        if (completeLinesByScanCode(docId, listOf(scanned.rawValue, identifier))) return
+
+        // No line matched. On a document whose lines carry their own codes the
+        // product catalogue is not an acceptable fallback — every line may share
+        // one product, so a product hit would close an arbitrary stamp.
+        if (documentRepository.hasLineBarcodes(docId)) {
+            _uiEvents.emit(DocumentDetailUiEvent.ShowBarcodeAlert(BarcodeAlertType.PRODUCT_NOT_IN_DOCUMENT))
+            return
+        }
+
         if (_uiState.value.allowsExtraLines) {
             // The document type permits scanning products that aren't in the
             // pre-loaded line set — the client creates a new line on the fly.
@@ -638,6 +652,64 @@ class DocumentDetailViewModel @Inject constructor(
      * back. We never auto-unset; clearing requires an explicit swipe-left.
      * Planned=0 lines (e.g. inventory) auto-mark on any positive quantity.
      */
+    /**
+     * Resolve the scan against the document's per-line barcodes and close every
+     * line that carries it. Returns false when no line matches any candidate
+     * code, leaving the caller to fall back to the product-catalogue path.
+     *
+     * Unlike a product scan this does not increment: a line stands for one
+     * stamped unit, so it jumps straight to its planned quantity and is marked
+     * done. Re-scanning an already-closed code is therefore idempotent.
+     */
+    private suspend fun completeLinesByScanCode(docId: String, codes: List<String>): Boolean {
+        val match = codes
+            .filter { it.isNotBlank() }
+            .distinct()
+            .firstNotNullOfOrNull { code ->
+                val lines = try {
+                    documentRepository.getLinesByBarcode(docId, code)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                if (lines.isEmpty()) null else code to lines
+            } ?: return false
+
+        val (code, lines) = match
+        val pending = lines.filter { !it.isCompleted }
+        if (pending.isEmpty()) {
+            _uiState.update { it.copy(selectedLineId = lines.first().id) }
+            _uiEvents.emit(DocumentDetailUiEvent.ShowBarcodeAlert(BarcodeAlertType.PRODUCT_ALREADY_COMPLETED))
+            return true
+        }
+
+        var failed = 0
+        for (line in pending) {
+            val qty = if (line.plannedQuantity > 0) line.plannedQuantity else 1.0
+            applyLineQtyOptimistically(line.id, qty)
+            when (val result = documentRepository.updateLine(line.id, qty, null)) {
+                is Result.Error -> {
+                    failed++
+                    applyLineQtyOptimistically(line.id, line.actualQuantity)
+                    logLineEditFailure(line.id, result, "line barcode scan", qty, extra = mapOf("barcode" to code))
+                }
+                else -> setLineCompleted(line.id, true)
+            }
+        }
+
+        _uiState.update { it.copy(selectedLineId = pending.first().id) }
+        debugJournal.log(
+            eventType = DebugEventType.LINE_EDIT,
+            message = "closed ${pending.size - failed} line(s) from line-barcode scan",
+            documentId = docId,
+            payload = mapOf("barcode" to code, "matched" to lines.size, "failed" to failed)
+        )
+        if (failed > 0) {
+            _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.ERROR_SAVING))
+        }
+        notifyDocumentLinesChanged()
+        return true
+    }
+
     private fun maybeAutoMarkCompleted(lineId: String, newQuantity: Double) {
         val line = _uiState.value.lines.find { it.id == lineId } ?: return
         if (line.isCompleted) return

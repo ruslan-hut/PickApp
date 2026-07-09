@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.util.Result
 import ua.com.programmer.pick.data.local.database.dao.DocumentDao
+import ua.com.programmer.pick.data.local.database.dao.DocumentLineBarcodeDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentLineDao
 import ua.com.programmer.pick.data.mapper.toDomain
 import ua.com.programmer.pick.data.mapper.toDomainList
@@ -23,6 +24,7 @@ import javax.inject.Singleton
 class DocumentRepositoryImpl @Inject constructor(
     private val documentDao: DocumentDao,
     private val documentLineDao: DocumentLineDao,
+    private val documentLineBarcodeDao: DocumentLineBarcodeDao,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : DocumentRepository {
 
@@ -129,6 +131,15 @@ class DocumentRepositoryImpl @Inject constructor(
 
     override suspend fun getLineByProductId(documentId: String, productId: String): DocumentLine? = withContext(ioDispatcher) {
         documentLineDao.getLineByProductId(documentId, productId)?.toDomain()
+    }
+
+    override suspend fun getLinesByBarcode(documentId: String, barcode: String): List<DocumentLine> =
+        withContext(ioDispatcher) {
+            documentLineBarcodeDao.getLinesByBarcode(documentId, barcode).toLineDomainList()
+        }
+
+    override suspend fun hasLineBarcodes(documentId: String): Boolean = withContext(ioDispatcher) {
+        documentLineBarcodeDao.hasLineBarcodes(documentId)
     }
 
     override suspend fun updateLine(lineId: String, actualQuantity: Double, notes: String?): Result<Unit> = withContext(ioDispatcher) {

@@ -13,6 +13,7 @@ import ua.com.programmer.pick.data.local.database.dao.ClientDao
 import ua.com.programmer.pick.data.local.database.dao.DebugJournalDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentBoxDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentDao
+import ua.com.programmer.pick.data.local.database.dao.DocumentLineBarcodeDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentLineDao
 import ua.com.programmer.pick.data.local.database.dao.OutgoingOperationDao
 import ua.com.programmer.pick.data.local.database.dao.ProductDao
@@ -46,7 +47,8 @@ object DatabaseModule {
                 AppDatabase.MIGRATION_12_13,
                 AppDatabase.MIGRATION_13_14,
                 AppDatabase.MIGRATION_14_15,
-                AppDatabase.MIGRATION_15_16
+                AppDatabase.MIGRATION_15_16,
+                AppDatabase.MIGRATION_16_17
             )
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
@@ -83,6 +85,11 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideDocumentLineDao(database: AppDatabase): DocumentLineDao = database.documentLineDao()
+
+    @Provides
+    @Singleton
+    fun provideDocumentLineBarcodeDao(database: AppDatabase): DocumentLineBarcodeDao =
+        database.documentLineBarcodeDao()
 
     @Provides
     @Singleton

@@ -30,10 +30,19 @@ class DemoServer @Inject constructor(
     companion object {
         const val USER_ID = "demo-user"
         const val USER_NAME = "Demo"
-        const val DOCUMENT_TYPE = "OUTGOING_SHIPMENT"
-        const val DOCUMENT_TYPE_DESCRIPTION = "Відвантаження (демо)"
         private const val DOCUMENT_COUNT = 3
         private const val WAREHOUSE_NAME = "Основний склад"
+
+        /** Marks in one group package, and how many packages a demo doc holds. */
+        private const val MARKS_PER_PACKAGE = 4
+        private const val PACKAGES_PER_DOCUMENT = 3
+        /** Emitter prefix of a Ukrainian e-excise stamp identifier (3 chars). */
+        private const val STAMP_EMITTER = "UA1"
+        private val EXCISE_PRODUCT_NAMES = listOf(
+            "Горілка «Хлібний Дар» 0.5л",
+            "Коньяк «Таврія» 0.5л",
+            "Вино «Колоніст» червоне 0.75л",
+        )
 
         private val CLIENT_NAMES = listOf(
             "ТОВ «Світанок»", "Магазин №12", "ФОП Коваленко",
@@ -54,10 +63,11 @@ class DemoServer @Inject constructor(
     private val documents = LinkedHashMap<String, DocumentDto>()
 
     /**
-     * Generate the random document set the first time it's needed. Idempotent:
-     * a re-auth within the same process (e.g. autoLogin after a foreground
-     * resume) keeps the existing model, so collected quantities, lock state and
-     * completion marks survive. A fresh set is produced once per process.
+     * Generate the random document set the first time it's needed. Seeds
+     * [DOCUMENT_COUNT] documents of every [DemoVariant], so the home screen
+     * offers both modes. Idempotent: a re-auth within the same process (e.g.
+     * autoLogin after a foreground resume) keeps the existing model, so
+     * collected quantities, lock state and completion marks survive.
      */
     @Synchronized
     fun ensureSeeded() {
@@ -67,10 +77,22 @@ class DemoServer @Inject constructor(
             val doc = generateDocument(index + 1, rnd)
             documents[doc.id] = doc
         }
+        repeat(DOCUMENT_COUNT) { index ->
+            val doc = generateExciseDocument(index + 1, rnd)
+            documents[doc.id] = doc
+        }
     }
 
+    /**
+     * The current model, optionally narrowed to one document type. Mirrors the
+     * real server, which filters DOCUMENT_LIST_REFRESH by the type the worker
+     * picked on the home screen.
+     */
     @Synchronized
-    fun documentsJson(): JsonElement = gson.toJsonTree(documents.values.toList())
+    fun documentsJson(documentType: String? = null): JsonElement {
+        val visible = documents.values.filter { documentType == null || it.type == documentType }
+        return gson.toJsonTree(visible)
+    }
 
     /** Distinct products referenced by the current document lines. */
     @Synchronized
@@ -188,7 +210,7 @@ class DemoServer @Inject constructor(
         return DocumentDto(
             id = id,
             externalId = id,
-            type = DOCUMENT_TYPE,
+            type = DemoVariant.SHIPMENT.documentType,
             number = "ВН-%05d".format(rnd.nextInt(1, 99999)),
             date = now - rnd.nextLong(0, 5L * 24 * 3600 * 1000),
             state = "LOADED",
@@ -207,6 +229,75 @@ class DemoServer @Inject constructor(
             lines = lines,
         )
     }
+
+    /**
+     * An e-excise document: one product, one line per stamped bottle. Lines are
+     * grouped into packages of [MARKS_PER_PACKAGE]; every line of a package
+     * repeats the package code as its second barcode, so scanning that code
+     * closes the whole package at once. `barcodes[0]` is the bottle's unique
+     * stamp identifier and must stay unique within the document.
+     */
+    private fun generateExciseDocument(seq: Int, rnd: Random): DocumentDto {
+        val id = "demo-excise-$seq"
+        val now = System.currentTimeMillis()
+        val name = EXCISE_PRODUCT_NAMES[(seq - 1) % EXCISE_PRODUCT_NAMES.size]
+        val productId = "demo-prod-${name.hashCode().toUInt()}"
+        val productCode = randomBarcode(rnd)
+
+        var lineNumber = 0
+        val lines = (1..PACKAGES_PER_DOCUMENT).flatMap { pkg ->
+            val packageCode = "PKG-%04d-%02d".format(rnd.nextInt(1, 9999), pkg)
+            (1..MARKS_PER_PACKAGE).map {
+                lineNumber += 1
+                DocumentLineDto(
+                    id = "$id-line-$lineNumber",
+                    documentId = id,
+                    lineNumber = lineNumber,
+                    productId = productId,
+                    productCode = productCode,
+                    productName = name,
+                    unit = "шт",
+                    volume = 0,
+                    volumeUnit = null,
+                    plannedQuantity = 1.0,
+                    actualQuantity = 0.0,
+                    batchNumber = null,
+                    expirationDate = null,
+                    locationId = null,
+                    locationPath = null,
+                    notes = null,
+                    isCompleted = false,
+                    hasPhoto = false,
+                    barcodes = listOf(stampCode(rnd), packageCode),
+                )
+            }
+        }
+        return DocumentDto(
+            id = id,
+            externalId = id,
+            type = DemoVariant.EXCISE.documentType,
+            number = "ЕА-%05d".format(rnd.nextInt(1, 99999)),
+            date = now - rnd.nextLong(0, 5L * 24 * 3600 * 1000),
+            state = "LOADED",
+            clientId = null,
+            clientName = CLIENT_NAMES[rnd.nextInt(CLIENT_NAMES.size)],
+            warehouseId = null,
+            warehouseName = WAREHOUSE_NAME,
+            notes = null,
+            totalPlanned = lines.sumOf { it.plannedQuantity },
+            totalActual = 0.0,
+            assignedUserId = null,
+            takenAt = null,
+            completedAt = null,
+            lastModified = now,
+            version = 1,
+            lines = lines,
+        )
+    }
+
+    /** 3-char emitter code + 9-digit serial, per the КМУ №890 identifier layout. */
+    private fun stampCode(rnd: Random): String =
+        STAMP_EMITTER + buildString { repeat(9) { append(rnd.nextInt(10)) } }
 
     private fun randomBarcode(rnd: Random): String =
         buildString { repeat(13) { append(rnd.nextInt(10)) } }

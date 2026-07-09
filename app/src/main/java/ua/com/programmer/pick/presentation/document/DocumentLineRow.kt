@@ -263,9 +263,14 @@ private fun LineCardContent(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                    if (line.productCode.isNotBlank()) {
+                    // The mark code replaces the product code as the subtitle
+                    // when the ERP supplied one: on an e-excise document every
+                    // line shares the same product, so the product code cannot
+                    // tell them apart and the stamp code can.
+                    val subtitle = line.markCode ?: line.productCode
+                    if (subtitle.isNotBlank()) {
                         Text(
-                            text = line.productCode,
+                            text = subtitle,
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontFamily = ua.com.programmer.pick.ui.theme.FiraMono
                             ),

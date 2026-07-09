@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -40,6 +41,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import ua.com.programmer.pick.R
+import ua.com.programmer.pick.data.remote.transport.demo.DemoVariant
 import ua.com.programmer.pick.presentation.common.BrandLogo
 import ua.com.programmer.pick.presentation.common.LoadingButton
 import ua.com.programmer.pick.presentation.common.OfflineBanner
@@ -216,6 +218,19 @@ fun LoginScreen(
                         modifier = Modifier.padding(end = 8.dp)
                     )
                     Text(stringResource(R.string.scan_to_login))
+                }
+
+                // Offline demo session against the in-memory fake server. It
+                // serves both document types, so the mode is picked afterwards
+                // on the home screen.
+                Spacer(modifier = Modifier.height(12.dp))
+
+                TextButton(
+                    onClick = { onLoginClick(DemoVariant.LOGIN, DemoVariant.PASSWORD) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !uiState.isLoading
+                ) {
+                    Text(stringResource(R.string.demo_login))
                 }
 
                 if (mappedErrorText != null) {

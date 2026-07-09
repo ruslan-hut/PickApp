@@ -60,7 +60,14 @@ data class DocumentLineDto(
     val isCompleted: Boolean = false,
 
     @SerializedName("has_photo")
-    val hasPhoto: Boolean = false
+    val hasPhoto: Boolean = false,
+
+    // ERP-supplied scan codes for this line, independent of the product
+    // catalogue. A code shared with sibling lines is a group-package barcode:
+    // scanning it closes every line that carries it. Empty for classic
+    // documents, where scans resolve through the product barcode table instead.
+    @SerializedName("barcodes")
+    val barcodes: List<String>? = null
 )
 
 /**

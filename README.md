@@ -66,6 +66,10 @@ For in-depth technical references and implementation details, check out the spec
     A rolling analysis and formalization of who owns document data and when (ERP vs. Device), detailing CAS versioning, cooperative release negotiations, and edge-case mitigations.
 4.  **[Product Development Plan](docs/app-develop-plan.md)**  
     The original development roadmap and frozen MVP spec representing business scenarios, offline principles, roles (Collector, Courier, Admin), and scope exclusions.
+5.  **[Посібник інтегратора 1С](docs/integration/1c-integration.md)** (Ukrainian)  
+    How an accounting system feeds the server: `external_id` contract, reference data, per-type capability flags, document fields and what each one changes on the terminal, e-excise (Е-Акциз) line barcodes, and result retrieval.
+6.  **[Чекліст інтегратора](docs/integration/1c-checklist.md)** (Ukrainian)  
+    Step-by-step launch checklist for a new 1C integration, including the e-excise acceptance tests.
 
 ---
 

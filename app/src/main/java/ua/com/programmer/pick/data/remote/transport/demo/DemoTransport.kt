@@ -86,19 +86,24 @@ class DemoTransport @Inject constructor(
         // Seed once per process; a re-auth preserves any in-progress demo work.
         server.ensureSeeded()
         _connectionState.value = ConnectionState.Connected
-        val docType = AvailableDocumentTypeDto(
-            code = DemoServer.DOCUMENT_TYPE,
-            description = DemoServer.DOCUMENT_TYPE_DESCRIPTION,
-            allowsOverPlan = false,
-            allowsExtraLines = false,
-            requiresPlan = true,
-        )
+        // Both variants take the conservative defaults: the line set is closed
+        // and the plan is binding. For EXCISE that is mandatory — the worker may
+        // only confirm the stamps the ERP sent.
+        val docTypes = DemoVariant.entries.map { variant ->
+            AvailableDocumentTypeDto(
+                code = variant.documentType,
+                description = variant.documentTypeDescription,
+                allowsOverPlan = false,
+                allowsExtraLines = false,
+                requiresPlan = true,
+            )
+        }
         _userAuthState.value = UserAuthState.Authenticated(
             userId = DemoServer.USER_ID,
             userName = DemoServer.USER_NAME,
             role = "COLLECTOR",
             offlineHash = null,
-            availableDocumentTypes = listOf(docType),
+            availableDocumentTypes = docTypes,
             heldStageLocks = null,
             supportsUpdateAck = true,
         )
@@ -109,7 +114,7 @@ class DemoTransport @Inject constructor(
             userExternalId = DemoServer.USER_ID,
             userName = DemoServer.USER_NAME,
             role = "COLLECTOR",
-            availableDocumentTypes = listOf(docType),
+            availableDocumentTypes = docTypes,
         )
     }
 
@@ -166,10 +171,16 @@ class DemoTransport @Inject constructor(
                 )
             }
 
-            is SyncMessage.SyncRequest,
-            is SyncMessage.FullSyncRequest,
+            // The home screen picks a document type; the real server narrows the
+            // refresh to it, and the app purges the rest as a complete set.
             is SyncMessage.DocumentListRefresh -> {
-                emitFullSet()
+                emitFullSet(message.documentType)
+                null
+            }
+
+            is SyncMessage.SyncRequest,
+            is SyncMessage.FullSyncRequest -> {
+                emitFullSet(null)
                 null
             }
 
@@ -185,17 +196,17 @@ class DemoTransport @Inject constructor(
         return result
     }
 
-    private suspend fun emitFullSet() {
-        emit(documentsData())
+    private suspend fun emitFullSet(documentType: String?) {
+        emit(documentsData(documentType))
         emit(productsData())
         emit(syncComplete())
     }
 
-    private fun documentsData() = SyncMessage.SyncData(
+    private fun documentsData(documentType: String?) = SyncMessage.SyncData(
         id = newId(),
         timestamp = now(),
         entityType = Constants.SyncEntity.DOCUMENTS,
-        data = server.documentsJson(),
+        data = server.documentsJson(documentType),
         deletedIds = null,
         fullSet = true,
     )

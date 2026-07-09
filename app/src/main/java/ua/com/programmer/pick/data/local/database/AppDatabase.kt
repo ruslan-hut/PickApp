@@ -7,6 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import ua.com.programmer.pick.data.local.database.dao.ClientDao
 import ua.com.programmer.pick.data.local.database.dao.DebugJournalDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentDao
+import ua.com.programmer.pick.data.local.database.dao.DocumentLineBarcodeDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentLineDao
 import ua.com.programmer.pick.data.local.database.dao.OutgoingOperationDao
 import ua.com.programmer.pick.data.local.database.dao.ProductDao
@@ -21,6 +22,7 @@ import ua.com.programmer.pick.data.local.database.entity.ClientEntity
 import ua.com.programmer.pick.data.local.database.entity.DebugJournalEntity
 import ua.com.programmer.pick.data.local.database.entity.DocumentEntity
 import ua.com.programmer.pick.data.local.database.entity.DocumentBoxEntity
+import ua.com.programmer.pick.data.local.database.entity.DocumentLineBarcodeEntity
 import ua.com.programmer.pick.data.local.database.entity.DocumentLineEntity
 import ua.com.programmer.pick.data.local.database.entity.OutgoingOperationEntity
 import ua.com.programmer.pick.data.local.database.entity.ProductBarcodeEntity
@@ -43,12 +45,13 @@ import ua.com.programmer.pick.data.local.database.entity.WarehouseLocationEntity
         WarehouseLocationEntity::class,
         DocumentEntity::class,
         DocumentLineEntity::class,
+        DocumentLineBarcodeEntity::class,
         OutgoingOperationEntity::class,
         BoxEntity::class,
         DocumentBoxEntity::class,
         DebugJournalEntity::class
     ],
-    version = 16, // Version 16: document_lines gains has_photo + local photo_path/photo_pending
+    version = 17, // Version 17: document_line_barcodes + document_lines.mark_code
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -61,6 +64,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun warehouseDao(): WarehouseDao
     abstract fun documentDao(): DocumentDao
     abstract fun documentLineDao(): DocumentLineDao
+    abstract fun documentLineBarcodeDao(): DocumentLineBarcodeDao
     abstract fun outgoingOperationDao(): OutgoingOperationDao
     abstract fun boxDao(): BoxDao
     abstract fun documentBoxDao(): DocumentBoxDao
@@ -264,6 +268,24 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE document_lines ADD COLUMN has_photo INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE document_lines ADD COLUMN photo_path TEXT DEFAULT NULL")
                 db.execSQL("ALTER TABLE document_lines ADD COLUMN photo_pending INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        // Per-line scan codes owned by the ERP: a unique stamp code plus, for
+        // e-excise documents, the shared code of the group package the item
+        // travels in. Rebuilt from the server payload on the next document sync.
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS document_line_barcodes (
+                        line_id TEXT NOT NULL,
+                        barcode TEXT NOT NULL,
+                        PRIMARY KEY (line_id, barcode),
+                        FOREIGN KEY (line_id) REFERENCES document_lines(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_document_line_barcodes_barcode ON document_line_barcodes (barcode)")
+                db.execSQL("ALTER TABLE document_lines ADD COLUMN mark_code TEXT DEFAULT NULL")
             }
         }
 
