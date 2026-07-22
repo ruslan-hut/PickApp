@@ -175,6 +175,9 @@ class SyncOrchestrator @Inject constructor(
         private const val SYNC_TIMEOUT_MS = 60_000L
         private const val MAX_QUEUE_RETRIES = 5
         private const val DOCUMENT_PRODUCTS_TIMEOUT_MS = 10_000L
+        // On-demand single-barcode lookup is interactive (a worker is waiting
+        // mid-scan), so it uses a tighter budget than the bulk document fetch.
+        private const val PRODUCT_LOOKUP_TIMEOUT_MS = 5_000L
         private const val IN_PROCESS_FLUSH_INTERVAL_MS = 60_000L
         // While WS is wedged, emit one DOC_UPDATE_QUEUED journal row per
         // doc per minute instead of one per debounce tick. Carries the
@@ -2751,63 +2754,123 @@ class SyncOrchestrator @Inject constructor(
             val rawArray = data.asJsonArray
 
             products.forEachIndexed { index, dto ->
-                val entity = productMapper.toEntity(dto)
-                productDao.upsertProduct(entity)
-
-                // Extract barcodes — handle both object array and string array formats.
-                // The server may send: [{barcode:"...", ...}] or ["barcode1","barcode2"]
-                val rawProduct = rawArray[index].asJsonObject
-                val rawBarcodes = rawProduct.get("barcodes")
-
-                val barcodeEntities: List<ProductBarcodeEntity>? = when {
-                    dto.barcodes != null -> {
-                        // Gson parsed successfully as List<BarcodeDto>
-                        productMapper.toBarcodeEntityList(dto)
-                    }
-                    rawBarcodes != null && rawBarcodes.isJsonArray -> {
-                        // Gson couldn't parse — try manual extraction (string array format)
-                        val arr = rawBarcodes.asJsonArray
-                        arr.mapIndexedNotNull { i, element ->
-                            val barcodeValue = when {
-                                element.isJsonPrimitive -> element.asString
-                                element.isJsonObject -> element.asJsonObject.get("barcode")?.asString
-                                else -> null
-                            }
-                            barcodeValue?.let { bc ->
-                                ProductBarcodeEntity(
-                                    id = "${dto.id}_$bc",
-                                    productId = dto.id,
-                                    barcode = bc,
-                                    type = "UNKNOWN",
-                                    isPrimary = i == 0
-                                )
-                            }
-                        }
-                    }
-                    else -> null // No barcodes in this payload — preserve existing
-                }
-
-                AppLog.d(TAG, "Product ${dto.code}: barcodes=${barcodeEntities?.size ?: "null (preserved)"}")
-
-                if (barcodeEntities != null) {
-                    productDao.deleteBarcodesForProduct(dto.id)
-                    barcodeEntities.forEach { barcode ->
-                        productDao.insertBarcode(barcode)
-                    }
-                }
-
-                // Save product image if present
-                val imageEntity = productMapper.toImageEntity(dto)
-                if (imageEntity != null) {
-                    productImageDao.deleteByProductId(dto.id)
-                    productImageDao.insert(imageEntity)
-                }
+                persistProduct(dto, rawArray[index].asJsonObject)
             }
         }
 
         deletedIds?.forEach { id ->
             productDao.deleteProduct(id)
             productImageDao.deleteByProductId(id)
+        }
+    }
+
+    /**
+     * Persist a single product (row + barcodes + image) from its parsed DTO and
+     * the matching raw JSON. Shared by the bulk product sync and the on-demand
+     * PRODUCT_LOOKUP path so both handle the server's two barcode encodings
+     * (object array vs. plain string array) identically.
+     */
+    private suspend fun persistProduct(
+        dto: ProductDto,
+        rawProduct: com.google.gson.JsonObject
+    ) {
+        val entity = productMapper.toEntity(dto)
+        productDao.upsertProduct(entity)
+
+        // Extract barcodes — handle both object array and string array formats.
+        // The server may send: [{barcode:"...", ...}] or ["barcode1","barcode2"]
+        val rawBarcodes = rawProduct.get("barcodes")
+
+        val barcodeEntities: List<ProductBarcodeEntity>? = when {
+            dto.barcodes != null -> {
+                // Gson parsed successfully as List<BarcodeDto>
+                productMapper.toBarcodeEntityList(dto)
+            }
+            rawBarcodes != null && rawBarcodes.isJsonArray -> {
+                // Gson couldn't parse — try manual extraction (string array format)
+                val arr = rawBarcodes.asJsonArray
+                arr.mapIndexedNotNull { i, element ->
+                    val barcodeValue = when {
+                        element.isJsonPrimitive -> element.asString
+                        element.isJsonObject -> element.asJsonObject.get("barcode")?.asString
+                        else -> null
+                    }
+                    barcodeValue?.let { bc ->
+                        ProductBarcodeEntity(
+                            id = "${dto.id}_$bc",
+                            productId = dto.id,
+                            barcode = bc,
+                            type = "UNKNOWN",
+                            isPrimary = i == 0
+                        )
+                    }
+                }
+            }
+            else -> null // No barcodes in this payload — preserve existing
+        }
+
+        AppLog.d(TAG, "Product ${dto.code}: barcodes=${barcodeEntities?.size ?: "null (preserved)"}")
+
+        if (barcodeEntities != null) {
+            productDao.deleteBarcodesForProduct(dto.id)
+            barcodeEntities.forEach { barcode ->
+                productDao.insertBarcode(barcode)
+            }
+        }
+
+        // Save product image if present
+        val imageEntity = productMapper.toImageEntity(dto)
+        if (imageEntity != null) {
+            productImageDao.deleteByProductId(dto.id)
+            productImageDao.insert(imageEntity)
+        }
+    }
+
+    /**
+     * On-demand product resolution for a scanned barcode that missed the local
+     * catalogue. Sends PRODUCT_LOOKUP and, on a successful response, persists
+     * the returned product (row + barcodes) so a subsequent
+     * getProductByBarcode() resolves locally. Returns true when a product was
+     * fetched and stored; false on timeout, a not-found response, or transport
+     * unavailability.
+     *
+     * PRODUCT_LOOKUP_RESULT is not routed through handleIncomingMessage (it is
+     * a synchronous request/response), so this method both awaits and persists
+     * the reply itself.
+     */
+    suspend fun lookupProductByBarcode(barcode: String): Boolean {
+        if (barcode.isBlank()) return false
+        if (!transport.isConnected() || !transport.isUserAuthenticated()) return false
+
+        val message = SyncMessage.ProductLookup(
+            id = messageParser.generateMessageId(),
+            timestamp = messageParser.getCurrentTimestamp(),
+            barcode = barcode
+        )
+        if (!transport.sendMessage(message)) return false
+
+        val result = withTimeoutOrNull(PRODUCT_LOOKUP_TIMEOUT_MS) {
+            transport.incomingMessages.first { it is SyncMessage.ProductLookupResult }
+        } as? SyncMessage.ProductLookupResult
+
+        if (result == null) {
+            AppLog.w(TAG, "Timeout waiting for product lookup result (barcode=$barcode)")
+            return false
+        }
+
+        val product = result.product
+        if (!result.success || product == null || product.isJsonNull || !product.isJsonObject) {
+            AppLog.d(TAG, "Product lookup miss for barcode=$barcode (error=${result.error})")
+            return false
+        }
+
+        return try {
+            val dto = gson.fromJson(product, ProductDto::class.java)
+            persistProduct(dto, product.asJsonObject)
+            true
+        } catch (e: Exception) {
+            AppLog.e(TAG, "Failed to persist looked-up product: ${e.message}", e)
+            false
         }
     }
 

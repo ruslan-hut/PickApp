@@ -437,6 +437,26 @@ class DocumentDetailViewModel @Inject constructor(
                     }
                 }
 
+                // The scan never resolved to a catalogue product AND no line
+                // matched the raw code. Most often the product's barcode rows
+                // simply haven't synced yet (incomplete/late product sync — the
+                // classic "restart fixes scanning" symptom). Resolve the barcode
+                // on demand and retry before deciding the item isn't here.
+                if (line == null && scanned.productId == null) {
+                    val resolvedId = resolveScannedProduct(scanned)
+                    if (resolvedId == null) {
+                        // Barcode is genuinely unknown to the ERP — a catalogue
+                        // gap, not a "wrong document" situation. Say so instead
+                        // of the misleading "not in this document".
+                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.PRODUCT_NOT_FOUND))
+                        return
+                    }
+                    try {
+                        line = documentRepository.getLineByProductId(docId, resolvedId)
+                    } catch (_: Exception) {
+                    }
+                }
+
                 AppLog.d("DocumentDetailViewModel", "handleScannedBarcode: line=$line")
 
                 if (line != null) {
@@ -487,6 +507,29 @@ class DocumentDetailViewModel @Inject constructor(
                     _uiEvents.emit(DocumentDetailUiEvent.ShowBarcodeAlert(BarcodeAlertType.PRODUCT_NOT_IN_DOCUMENT))
                 }
         }
+    }
+
+    /**
+     * Resolve a scanned barcode that missed the local product catalogue. Tries
+     * the local cache once more (a concurrent sync may have filled it), then
+     * asks the server via an on-demand PRODUCT_LOOKUP and re-reads the cache.
+     * Returns the resolved local product id, or null if the barcode is unknown
+     * to the ERP. The barcode key mirrors BarcodeService.enrichWithProductInfo
+     * (GS1 product code when present, otherwise the raw scan).
+     */
+    @androidx.annotation.VisibleForTesting
+    internal suspend fun resolveScannedProduct(scanned: ScannedBarcode): String? {
+        val searchBarcode = scanned.gs1Data?.getProductBarcode() ?: scanned.rawValue
+        if (searchBarcode.isBlank()) return null
+
+        // A product sync may have landed since the scan was first enriched.
+        runCatching { productRepository.getProductByBarcode(searchBarcode) }
+            .getOrNull()?.let { return it.id }
+
+        // Ask the server to resolve it, then re-read the freshly-stored row.
+        if (!syncOrchestrator.lookupProductByBarcode(searchBarcode)) return null
+        return runCatching { productRepository.getProductByBarcode(searchBarcode) }
+            .getOrNull()?.id
     }
 
     fun updateLineQuantity(lineId: String, newQuantity: Double) {
