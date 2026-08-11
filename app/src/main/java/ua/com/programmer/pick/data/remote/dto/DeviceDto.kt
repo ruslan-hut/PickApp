@@ -93,6 +93,8 @@ object DeviceDto {
         @SerializedName("data") val data: JsonElement? = null,
         @SerializedName("deleted_ids") val deletedIds: List<String>? = null,
         @SerializedName("full_set") val fullSet: Boolean = false,
+        /** Complete set of ids of this entity type still in scope; null = no purge info. */
+        @SerializedName("visible_ids") val visibleIds: List<String>? = null,
     )
 
     // --- Stage operations ---

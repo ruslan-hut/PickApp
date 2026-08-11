@@ -45,6 +45,10 @@ class OutgoingOperationRepositoryImpl @Inject constructor(
         outgoingOperationDao.getAllRetryableOperations().map { it.toDomain() }
     }
 
+    override suspend fun getUnsentEntityIds(): List<String> = withContext(ioDispatcher) {
+        outgoingOperationDao.getUnsentEntityIds()
+    }
+
     override suspend fun resetStaleProcessingOperations() = withContext(ioDispatcher) {
         outgoingOperationDao.resetStaleProcessingOperations()
     }

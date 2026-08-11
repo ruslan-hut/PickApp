@@ -249,6 +249,17 @@ class SyncOrchestrator @Inject constructor(
     private val heldStageLocks: MutableSet<String> =
         java.util.concurrent.ConcurrentHashMap.newKeySet()
 
+    // A document list refresh that could not be sent because the transport was
+    // not connected/authenticated yet. The documents screen refreshes on every
+    // resume, which routinely beats connect + auto-login, so the request used to
+    // be dropped on the floor with only a log line — leaving whatever the device
+    // had cached on screen indefinitely. Held here and replayed once the user is
+    // authenticated. The type is nullable and meaningful, hence the separate flag.
+    private val deferredListRefresh = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    @Volatile
+    private var deferredListRefreshType: String? = null
+
     // Whether the connected server confirms DOCUMENT_UPDATE writes with a
     // DOCUMENT_UPDATE_RESULT frame (advertised in USER_LOGIN_RESULT). When true,
     // resyncDirtyDocuments clears is_dirty only on a confirmed ack; when false
@@ -470,6 +481,7 @@ class SyncOrchestrator @Inject constructor(
                         // window further and avoids needless overwrite churn.
                         processPendingOperations()
                         requestDeltaSync()
+                        replayDeferredListRefresh()
 
                         // Best-effort: flush any queued debug journal events.
                         // Read the flag fresh from DataStore (not the StateFlow)
@@ -820,11 +832,11 @@ class SyncOrchestrator @Inject constructor(
         AppLog.d(TAG, "Requesting document list refresh (type=$documentType)")
 
         if (!transport.isConnected()) {
-            AppLog.w(TAG, "DOC_TRACE listRefresh BAILED: not connected (type=$documentType)")
+            deferListRefresh(documentType, "not connected")
             return Result.Error(Exception("transport not connected"))
         }
         if (!transport.isUserAuthenticated()) {
-            AppLog.w(TAG, "DOC_TRACE listRefresh BAILED: not authenticated (type=$documentType)")
+            deferListRefresh(documentType, "not authenticated")
             return Result.Error(Exception("User not authenticated"))
         }
 
@@ -836,12 +848,32 @@ class SyncOrchestrator @Inject constructor(
 
         val sent = transport.sendMessage(message)
         if (!sent) {
-            AppLog.w(TAG, "DOC_TRACE listRefresh BAILED: sendMessage=false (type=$documentType)")
+            deferListRefresh(documentType, "sendMessage=false")
             return Result.Error(Exception("Failed to send document list refresh"))
         }
 
         AppLog.i(TAG, "DOC_TRACE listRefresh SENT (type=$documentType)")
         return Result.Success(Unit)
+    }
+
+    /** Remember a refresh the transport could not carry, for replay after auth. */
+    private fun deferListRefresh(documentType: String?, reason: String) {
+        AppLog.w(TAG, "DOC_TRACE listRefresh DEFERRED ($reason, type=$documentType)")
+        deferredListRefreshType = documentType
+        deferredListRefresh.set(true)
+    }
+
+    /**
+     * Replay a refresh that was deferred while the transport was down. Called
+     * once the user is authenticated, so the list the worker is looking at
+     * converges instead of showing whatever survived from the last session.
+     */
+    private suspend fun replayDeferredListRefresh() {
+        if (!deferredListRefresh.compareAndSet(true, false)) return
+        val documentType = deferredListRefreshType
+        deferredListRefreshType = null
+        AppLog.i(TAG, "DOC_TRACE listRefresh REPLAY (type=$documentType)")
+        requestDocumentListRefresh(documentType)
     }
 
     /**
@@ -1669,10 +1701,14 @@ class SyncOrchestrator @Inject constructor(
         val itemCount = if (message.data.isJsonArray) message.data.asJsonArray.size() else 0
         val deletedCount = message.deletedIds?.size ?: 0
         syncReceivedCounts.merge(message.entityType, itemCount, Int::plus)
-        AppLog.i(TAG, "SYNC_DATA entity=${message.entityType} upsert=$itemCount delete=$deletedCount fullSet=${message.fullSet}")
+        AppLog.i(
+            TAG,
+            "SYNC_DATA entity=${message.entityType} upsert=$itemCount delete=$deletedCount " +
+                "fullSet=${message.fullSet} visible=${message.visibleIds?.size ?: "n/a"}"
+        )
 
         try {
-            applySync(message.entityType, message.data, message.deletedIds, message.fullSet)
+            applySync(message.entityType, message.data, message.deletedIds, message.fullSet, message.visibleIds)
             updateEntitySyncStatus(message.entityType, SyncStatus.SUCCESS)
         } catch (e: Exception) {
             AppLog.e(TAG, "Failed to apply sync data for ${message.entityType}: ${e.message}", e)
@@ -1994,17 +2030,57 @@ class SyncOrchestrator @Inject constructor(
         entityType: String,
         data: com.google.gson.JsonElement,
         deletedIds: List<String>?,
-        fullSet: Boolean = false
+        fullSet: Boolean = false,
+        visibleIds: List<String>? = null
     ) {
         AppLog.d(TAG, "Applying sync for $entityType")
 
         when (entityType) {
             Constants.SyncEntity.USERS -> applyUserSync(data, deletedIds)
-            Constants.SyncEntity.DOCUMENTS -> applyDocumentSync(data, deletedIds, fullSet)
+            Constants.SyncEntity.DOCUMENTS -> applyDocumentSync(data, deletedIds, fullSet, visibleIds)
             Constants.SyncEntity.PRODUCTS -> applyProductSync(data, deletedIds)
             Constants.SyncEntity.CLIENTS -> applyClientSync(data, deletedIds)
             Constants.SyncEntity.WAREHOUSES -> applyWarehouseSync(data, deletedIds)
             Constants.SyncEntity.BOXES -> applyBoxSync(data, deletedIds, fullSet)
+        }
+    }
+
+    /**
+     * Delta-sync purge. `visibleIds` is the complete set of documents the server
+     * still considers in scope for this worker; anything cached outside it left
+     * the scope silently (a queue-head preview another worker took, a stage that
+     * advanced, an ERP ack) and a merge-only delta would never mention it again.
+     *
+     * Two classes of document are kept regardless, because losing them loses
+     * work rather than stale display data: one this device holds a confirmed
+     * stage lock on, and one carrying unsent local edits (dirty header/lines or
+     * queued outgoing operations). Those resolve on their own — the upload
+     * lands, or STAGE_COMPLETE returns "document not found" and
+     * purgeMissingDocument cleans up deliberately.
+     */
+    private suspend fun purgeDocumentsOutsideVisibleSet(visibleIds: List<String>) {
+        val cached = documentDao.getAllDocumentIds()
+        if (cached.isEmpty()) return
+
+        val keep = visibleIds.toMutableSet()
+        keep.addAll(heldStageLocks)
+        keep.addAll(documentDao.getLocallyModifiedDocumentIds())
+        keep.addAll(outgoingOperationRepository.getUnsentEntityIds())
+
+        val stale = cached.filterNot { it in keep }
+        if (stale.isEmpty()) return
+
+        AppLog.i(TAG, "DOC_TRACE delta purge: dropping $stale (visible=${visibleIds.size})")
+        stale.forEach { documentId ->
+            debugJournal.log(
+                eventType = ua.com.programmer.pick.data.debug.DebugEventType.DOC_DELETED_LOCAL,
+                message = "local document purged: no longer in the server visible set",
+                documentId = documentId
+            )
+            // Lines cascade with the document row, but the photo blobs live on
+            // the filesystem and have to go explicitly.
+            purgeLinePhotoFiles(documentId)
+            documentDao.deleteDocument(documentId)
         }
     }
 
@@ -2033,7 +2109,8 @@ class SyncOrchestrator @Inject constructor(
     private suspend fun applyDocumentSync(
         data: com.google.gson.JsonElement,
         deletedIds: List<String>?,
-        fullSet: Boolean
+        fullSet: Boolean,
+        visibleIds: List<String>? = null
     ) {
         if (!data.isJsonArray) return
 
@@ -2055,6 +2132,8 @@ class SyncOrchestrator @Inject constructor(
             } else {
                 documentDao.deleteDocumentsNotIn(receivedIds.toList())
             }
+        } else if (visibleIds != null) {
+            purgeDocumentsOutsideVisibleSet(visibleIds)
         }
 
         // v2 backend: DocumentLine.product_id arrives as an ERP external_id.

@@ -127,4 +127,22 @@ interface DocumentDao {
 
     @Query("DELETE FROM documents WHERE id NOT IN (:keepIds)")
     suspend fun deleteDocumentsNotIn(keepIds: List<String>)
+
+    @Query("SELECT id FROM documents")
+    suspend fun getAllDocumentIds(): List<String>
+
+    /**
+     * Ids of documents carrying unsent local work — a dirty header or any dirty
+     * line. The delta purge (SYNC_DATA `visible_ids`) must never drop these:
+     * the server saying "this is no longer in your scope" is not a reason to
+     * discard quantities the worker entered but hasn't uploaded yet.
+     */
+    @Query(
+        """
+        SELECT id FROM documents WHERE is_dirty = 1
+        UNION
+        SELECT DISTINCT document_id FROM document_lines WHERE is_dirty = 1
+        """
+    )
+    suspend fun getLocallyModifiedDocumentIds(): List<String>
 }

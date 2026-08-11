@@ -44,6 +44,7 @@ class MessageParser @Inject constructor(
         private const val FIELD_DATA = "data"
         private const val FIELD_DELETED_IDS = "deleted_ids"
         private const val FIELD_FULL_SET = "full_set"
+        private const val FIELD_VISIBLE_IDS = "visible_ids"
         private const val FIELD_SYNC_ID = "sync_id"
         private const val FIELD_DOCUMENT_ID = "document_id"
         private const val FIELD_STATE = "state"
@@ -394,7 +395,12 @@ class MessageParser @Inject constructor(
             entityType = payload.get(FIELD_ENTITY_TYPE)?.asString ?: return null,
             data = data,
             deletedIds = payload.get(FIELD_DELETED_IDS)?.asJsonArray?.map { it.asString },
-            fullSet = payload.get(FIELD_FULL_SET)?.let { if (it.isJsonNull) false else it.asBoolean } ?: false
+            fullSet = payload.get(FIELD_FULL_SET)?.let { if (it.isJsonNull) false else it.asBoolean } ?: false,
+            // Absent or null stays null (no purge info); an explicit [] must
+            // survive as an empty list, which means "purge everything".
+            visibleIds = payload.get(FIELD_VISIBLE_IDS)
+                ?.takeIf { !it.isJsonNull }
+                ?.asJsonArray?.map { it.asString }
         )
     }
 

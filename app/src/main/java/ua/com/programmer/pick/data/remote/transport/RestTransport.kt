@@ -358,6 +358,7 @@ class RestTransport @Inject constructor(
                     data = e.data ?: JsonNull.INSTANCE,
                     deletedIds = e.deletedIds,
                     fullSet = e.fullSet,
+                    visibleIds = e.visibleIds,
                 ),
             )
         }

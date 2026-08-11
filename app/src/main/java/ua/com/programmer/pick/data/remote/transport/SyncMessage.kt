@@ -205,6 +205,14 @@ sealed class SyncMessage {
      * deleted so the UI reflects server-side removals). Absent = false
      * (safer default). See the server's SyncDataPayload doc for the full
      * invariant.
+     *
+     * visibleIds is the delta counterpart of fullSet: the complete set of ids
+     * of this entity type the server still considers in scope, independent of
+     * what `data` carries. null = no purge information (keep everything);
+     * an empty list = purge everything. It is what lets the device drop a
+     * document that silently left its scope — a queue-head preview another
+     * worker took, a stage that advanced, an ERP ack — which a pure delta
+     * never mentions again.
      */
     data class SyncData(
         override val id: String,
@@ -212,7 +220,8 @@ sealed class SyncMessage {
         val entityType: String,
         val data: JsonElement,
         val deletedIds: List<String>? = null,
-        val fullSet: Boolean = false
+        val fullSet: Boolean = false,
+        val visibleIds: List<String>? = null
     ) : SyncMessage() {
         override val type = MessageType.SYNC_DATA
     }

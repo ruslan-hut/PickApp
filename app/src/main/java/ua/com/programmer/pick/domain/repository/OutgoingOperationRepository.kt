@@ -47,6 +47,13 @@ interface OutgoingOperationRepository {
      * Returns the number of operations deleted.
      */
     suspend fun deletePendingOperationsForEntity(entityId: String): Int
+
+    /**
+     * Entity ids with work still queued for upload (pending, retrying or
+     * in flight). Used by the delta purge to refuse to drop a document whose
+     * edits haven't reached the server yet.
+     */
+    suspend fun getUnsentEntityIds(): List<String>
 }
 
 data class OutgoingOperation(

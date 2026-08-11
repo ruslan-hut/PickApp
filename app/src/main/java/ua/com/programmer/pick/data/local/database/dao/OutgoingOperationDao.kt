@@ -56,6 +56,9 @@ interface OutgoingOperationDao {
     @Query("DELETE FROM outgoing_operations WHERE entity_id = :entityId AND status IN ('PENDING', 'RETRYING', 'PROCESSING')")
     suspend fun deletePendingOperationsForEntity(entityId: String): Int
 
+    @Query("SELECT DISTINCT entity_id FROM outgoing_operations WHERE status IN ('PENDING', 'RETRYING', 'PROCESSING')")
+    suspend fun getUnsentEntityIds(): List<String>
+
     @Query("DELETE FROM outgoing_operations WHERE status = 'COMPLETED'")
     suspend fun deleteCompletedOperations()
 
