@@ -30,6 +30,12 @@ data class DocumentDto(
     @SerializedName("client_name")
     val clientName: String?,
 
+    // Client's preferred communication language, a short ERP-owned label
+    // (e.g. "Ukrainian"). Display-only — the worker uses it to pick the right
+    // paperwork for the order.
+    @SerializedName("client_language")
+    val clientLanguage: String? = null,
+
     @SerializedName("warehouse_id")
     val warehouseId: String?,
 

@@ -91,19 +91,32 @@ fun DocumentListItem(
                 DocumentStateBadge(state = document.state)
             }
 
-            // Client name
-            if (!document.clientName.isNullOrBlank()) {
-                Text(
-                    text = document.clientName,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (isComplete) {
-                        MaterialTheme.colorScheme.onSecondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+            // Client name + the client's preferred language, which tells the
+            // worker which paperwork/labels the order needs.
+            if (!document.clientName.isNullOrBlank() || !document.clientLanguage.isNullOrBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (!document.clientName.isNullOrBlank()) {
+                        Text(
+                            text = document.clientName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (isComplete) {
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                    }
+                    if (!document.clientLanguage.isNullOrBlank()) {
+                        ClientLanguageChip(language = document.clientLanguage)
+                    }
+                }
             }
 
             // Warehouse name
@@ -175,6 +188,28 @@ fun DocumentListItem(
                 )
             }
         }
+    }
+}
+
+/** Compact badge carrying the client's preferred language label from the ERP. */
+@Composable
+private fun ClientLanguageChip(
+    language: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = ChipShape,
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Text(
+            text = language,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
     }
 }
 

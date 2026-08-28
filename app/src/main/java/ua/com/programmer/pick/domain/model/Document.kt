@@ -9,6 +9,7 @@ data class Document(
     val state: DocumentState,
     val clientId: String?,
     val clientName: String?,
+    val clientLanguage: String? = null,
     val warehouseId: String?,
     val warehouseName: String?,
     val notes: String?,

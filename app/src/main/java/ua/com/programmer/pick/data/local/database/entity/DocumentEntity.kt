@@ -40,6 +40,9 @@ data class DocumentEntity(
     @ColumnInfo(name = "client_name")
     val clientName: String?,
 
+    @ColumnInfo(name = "client_language")
+    val clientLanguage: String? = null,
+
     @ColumnInfo(name = "warehouse_id")
     val warehouseId: String?,
 

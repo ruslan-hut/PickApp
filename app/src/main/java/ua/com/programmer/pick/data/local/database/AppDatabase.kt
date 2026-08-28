@@ -51,7 +51,7 @@ import ua.com.programmer.pick.data.local.database.entity.WarehouseLocationEntity
         DocumentBoxEntity::class,
         DebugJournalEntity::class
     ],
-    version = 17, // Version 17: document_line_barcodes + document_lines.mark_code
+    version = 18, // Version 18: documents.client_language
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -286,6 +286,15 @@ abstract class AppDatabase : RoomDatabase() {
                 """.trimIndent())
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_document_line_barcodes_barcode ON document_line_barcodes (barcode)")
                 db.execSQL("ALTER TABLE document_lines ADD COLUMN mark_code TEXT DEFAULT NULL")
+            }
+        }
+
+        // Client's preferred communication language, an ERP-owned display label
+        // carried on the document header. Backfilled from the server on the next
+        // document sync, so an empty column on existing rows is fine.
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE documents ADD COLUMN client_language TEXT DEFAULT NULL")
             }
         }
 
