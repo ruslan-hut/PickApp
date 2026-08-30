@@ -73,6 +73,7 @@ import kotlinx.coroutines.delay
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.domain.model.Box as DomainBox
 import ua.com.programmer.pick.domain.model.DocumentBox
+import ua.com.programmer.pick.presentation.common.ClientLanguageChip
 import ua.com.programmer.pick.presentation.common.EmptyState
 import ua.com.programmer.pick.presentation.common.PickAppBar
 import ua.com.programmer.pick.presentation.common.PickElevatedCard
@@ -445,6 +446,7 @@ fun DocumentDetailScreen(
                                         item {
                                             DocumentHeaderCard(
                                                 clientName = uiState.document?.clientName ?: "",
+                                                clientLanguage = uiState.document?.clientLanguage,
                                                 warehouseName = uiState.document?.warehouseName ?: "",
                                                 notes = uiState.document?.notes,
                                                 totalPlanned = uiState.document?.totalPlanned ?: 0.0,
@@ -610,6 +612,7 @@ private fun PinnedProgressBar(
 @Composable
 private fun DocumentHeaderCard(
     clientName: String,
+    clientLanguage: String?,
     warehouseName: String,
     notes: String?,
     totalPlanned: Double,
@@ -658,18 +661,37 @@ private fun DocumentHeaderCard(
                 Spacer(modifier = Modifier.height(4.dp))
             }
 
-            // Warehouse name
-            if (warehouseName.isNotBlank()) {
-                Text(
-                    text = warehouseName,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = when {
-                        filterActive -> MaterialTheme.colorScheme.onTertiaryContainer
-                        isOverCollected -> MaterialTheme.colorScheme.onErrorContainer
-                        isComplete -> MaterialTheme.colorScheme.onSecondaryContainer
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+            // Warehouse name + the client's preferred language, which tells the
+            // worker which paperwork/labels the order needs.
+            if (warehouseName.isNotBlank() || !clientLanguage.isNullOrBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (warehouseName.isNotBlank()) {
+                        Text(
+                            text = warehouseName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = when {
+                                filterActive -> MaterialTheme.colorScheme.onTertiaryContainer
+                                isOverCollected -> MaterialTheme.colorScheme.onErrorContainer
+                                isComplete -> MaterialTheme.colorScheme.onSecondaryContainer
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
                     }
-                )
+                    if (!clientLanguage.isNullOrBlank()) {
+                        ClientLanguageChip(
+                            language = clientLanguage,
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(12.dp))
             }
 

@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.domain.model.Document
 import ua.com.programmer.pick.domain.model.DocumentState
+import ua.com.programmer.pick.presentation.common.ClientLanguageChip
 import ua.com.programmer.pick.ui.theme.CardShape
 import ua.com.programmer.pick.ui.theme.ChipShape
 
@@ -88,35 +89,30 @@ fun DocumentListItem(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                DocumentStateBadge(state = document.state)
-            }
-
-            // Client name + the client's preferred language, which tells the
-            // worker which paperwork/labels the order needs.
-            if (!document.clientName.isNullOrBlank() || !document.clientLanguage.isNullOrBlank()) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (!document.clientName.isNullOrBlank()) {
-                        Text(
-                            text = document.clientName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (isComplete) {
-                                MaterialTheme.colorScheme.onSecondaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                    }
                     if (!document.clientLanguage.isNullOrBlank()) {
                         ClientLanguageChip(language = document.clientLanguage)
                     }
+                    DocumentStateBadge(state = document.state)
                 }
+            }
+
+            // Client name
+            if (!document.clientName.isNullOrBlank()) {
+                Text(
+                    text = document.clientName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (isComplete) {
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
 
             // Warehouse name
@@ -188,28 +184,6 @@ fun DocumentListItem(
                 )
             }
         }
-    }
-}
-
-/** Compact badge carrying the client's preferred language label from the ERP. */
-@Composable
-private fun ClientLanguageChip(
-    language: String,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier,
-        shape = ChipShape,
-        color = MaterialTheme.colorScheme.surfaceVariant
-    ) {
-        Text(
-            text = language,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-        )
     }
 }
 
