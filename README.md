@@ -46,7 +46,8 @@ PickApp/
 │   ├── app-develop-plan.md        # MVP Product Specification & Frozen Business Scope
 │   ├── backend-spec.md            # REST API Contracts & ERP Integration Guidelines
 │   ├── ownership-model-plan.md    # Document Concurrency, Policy, & Bottleneck Analysis
-│   └── sync-protocol.md           # REST Sync Message Envelope Schemas
+│   ├── sync-protocol.md           # REST Sync Message Envelope Schemas
+│   └── wms-guided-tasks-plan.md   # WMS guided tasks: app modification plan
 ├── CLAUDE.md                      # Developer Reference for Build, Test, and Formatting Commands
 ├── LICENSE                        # Project MIT License
 └── README.md                      # Repository Entry Point (This Document)
@@ -70,6 +71,8 @@ For in-depth technical references and implementation details, check out the spec
     How an accounting system feeds the server: `external_id` contract, reference data, per-type capability flags, document fields and what each one changes on the terminal, e-excise (Е-Акциз) line barcodes, and result retrieval.
 6.  **[Чекліст інтегратора](docs/integration/1c-checklist.md)** (Ukrainian)  
     Step-by-step launch checklist for a new 1C integration, including the e-excise acceptance tests.
+7.  **[WMS Guided Tasks Plan](docs/wms-guided-tasks-plan.md)**  
+    Modification plan for rendering the server-driven WMS guided tasks (cell recount, placement, replenishment, addressed Collect and receiving): protocol contract, design rules, phased work items, test matrix.
 
 ---
 
