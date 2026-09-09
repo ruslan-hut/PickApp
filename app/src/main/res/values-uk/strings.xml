@@ -282,4 +282,36 @@
     <string name="no_boxes_for_pickup">Немає коробок для забирання</string>
     <string name="no_boxes_for_delivery">Немає коробок для доставки</string>
 
+
+    <!-- Керовані задачі WMS. Усі тексти всередині кроку надходять із сервера
+         мовою орендаря; тут лише обрамлення застосунку. -->
+    <string name="task_title">Задача</string>
+    <string name="task_unfinished_title">Незавершені задачі</string>
+    <string name="task_continue">Продовжити</string>
+    <string name="task_cancel_title">Скасувати задачу</string>
+    <string name="task_cancel_message">Задачу буде закрито, блокування знято. Нічого не збережеться.</string>
+    <string name="task_no_stock_confirm">Записати весь очікуваний залишок як відсутній на цій комірці?</string>
+    <string name="task_enter_quantity">Кількість</string>
+    <string name="task_enter_cell">Ввести адресу</string>
+    <string name="task_enter_document">Ввести номер документа</string>
+    <string name="task_manual_entry">Ввести вручну</string>
+    <string name="task_scan_prompt">Скануйте код</string>
+    <string name="task_scan_cell_prompt">Скануйте етикетку комірки</string>
+    <string name="task_scan_document_prompt">Скануйте або введіть документ</string>
+    <string name="task_offline_hint">Немає зв\'язку — керовані задачі потребують сервера</string>
+    <string name="task_retrying">Дія не дійшла до сервера</string>
+    <string name="task_retry">Повторити</string>
+    <string name="task_started_just_now">щойно</string>
+    <string name="task_started_minutes_fmt">%1$d хв тому</string>
+    <string name="task_started_hours_fmt">%1$d год тому</string>
+    <string name="task_started_ago_fmt">%1$s · розпочато %2$s</string>
+    <string name="task_error_feature_disabled">Керовані задачі не увімкнені для цього складу</string>
+    <string name="task_error_guided_off">Цей документ тепер опрацьовується зі списку</string>
+    <string name="task_error_no_warehouse">Вам не призначено склад</string>
+    <string name="task_error_not_found">Задачі більше не існує</string>
+    <string name="task_error_forbidden">Цей тип задачі вам не призначено</string>
+    <string name="task_error_wrong_state">Документ недоступний для цієї задачі</string>
+    <string name="task_error_demo">Керовані задачі недоступні в демо-режимі</string>
+    <string name="task_error_generic">Не вдалося виконати дію задачі</string>
+
 </resources>

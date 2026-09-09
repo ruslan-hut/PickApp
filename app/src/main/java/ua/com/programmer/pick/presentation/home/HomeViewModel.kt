@@ -19,6 +19,7 @@ import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.remote.transport.AvailableDocumentTypeDto
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.domain.model.AvailableDocumentType
+import ua.com.programmer.pick.domain.repository.GuidedTaskRepository
 import ua.com.programmer.pick.domain.repository.UserRepository
 import javax.inject.Inject
 
@@ -28,6 +29,7 @@ class HomeViewModel @Inject constructor(
     private val networkMonitor: NetworkMonitor,
     private val syncOrchestrator: SyncOrchestrator,
     private val appPreferences: AppPreferences,
+    private val guidedTaskRepository: GuidedTaskRepository,
     private val gson: Gson
 ) : ViewModel() {
 
@@ -41,6 +43,7 @@ class HomeViewModel @Inject constructor(
         observeNetworkState()
         loadCurrentUser()
         loadAvailableDocumentTypes()
+        observeOpenTasks()
         observeAuthState()
     }
 
@@ -112,6 +115,42 @@ class HomeViewModel @Inject constructor(
             }
         }
     }
+
+    private fun observeOpenTasks() {
+        viewModelScope.launch {
+            guidedTaskRepository.openTasks.collect { tasks ->
+                _uiState.update { it.copy(openTasks = tasks) }
+            }
+        }
+    }
+
+    /**
+     * Re-read the worker's unfinished tasks. Called when Home resumes, so a
+     * task the worker walked away from — or one an admin cancelled — shows the
+     * right state without a re-login. Nothing about a task is persisted (D6).
+     */
+    fun refreshOpenTasks() {
+        val state = _uiState.value
+        if (!state.isOnline) return
+        // The endpoint exists only where the addressing module is on. A guided
+        // type in the login catalog is the one client-side signal that it is —
+        // without it, skip the call rather than collect a 403 on every resume.
+        if (state.availableDocumentTypes.none { it.isGuided } && state.openTasks.isEmpty()) return
+        viewModelScope.launch {
+            guidedTaskRepository.refreshOpen()
+        }
+    }
+
+    fun cancelTask(taskId: String) {
+        viewModelScope.launch {
+            guidedTaskRepository.cancel(taskId)
+            guidedTaskRepository.refreshOpen()
+        }
+    }
+
+    /** Description of a task type from the login catalog; the code is the fallback. */
+    fun taskTypeLabel(code: String): String =
+        _uiState.value.availableDocumentTypes.firstOrNull { it.code == code }?.description ?: code
 
     /**
      * Observe transport auth state. If the user was authenticated and then

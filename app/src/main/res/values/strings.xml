@@ -282,4 +282,36 @@
     <string name="no_boxes_for_pickup">No boxes available for pickup</string>
     <string name="no_boxes_for_delivery">No boxes available for delivery</string>
 
+
+    <!-- Guided WMS tasks. Everything the worker reads inside a step comes from
+         the server in the tenant's locale; these are the chrome around it. -->
+    <string name="task_title">Task</string>
+    <string name="task_unfinished_title">Unfinished tasks</string>
+    <string name="task_continue">Continue</string>
+    <string name="task_cancel_title">Cancel task</string>
+    <string name="task_cancel_message">The task will be closed and its locks released. Nothing will be saved.</string>
+    <string name="task_no_stock_confirm">Record the whole expected balance as missing on this shelf?</string>
+    <string name="task_enter_quantity">Quantity</string>
+    <string name="task_enter_cell">Enter address</string>
+    <string name="task_enter_document">Enter document number</string>
+    <string name="task_manual_entry">Enter manually</string>
+    <string name="task_scan_prompt">Scan the code</string>
+    <string name="task_scan_cell_prompt">Scan the shelf label</string>
+    <string name="task_scan_document_prompt">Scan or enter the document</string>
+    <string name="task_offline_hint">No connection — guided tasks need the server</string>
+    <string name="task_retrying">The action did not reach the server</string>
+    <string name="task_retry">Retry</string>
+    <string name="task_started_just_now">just now</string>
+    <string name="task_started_minutes_fmt">%1$d min ago</string>
+    <string name="task_started_hours_fmt">%1$d h ago</string>
+    <string name="task_started_ago_fmt">%1$s · started %2$s</string>
+    <string name="task_error_feature_disabled">Guided tasks are not enabled for this warehouse</string>
+    <string name="task_error_guided_off">This document is now worked from the list</string>
+    <string name="task_error_no_warehouse">No warehouse assigned to you</string>
+    <string name="task_error_not_found">The task no longer exists</string>
+    <string name="task_error_forbidden">This task type is not assigned to you</string>
+    <string name="task_error_wrong_state">The document is not available for this task</string>
+    <string name="task_error_demo">Guided tasks are not available in demo mode</string>
+    <string name="task_error_generic">The task action failed</string>
+
 </resources>

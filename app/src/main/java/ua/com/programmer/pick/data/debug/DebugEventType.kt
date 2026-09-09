@@ -77,6 +77,21 @@ object DebugEventType {
     // this device, intentional but worth flagging. Payload carries the
     // dropped quantities so admins can decide whether to reconcile.
     const val LOCK_LOST_EDIT_DROPPED = "LOCK_LOST_EDIT_DROPPED"
+    // Guided WMS tasks. documentId carries the task's document external_id on
+    // a document-bound task and "task:<id>" otherwise, so the Debug Journal's
+    // per-document filter groups a task's rows either way.
+    const val TASK_START = "TASK_START"
+    const val TASK_ACTION_SENT = "TASK_ACTION_SENT"
+    const val TASK_ACTION_RESULT = "TASK_ACTION_RESULT"
+    const val TASK_ACTION_FAILED = "TASK_ACTION_FAILED"
+    const val TASK_ACTION_RETRY = "TASK_ACTION_RETRY"
+    const val TASK_CANCEL = "TASK_CANCEL"
+    const val TASK_CLOSED = "TASK_CLOSED"
+    const val TASK_LINE_UPDATES_APPLIED = "TASK_LINE_UPDATES_APPLIED"
+    // A scan arrived while an action was in flight or the device was offline,
+    // and was dropped rather than queued.
+    const val TASK_SCAN_DROPPED = "TASK_SCAN_DROPPED"
+
     const val JOURNAL_CONFIG_CHANGED = "JOURNAL_CONFIG_CHANGED"
     // Cold-start marker. The journal writes nothing at the moment a process
     // dies, so without this row a crash/OOM-kill is invisible — the export

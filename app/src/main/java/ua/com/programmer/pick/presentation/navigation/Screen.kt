@@ -19,7 +19,21 @@ sealed class Screen(val route: String) {
     data object ScanLogin : Screen("scan_login")
     data object DebugJournal : Screen("debug_journal")
 
+    /**
+     * The generic guided-task screen. Exactly one argument is meaningful per
+     * navigation: [TASK_ID_ARG] resumes an open task, [TASK_TYPE_ARG] starts a
+     * system task type, [DOCUMENT_ID_ARG] starts (or resumes) the task bound to
+     * a document.
+     */
+    data object Task : Screen("task?taskId={taskId}&type={type}&documentId={documentId}") {
+        fun byTaskId(taskId: String) = "task?taskId=$taskId&type=&documentId="
+        fun byType(type: String) = "task?taskId=&type=$type&documentId="
+        fun byDocument(documentId: String) = "task?taskId=&type=&documentId=$documentId"
+    }
+
     companion object {
         const val DOCUMENT_ID_ARG = "documentId"
+        const val TASK_ID_ARG = "taskId"
+        const val TASK_TYPE_ARG = "type"
     }
 }

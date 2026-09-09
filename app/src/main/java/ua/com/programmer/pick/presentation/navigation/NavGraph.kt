@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -47,6 +48,7 @@ import ua.com.programmer.pick.presentation.settings.ScannerTestScreen
 import ua.com.programmer.pick.presentation.settings.SettingsScreen
 import ua.com.programmer.pick.presentation.splash.SplashScreen
 import ua.com.programmer.pick.presentation.splash.SplashViewModel
+import ua.com.programmer.pick.presentation.task.TaskScreen
 
 @Composable
 fun PickNavGraph(
@@ -143,6 +145,13 @@ fun PickNavGraph(
                     }
                 }
 
+                // Nothing about a task is persisted (D6): the unfinished-task
+                // list is re-read from the server every time Home comes up.
+                LifecycleResumeEffect(Unit) {
+                    viewModel.refreshOpenTasks()
+                    onPauseOrDispose {}
+                }
+
                 HomeScreen(
                     uiState = uiState,
                     onLogoutClick = {
@@ -152,6 +161,11 @@ fun PickNavGraph(
                         }
                     },
                     onDocumentTypeClick = { docType ->
+                        // A guided type is not a document list: it starts a task.
+                        if (docType.isGuided) {
+                            navController.navigate(Screen.Task.byType(docType.code))
+                            return@HomeScreen
+                        }
                         viewModel.setSelectedDocumentType(docType.code)
                         navController.navigate(Screen.Documents.route) {
                             popUpTo(navController.graph.findStartDestination().id) {
@@ -163,6 +177,35 @@ fun PickNavGraph(
                     },
                     onCourierClick = {
                         navController.navigate(Screen.Courier.route)
+                    },
+                    onContinueTask = { task ->
+                        navController.navigate(Screen.Task.byTaskId(task.id))
+                    },
+                    onCancelTask = { task -> viewModel.cancelTask(task.id) },
+                    taskTypeLabel = viewModel::taskTypeLabel
+                )
+            }
+
+            composable(
+                route = Screen.Task.route,
+                arguments = listOf(
+                    navArgument(Screen.TASK_ID_ARG) { defaultValue = "" },
+                    navArgument(Screen.TASK_TYPE_ARG) { defaultValue = "" },
+                    navArgument(Screen.DOCUMENT_ID_ARG) { defaultValue = "" }
+                )
+            ) {
+                TaskScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateHome = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Home.route) { inclusive = true }
+                        }
+                    },
+                    onNavigateToDocuments = {
+                        navController.navigate(Screen.Documents.route) {
+                            popUpTo(Screen.Home.route)
+                            launchSingleTop = true
+                        }
                     }
                 )
             }

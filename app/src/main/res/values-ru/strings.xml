@@ -267,4 +267,36 @@
     <string name="no_boxes_for_pickup">Нет коробок для забора</string>
     <string name="no_boxes_for_delivery">Нет коробок для доставки</string>
 
+
+    <!-- Управляемые задачи WMS. Все тексты внутри шага приходят с сервера на
+         языке арендатора; здесь только обрамление приложения. -->
+    <string name="task_title">Задача</string>
+    <string name="task_unfinished_title">Незавершённые задачи</string>
+    <string name="task_continue">Продолжить</string>
+    <string name="task_cancel_title">Отменить задачу</string>
+    <string name="task_cancel_message">Задача будет закрыта, блокировки сняты. Ничего не сохранится.</string>
+    <string name="task_no_stock_confirm">Записать весь ожидаемый остаток как отсутствующий в этой ячейке?</string>
+    <string name="task_enter_quantity">Количество</string>
+    <string name="task_enter_cell">Ввести адрес</string>
+    <string name="task_enter_document">Ввести номер документа</string>
+    <string name="task_manual_entry">Ввести вручную</string>
+    <string name="task_scan_prompt">Отсканируйте код</string>
+    <string name="task_scan_cell_prompt">Отсканируйте этикетку ячейки</string>
+    <string name="task_scan_document_prompt">Отсканируйте или введите документ</string>
+    <string name="task_offline_hint">Нет связи — управляемым задачам нужен сервер</string>
+    <string name="task_retrying">Действие не дошло до сервера</string>
+    <string name="task_retry">Повторить</string>
+    <string name="task_started_just_now">только что</string>
+    <string name="task_started_minutes_fmt">%1$d мин назад</string>
+    <string name="task_started_hours_fmt">%1$d ч назад</string>
+    <string name="task_started_ago_fmt">%1$s · начата %2$s</string>
+    <string name="task_error_feature_disabled">Управляемые задачи не включены для этого склада</string>
+    <string name="task_error_guided_off">Этот документ теперь обрабатывается из списка</string>
+    <string name="task_error_no_warehouse">Вам не назначен склад</string>
+    <string name="task_error_not_found">Задачи больше не существует</string>
+    <string name="task_error_forbidden">Этот тип задачи вам не назначен</string>
+    <string name="task_error_wrong_state">Документ недоступен для этой задачи</string>
+    <string name="task_error_demo">Управляемые задачи недоступны в демо-режиме</string>
+    <string name="task_error_generic">Не удалось выполнить действие задачи</string>
+
 </resources>
