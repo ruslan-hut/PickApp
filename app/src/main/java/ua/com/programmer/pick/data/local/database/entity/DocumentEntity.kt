@@ -49,6 +49,12 @@ data class DocumentEntity(
     @ColumnInfo(name = "warehouse_name")
     val warehouseName: String?,
 
+    // "guided" when the warehouse works this Collect-stage document as a WMS
+    // task. Server-computed on every list load, so the tenant's emergency
+    // switch flips the detail screen on the next refresh.
+    @ColumnInfo(name = "collect_mode")
+    val collectMode: String? = null,
+
     @ColumnInfo(name = "notes")
     val notes: String?,
 

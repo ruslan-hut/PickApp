@@ -102,6 +102,36 @@ interface DocumentLineDao {
     @Query("UPDATE document_lines SET notes = :notes, is_dirty = 1 WHERE id = :lineId")
     suspend fun updateLineNotes(lineId: String, notes: String?): Int
 
+    // Guided-task line updates. The values are server-authored (the task engine
+    // already mirrored the confirmed line into the document), so is_dirty stays
+    // untouched — arming it would make resyncDirtyDocuments push the server's
+    // own numbers back as worker edits. Never use updateActualQuantity /
+    // updateLineCompleted for these. Returns rows affected; 0 means the key
+    // matched no line.
+    @Query("""
+        UPDATE document_lines
+        SET actual_quantity = :actualQuantity, is_completed = :isCompleted
+        WHERE document_id = :documentId AND line_key = :lineKey
+    """)
+    suspend fun updateActualByLineKey(
+        documentId: String,
+        lineKey: String,
+        actualQuantity: Double,
+        isCompleted: Boolean
+    ): Int
+
+    @Query("""
+        UPDATE document_lines
+        SET actual_quantity = :actualQuantity, is_completed = :isCompleted
+        WHERE document_id = :documentId AND line_number = :lineNumber
+    """)
+    suspend fun updateActualByLineNumber(
+        documentId: String,
+        lineNumber: Int,
+        actualQuantity: Double,
+        isCompleted: Boolean
+    ): Int
+
     // Records a freshly captured photo's local cache path and marks it awaiting
     // upload. photo_path / photo_pending are device-local — not synced.
     @Query("UPDATE document_lines SET photo_path = :photoPath, photo_pending = 1 WHERE id = :lineId")

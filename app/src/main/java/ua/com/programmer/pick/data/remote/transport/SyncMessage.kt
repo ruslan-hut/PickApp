@@ -1,6 +1,7 @@
 package ua.com.programmer.pick.data.remote.transport
 
 import com.google.gson.JsonElement
+import ua.com.programmer.pick.data.remote.dto.DeviceDto
 
 /**
  * Types of messages in sync protocol
@@ -69,6 +70,15 @@ enum class MessageType {
     // request to drop dirty edits and send STAGE_UNLOCK; the admin's HTTP
     // request completes when the unlock lands within 10s.
     FORCE_RELEASE_REQUEST,
+
+    // Guided WMS tasks: the server owns the step machine, the device renders it.
+    TASK_START,
+    TASK_GET,
+    TASK_OPEN,
+    TASK_ACTION,
+    TASK_CANCEL,
+    TASK_RESULT,
+    TASK_OPEN_RESULT,
 
     // Debug journal
     DEBUG_EVENT_BATCH,
@@ -147,6 +157,9 @@ sealed class SyncMessage {
         val offlineHash: String? = null,
         val tenantId: String? = null,
         val availableDocumentTypes: List<AvailableDocumentTypeDto>? = null,
+        // The worker's unfinished guided tasks. Null when the WMS addressing
+        // module is off for the tenant / warehouse.
+        val openTasks: List<DeviceDto.OpenTask>? = null,
         val debugJournalEnabled: Boolean? = null,
         // ERP external_ids of documents this (user, device) pair already
         // holds an in-process stage lock for. Populated by the v2 backend
@@ -687,6 +700,99 @@ sealed class SyncMessage {
     }
 
     // ============================================
+    // Guided Task Messages
+    // ============================================
+
+    /**
+     * Start a guided task: by [type] for a system task type (CELL_RECOUNT, …)
+     * or by [documentId] (an ERP external_id) for a document-bound flow. The
+     * server resumes the worker's already-open task of that type / document
+     * instead of creating a second one.
+     */
+    data class TaskStart(
+        override val id: String,
+        override val timestamp: String,
+        val taskType: String? = null,
+        val documentId: String? = null
+    ) : SyncMessage() {
+        override val type = MessageType.TASK_START
+    }
+
+    /** Fetch the current step of a task (resume after a restart). */
+    data class TaskGet(
+        override val id: String,
+        override val timestamp: String,
+        val taskId: String
+    ) : SyncMessage() {
+        override val type = MessageType.TASK_GET
+    }
+
+    /** Fetch the worker's unfinished tasks with their current steps. */
+    data class TaskOpen(
+        override val id: String,
+        override val timestamp: String
+    ) : SyncMessage() {
+        override val type = MessageType.TASK_OPEN
+    }
+
+    /**
+     * One action on the shown step. [operationId] is a fresh UUID per action,
+     * reused verbatim on retry — a repeat replays the original response with
+     * `replayed = true` and never applies twice. [stepId] must be the step the
+     * device is showing; a stale one is ignored and the current step comes back.
+     */
+    data class TaskAction(
+        override val id: String,
+        override val timestamp: String,
+        val taskId: String,
+        val operationId: String,
+        val stepId: String,
+        val action: String,
+        val value: String? = null,
+        val quantity: Long? = null
+    ) : SyncMessage() {
+        override val type = MessageType.TASK_ACTION
+    }
+
+    /** Abandon a task; the server releases its cell / line locks. */
+    data class TaskCancel(
+        override val id: String,
+        override val timestamp: String,
+        val taskId: String,
+        val operationId: String? = null
+    ) : SyncMessage() {
+        override val type = MessageType.TASK_CANCEL
+    }
+
+    /**
+     * Result of a single-task call. On failure [errorCode] carries the server
+     * envelope code (FEATURE_DISABLED, GUIDED_OFF, LOCKED, …) so the caller can
+     * branch without parsing the message.
+     */
+    data class TaskResult(
+        override val id: String,
+        override val timestamp: String,
+        val success: Boolean,
+        val response: DeviceDto.TaskResponse? = null,
+        val errorCode: String? = null,
+        val errorMessage: String? = null
+    ) : SyncMessage() {
+        override val type = MessageType.TASK_RESULT
+    }
+
+    /** Result of TASK_OPEN: every unfinished task with its current step. */
+    data class TaskOpenResult(
+        override val id: String,
+        override val timestamp: String,
+        val success: Boolean,
+        val tasks: List<DeviceDto.TaskResponse> = emptyList(),
+        val errorCode: String? = null,
+        val errorMessage: String? = null
+    ) : SyncMessage() {
+        override val type = MessageType.TASK_OPEN_RESULT
+    }
+
+    // ============================================
     // Debug Journal Messages
     // ============================================
 
@@ -756,5 +862,8 @@ data class AvailableDocumentTypeDto(
     val description: String,
     val allowsOverPlan: Boolean? = null,
     val allowsExtraLines: Boolean? = null,
-    val requiresPlan: Boolean? = null
+    val requiresPlan: Boolean? = null,
+    // "guided" marks a WMS task type rather than a document type. Null on a
+    // server without the addressing module.
+    val mode: String? = null
 )

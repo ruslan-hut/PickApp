@@ -4,6 +4,9 @@ data class DocumentLine(
     val id: String,
     val documentId: String,
     val lineNumber: Int,
+    // The ERP's own stable line id, when supplied. Guided-task line updates
+    // address a line by it; classic flows use lineNumber.
+    val lineKey: String? = null,
     val productId: String,
     val productCode: String,
     val productName: String,

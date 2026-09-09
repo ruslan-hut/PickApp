@@ -118,6 +118,29 @@ interface DeviceApi {
         @Path("lineNumber") lineNumber: Int,
     ): Response<ApiEnvelope<DeviceDto.LinePhotoUploadUrlResult>>
 
+    // --- Guided tasks (WMS addressing module) ---
+
+    @POST("device/tasks")
+    suspend fun taskStart(@Body request: DeviceDto.TaskStartRequest): Response<ApiEnvelope<DeviceDto.TaskResponse>>
+
+    @GET("device/tasks/open")
+    suspend fun taskOpen(): Response<ApiEnvelope<List<DeviceDto.TaskResponse>>>
+
+    @GET("device/tasks/{id}")
+    suspend fun taskGet(@Path("id") taskId: String): Response<ApiEnvelope<DeviceDto.TaskResponse>>
+
+    @POST("device/tasks/{id}/actions")
+    suspend fun taskAction(
+        @Path("id") taskId: String,
+        @Body request: DeviceDto.TaskActionRequest,
+    ): Response<ApiEnvelope<DeviceDto.TaskResponse>>
+
+    @POST("device/tasks/{id}/cancel")
+    suspend fun taskCancel(
+        @Path("id") taskId: String,
+        @Body request: DeviceDto.TaskCancelRequest,
+    ): Response<ApiEnvelope<DeviceDto.TaskResponse>>
+
     // --- Diagnostics ---
 
     @POST("device/error-report")

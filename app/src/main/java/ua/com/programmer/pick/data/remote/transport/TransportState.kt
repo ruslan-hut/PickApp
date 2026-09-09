@@ -1,5 +1,7 @@
 package ua.com.programmer.pick.data.remote.transport
 
+import ua.com.programmer.pick.data.remote.dto.DeviceDto
+
 /**
  * Transport-level state and result types shared by [SyncTransport] and its
  * implementations. (Formerly defined in the legacy transport client, which has been
@@ -37,7 +39,12 @@ sealed class UserAuthState {
         // DOCUMENT_UPDATE_RESULT frame. Gates the orchestrator's
         // clear-dirty-only-on-ack path. REST always sets this true (a 2xx is the
         // confirmation, surfaced as a synthetic DOCUMENT_UPDATE_RESULT).
-        val supportsUpdateAck: Boolean = false
+        val supportsUpdateAck: Boolean = false,
+        // The worker's unfinished guided tasks, as reported by the login
+        // response. Null when the WMS addressing module is off. Drives the
+        // Home screen's continue/cancel offer and, per D3, excludes those
+        // documents from the reasserted heldStageLocks set.
+        val openTasks: List<DeviceDto.OpenTask>? = null
     ) : UserAuthState()
     data class AuthFailed(val error: String) : UserAuthState()
 }
@@ -55,5 +62,6 @@ data class UserLoginResult(
     val tenantId: String? = null,
     val availableDocumentTypes: List<AvailableDocumentTypeDto>? = null,
     val debugJournalEnabled: Boolean? = null,
+    val openTasks: List<DeviceDto.OpenTask>? = null,
     val errorMessage: String? = null
 )

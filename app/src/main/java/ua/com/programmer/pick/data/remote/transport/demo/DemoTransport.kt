@@ -42,6 +42,7 @@ class DemoTransport @Inject constructor(
 
     private companion object {
         const val TAG = "DemoTransport"
+        const val DEMO_UNSUPPORTED = "DEMO_UNSUPPORTED"
     }
 
     private val scope = CoroutineScope(ioDispatcher)
@@ -189,6 +190,18 @@ class DemoTransport @Inject constructor(
                 emit(syncComplete())
                 null
             }
+
+            // Guided tasks need the real step machine; the demo login offers no
+            // guided types, so this only fires if a screen is reached by other
+            // means. Answer typed rather than leaving the caller to time out.
+            is SyncMessage.TaskStart,
+            is SyncMessage.TaskGet,
+            is SyncMessage.TaskAction,
+            is SyncMessage.TaskCancel ->
+                SyncMessage.TaskResult(newId(), now(), success = false, errorCode = DEMO_UNSUPPORTED)
+
+            is SyncMessage.TaskOpen ->
+                SyncMessage.TaskOpenResult(newId(), now(), success = false, errorCode = DEMO_UNSUPPORTED)
 
             else -> null
         }

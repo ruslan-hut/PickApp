@@ -129,6 +129,25 @@ class DeviceRestClient @Inject constructor(
     suspend fun linePhotoUploadUrl(documentId: String, lineNumber: Int): Result<DeviceDto.LinePhotoUploadUrlResult> =
         envelopeCall { deviceApi.linePhotoUploadUrl(documentId, lineNumber) }
 
+    // --- Guided tasks ---
+
+    suspend fun taskStart(type: String?, documentId: String?): Result<DeviceDto.TaskResponse> =
+        envelopeCall { deviceApi.taskStart(DeviceDto.TaskStartRequest(type, documentId)) }
+
+    suspend fun taskOpen(): Result<List<DeviceDto.TaskResponse>> =
+        envelopeCall { deviceApi.taskOpen() }
+
+    suspend fun taskGet(taskId: String): Result<DeviceDto.TaskResponse> =
+        envelopeCall { deviceApi.taskGet(taskId) }
+
+    suspend fun taskAction(
+        taskId: String,
+        request: DeviceDto.TaskActionRequest,
+    ): Result<DeviceDto.TaskResponse> = envelopeCall { deviceApi.taskAction(taskId, request) }
+
+    suspend fun taskCancel(taskId: String, operationId: String?): Result<DeviceDto.TaskResponse> =
+        envelopeCall { deviceApi.taskCancel(taskId, DeviceDto.TaskCancelRequest(operationId)) }
+
     // --- Diagnostics ---
 
     /** Fire-and-forget; the backend replies 204. */

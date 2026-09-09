@@ -108,6 +108,7 @@ class RestTransport @Inject constructor(
                     // this transport surfaces as a DOCUMENT_UPDATE_RESULT — so the
                     // orchestrator's clear-dirty-only-on-ack path is always valid.
                     supportsUpdateAck = true,
+                    openTasks = r.openTasks,
                 )
                 AppLog.d(TAG, "User authenticated (REST): ${r.userName} (${r.role})")
                 UserLoginResult(
@@ -120,6 +121,7 @@ class RestTransport @Inject constructor(
                     tenantId = r.tenantId,
                     availableDocumentTypes = r.availableDocumentTypes?.map { it.toWire() },
                     debugJournalEnabled = r.debugJournalEnabled,
+                    openTasks = r.openTasks,
                 )
             },
             onFailure = { e ->
@@ -282,6 +284,35 @@ class RestTransport @Inject constructor(
                 )
             }
 
+            is SyncMessage.TaskStart ->
+                taskResult(client.taskStart(message.taskType, message.documentId))
+
+            is SyncMessage.TaskGet -> taskResult(client.taskGet(message.taskId))
+
+            is SyncMessage.TaskAction -> taskResult(
+                client.taskAction(
+                    message.taskId,
+                    DeviceDto.TaskActionRequest(
+                        operationId = message.operationId,
+                        stepId = message.stepId,
+                        action = message.action,
+                        value = message.value,
+                        quantity = message.quantity,
+                    ),
+                ),
+            )
+
+            is SyncMessage.TaskCancel -> taskResult(client.taskCancel(message.taskId, message.operationId))
+
+            is SyncMessage.TaskOpen -> client.taskOpen().fold(
+                { SyncMessage.TaskOpenResult(newId(), now(), true, it) },
+                { e ->
+                    SyncMessage.TaskOpenResult(
+                        newId(), now(), false, emptyList(), (e as? DeviceApiException)?.code, e.message,
+                    )
+                },
+            )
+
             is SyncMessage.SyncRequest -> { runSync(message.entityTypes, message.cursors, full = false); null }
             is SyncMessage.FullSyncRequest -> { runSync(message.entityTypes, null, full = true); null }
             is SyncMessage.DocumentListRefresh -> { runListRefresh(message.documentType); null }
@@ -372,6 +403,11 @@ class RestTransport @Inject constructor(
     private fun stageLockFailure(documentId: String, stage: String, e: Throwable): SyncMessage.StageLockResult =
         SyncMessage.StageLockResult(newId(), now(), documentId, stage, false, null, e.message)
 
+    private fun taskResult(result: Result<DeviceDto.TaskResponse>): SyncMessage.TaskResult = result.fold(
+        { SyncMessage.TaskResult(newId(), now(), true, it) },
+        { e -> SyncMessage.TaskResult(newId(), now(), false, null, (e as? DeviceApiException)?.code, e.message) },
+    )
+
     private suspend fun emit(message: SyncMessage) {
         _incomingMessages.emit(message)
     }
@@ -387,4 +423,5 @@ private fun DeviceDto.AvailableDocumentType.toWire(): AvailableDocumentTypeDto =
         allowsOverPlan = allowsOverPlan,
         allowsExtraLines = allowsExtraLines,
         requiresPlan = requiresPlan,
+        mode = mode,
     )

@@ -15,6 +15,12 @@ data class DocumentLineDto(
     @SerializedName("line_number")
     val lineNumber: Int,
 
+    // The ERP's own stable line id, when it supplies one. Opaque to the device;
+    // guided-task line_updates address a line by it, classic flows keep using
+    // line_number.
+    @SerializedName("line_key")
+    val lineKey: String? = null,
+
     @SerializedName("product_id")
     val productId: String,
 

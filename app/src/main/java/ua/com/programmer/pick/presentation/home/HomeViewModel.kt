@@ -93,7 +93,8 @@ class HomeViewModel @Inject constructor(
                                 description = it.description,
                                 allowsOverPlan = it.allowsOverPlan,
                                 allowsExtraLines = it.allowsExtraLines,
-                                requiresPlan = it.requiresPlan
+                                requiresPlan = it.requiresPlan,
+                                mode = it.mode
                             )
                         }
                     } catch (_: Exception) {

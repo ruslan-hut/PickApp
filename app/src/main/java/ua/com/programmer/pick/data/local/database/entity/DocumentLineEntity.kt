@@ -19,7 +19,8 @@ import androidx.room.PrimaryKey
     indices = [
         Index(value = ["document_id"]),
         Index(value = ["product_id"]),
-        Index(value = ["product_code"])
+        Index(value = ["product_code"]),
+        Index(value = ["document_id", "line_key"])
     ]
 )
 data class DocumentLineEntity(
@@ -32,6 +33,13 @@ data class DocumentLineEntity(
 
     @ColumnInfo(name = "line_number")
     val lineNumber: Int,
+
+    // The ERP's own stable line id, when it supplies one. Opaque to the device:
+    // guided-task line updates address a line by it, because an addressed
+    // document repeats a product across lines (one per batch). Null on
+    // documents whose ERP sends no line key — those match by line_number.
+    @ColumnInfo(name = "line_key")
+    val lineKey: String? = null,
 
     @ColumnInfo(name = "product_id")
     val productId: String,

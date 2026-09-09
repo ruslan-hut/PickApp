@@ -42,6 +42,12 @@ data class DocumentDto(
     @SerializedName("warehouse_name")
     val warehouseName: String?,
 
+    // "guided" on a Collect-stage document whose warehouse works it as a WMS
+    // task; absent = classic screen. Recomputed on every list load, so the
+    // tenant's emergency switch flips the screen on the next refresh.
+    @SerializedName("collect_mode")
+    val collectMode: String? = null,
+
     @SerializedName("notes")
     val notes: String?,
 

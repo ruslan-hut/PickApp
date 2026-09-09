@@ -26,6 +26,7 @@ class DocumentMapper @Inject constructor() {
             clientLanguage = dto.clientLanguage,
             warehouseId = dto.warehouseId,
             warehouseName = dto.warehouseName,
+            collectMode = dto.collectMode,
             notes = dto.notes,
             totalPlanned = dto.totalPlanned,
             totalActual = dto.totalActual,
@@ -46,6 +47,7 @@ class DocumentMapper @Inject constructor() {
             id = dto.id,
             documentId = dto.documentId,
             lineNumber = dto.lineNumber,
+            lineKey = dto.lineKey,
             productId = dto.productId,
             productCode = dto.productCode ?: "",
             productName = dto.productName ?: "",
@@ -93,7 +95,8 @@ fun DocumentEntity.toDomain(): Document {
         deliveredAt = deliveredAt,
         lastModified = lastModified,
         version = version,
-        isDirty = isDirty
+        isDirty = isDirty,
+        collectMode = collectMode
     )
 }
 
@@ -121,7 +124,8 @@ fun Document.toEntity(): DocumentEntity {
         deliveredAt = deliveredAt,
         lastModified = lastModified,
         version = version,
-        isDirty = isDirty
+        isDirty = isDirty,
+        collectMode = collectMode
     )
 }
 
@@ -130,6 +134,7 @@ fun DocumentLineEntity.toDomain(): DocumentLine {
         id = id,
         documentId = documentId,
         lineNumber = lineNumber,
+        lineKey = lineKey,
         productId = productId,
         productCode = productCode,
         productName = productName,
@@ -157,6 +162,7 @@ fun DocumentLine.toEntity(): DocumentLineEntity {
         id = id,
         documentId = documentId,
         lineNumber = lineNumber,
+        lineKey = lineKey,
         productId = productId,
         productCode = productCode,
         productName = productName,

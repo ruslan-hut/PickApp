@@ -23,5 +23,10 @@ data class Document(
     val deliveredAt: Long? = null,
     val lastModified: Long,
     val version: Int,
-    val isDirty: Boolean = false
-)
+    val isDirty: Boolean = false,
+    // "guided" when this Collect-stage document is worked as a WMS task.
+    // Server-computed on every list load; absent = classic screen.
+    val collectMode: String? = null
+) {
+    val isGuidedCollect: Boolean get() = collectMode == AvailableDocumentType.GUIDED_MODE
+}

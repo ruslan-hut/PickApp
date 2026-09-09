@@ -53,6 +53,7 @@ object DeviceDto {
         @SerializedName("available_document_types") val availableDocumentTypes: List<AvailableDocumentType>? = null,
         @SerializedName("debug_journal_enabled") val debugJournalEnabled: Boolean = false,
         @SerializedName("held_stage_locks") val heldStageLocks: List<String>? = null,
+        @SerializedName("open_tasks") val openTasks: List<OpenTask>? = null,
     )
 
     data class AvailableDocumentType(
@@ -61,6 +62,8 @@ object DeviceDto {
         @SerializedName("allows_over_plan") val allowsOverPlan: Boolean? = null,
         @SerializedName("allows_extra_lines") val allowsExtraLines: Boolean? = null,
         @SerializedName("requires_plan") val requiresPlan: Boolean? = null,
+        /** "guided" marks a WMS task type; absent = classic document type. */
+        @SerializedName("mode") val mode: String? = null,
     )
 
     data class RefreshRequest(
@@ -211,6 +214,104 @@ object DeviceDto {
         @SerializedName("upload_url") val uploadUrl: String? = null,
         @SerializedName("expires_at") val expiresAt: Long = 0,
         @SerializedName("error") val error: String? = null,
+    )
+
+    // --- Guided tasks (WMS addressing module) ---
+    //
+    // The terminal is a renderer: the server owns the step machine and every
+    // text the worker reads. Every task endpoint answers the same
+    // [TaskResponse]; the app shows `step` verbatim and posts one action back.
+    // Absent on a server without the module — every field is nullable with a
+    // default so an older backend still parses.
+
+    data class TaskStartRequest(
+        @SerializedName("type") val type: String? = null,
+        @SerializedName("document_id") val documentId: String? = null,
+    )
+
+    data class TaskActionRequest(
+        /** Fresh UUID per action, reused verbatim on retry (idempotency). */
+        @SerializedName("operation_id") val operationId: String,
+        /** Id of the step the device is showing; a stale one is ignored server-side. */
+        @SerializedName("step_id") val stepId: String,
+        /** scan | confirm | empty | skip | manual_cell | no_stock | cancel | done. */
+        @SerializedName("action") val action: String,
+        @SerializedName("value") val value: String? = null,
+        @SerializedName("quantity") val quantity: Long? = null,
+    )
+
+    data class TaskCancelRequest(
+        @SerializedName("operation_id") val operationId: String? = null,
+    )
+
+    data class TaskResponse(
+        @SerializedName("task") val task: Task? = null,
+        @SerializedName("step") val step: TaskStep? = null,
+        @SerializedName("message") val message: TaskMessage? = null,
+        @SerializedName("replayed") val replayed: Boolean = false,
+        @SerializedName("line_updates") val lineUpdates: List<TaskLineUpdate>? = null,
+    )
+
+    data class Task(
+        @SerializedName("id") val id: String,
+        @SerializedName("type") val type: String,
+        @SerializedName("warehouse_id") val warehouseId: String? = null,
+        @SerializedName("document_id") val documentId: String? = null,
+        /** OPEN | DONE | CANCELLED. */
+        @SerializedName("state") val state: String,
+        @SerializedName("step_id") val stepId: String? = null,
+        @SerializedName("metric_category") val metricCategory: String? = null,
+        @SerializedName("started_at") val startedAt: Long = 0,
+        @SerializedName("updated_at") val updatedAt: Long = 0,
+    )
+
+    data class TaskStep(
+        @SerializedName("id") val id: String,
+        @SerializedName("title") val title: String? = null,
+        /** cell | product | batch | qty | document | none. */
+        @SerializedName("expect") val expect: String? = null,
+        @SerializedName("rows") val rows: List<TaskRow>? = null,
+        @SerializedName("actions") val actions: List<TaskAction>? = null,
+        @SerializedName("hint") val hint: String? = null,
+        @SerializedName("lock_info") val lockInfo: String? = null,
+    )
+
+    data class TaskRow(
+        @SerializedName("text") val text: String? = null,
+        @SerializedName("planned") val planned: Long? = null,
+        @SerializedName("actual") val actual: Long? = null,
+        @SerializedName("highlight") val highlight: Boolean = false,
+    )
+
+    data class TaskAction(
+        @SerializedName("code") val code: String,
+        @SerializedName("label") val label: String? = null,
+        /** primary | danger, when set. */
+        @SerializedName("style") val style: String? = null,
+    )
+
+    data class TaskMessage(
+        /** info | warning | error. */
+        @SerializedName("level") val level: String? = null,
+        @SerializedName("text") val text: String? = null,
+    )
+
+    /** A document line the last action changed; applied to the cached document
+     *  without a sync round-trip. `line_key` addresses the line when present. */
+    data class TaskLineUpdate(
+        @SerializedName("line_key") val lineKey: String? = null,
+        @SerializedName("line_number") val lineNumber: Int = 0,
+        @SerializedName("actual_quantity") val actualQuantity: Double = 0.0,
+        @SerializedName("is_completed") val isCompleted: Boolean = false,
+    )
+
+    /** Login-response summary of an unfinished task (continue / cancel). */
+    data class OpenTask(
+        @SerializedName("id") val id: String,
+        @SerializedName("type") val type: String,
+        @SerializedName("document_id") val documentId: String? = null,
+        @SerializedName("step_title") val stepTitle: String? = null,
+        @SerializedName("started_at") val startedAt: Long = 0,
     )
 
     // --- Diagnostics ---

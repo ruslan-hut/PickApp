@@ -51,7 +51,7 @@ import ua.com.programmer.pick.data.local.database.entity.WarehouseLocationEntity
         DocumentBoxEntity::class,
         DebugJournalEntity::class
     ],
-    version = 18, // Version 18: documents.client_language
+    version = 19, // Version 19: documents.collect_mode, document_lines.line_key
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -295,6 +295,20 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_17_18 = object : Migration(17, 18) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE documents ADD COLUMN client_language TEXT DEFAULT NULL")
+            }
+        }
+
+        // Guided WMS tasks: the server-computed Collect mode of a document and
+        // the ERP's stable line id that guided line updates address. Both are
+        // server-owned and refilled on the next document sync.
+        val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE documents ADD COLUMN collect_mode TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE document_lines ADD COLUMN line_key TEXT DEFAULT NULL")
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_document_lines_document_id_line_key " +
+                        "ON document_lines (document_id, line_key)"
+                )
             }
         }
 

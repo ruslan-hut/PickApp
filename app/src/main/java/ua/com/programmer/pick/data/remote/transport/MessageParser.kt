@@ -1,6 +1,7 @@
 package ua.com.programmer.pick.data.remote.transport
 
 import ua.com.programmer.pick.core.util.AppLog
+import ua.com.programmer.pick.data.remote.dto.DeviceDto
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -101,6 +102,8 @@ class MessageParser @Inject constructor(
         private const val FIELD_REQUIRES_PLAN = "requires_plan"
         private const val FIELD_DEBUG_JOURNAL_ENABLED = "debug_journal_enabled"
         private const val FIELD_HELD_STAGE_LOCKS = "held_stage_locks"
+        private const val FIELD_MODE = "mode"
+        private const val FIELD_OPEN_TASKS = "open_tasks"
         private const val FIELD_DEVICE_ID = "device_id"
         private const val FIELD_EVENTS = "events"
         private const val FIELD_ACCEPTED_IDS = "accepted_ids"
@@ -329,7 +332,16 @@ class MessageParser @Inject constructor(
             is SyncMessage.ServerError,
             is SyncMessage.Push,
             is SyncMessage.ForceReleaseRequest,
-            is SyncMessage.DebugEventBatchResult -> null
+            is SyncMessage.DebugEventBatchResult,
+            // Guided-task messages never travel as JSON frames: RestTransport
+            // dispatches them straight to the typed REST calls.
+            is SyncMessage.TaskStart,
+            is SyncMessage.TaskGet,
+            is SyncMessage.TaskOpen,
+            is SyncMessage.TaskAction,
+            is SyncMessage.TaskCancel,
+            is SyncMessage.TaskResult,
+            is SyncMessage.TaskOpenResult -> null
         }
     }
 
@@ -354,7 +366,20 @@ class MessageParser @Inject constructor(
                 description = obj.get(FIELD_DESCRIPTION)?.asString ?: "",
                 allowsOverPlan = obj.nullableBool(FIELD_ALLOWS_OVER_PLAN),
                 allowsExtraLines = obj.nullableBool(FIELD_ALLOWS_EXTRA_LINES),
-                requiresPlan = obj.nullableBool(FIELD_REQUIRES_PLAN)
+                requiresPlan = obj.nullableBool(FIELD_REQUIRES_PLAN),
+                mode = obj.get(FIELD_MODE)?.takeIf { !it.isJsonNull }?.asString
+            )
+        }
+
+        val openTasks = payload?.getAsJsonArray(FIELD_OPEN_TASKS)?.mapNotNull { element ->
+            val obj = element.takeIf { !it.isJsonNull }?.asJsonObject ?: return@mapNotNull null
+            val taskId = obj.get("id")?.takeIf { !it.isJsonNull }?.asString ?: return@mapNotNull null
+            DeviceDto.OpenTask(
+                id = taskId,
+                type = obj.get("type")?.takeIf { !it.isJsonNull }?.asString ?: "",
+                documentId = obj.get("document_id")?.takeIf { !it.isJsonNull }?.asString,
+                stepTitle = obj.get("step_title")?.takeIf { !it.isJsonNull }?.asString,
+                startedAt = obj.get("started_at")?.takeIf { !it.isJsonNull }?.asLong ?: 0L
             )
         }
 
@@ -369,6 +394,7 @@ class MessageParser @Inject constructor(
             offlineHash = payload?.get(FIELD_OFFLINE_HASH)?.asString,
             tenantId = payload?.get(FIELD_TENANT_ID)?.asString,
             availableDocumentTypes = availableTypes,
+            openTasks = openTasks,
             debugJournalEnabled = payload?.get(FIELD_DEBUG_JOURNAL_ENABLED)?.let {
                 if (it.isJsonNull) null else it.asBoolean
             },

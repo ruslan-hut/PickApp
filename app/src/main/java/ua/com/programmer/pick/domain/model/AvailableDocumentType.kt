@@ -12,6 +12,9 @@ package ua.com.programmer.pick.domain.model
  *    where over-delivery is legitimate.
  *  - [allowsExtraLines] (default `false`): scanning an unknown product creates
  *    a new line on the fly. Today implicit for `INVENTORY`.
+ *  - [mode]: `"guided"` marks a WMS guided task type rather than a document
+ *    type — tapping it starts a server-driven task instead of opening a list.
+ *    Null on a tenant/warehouse without the addressing module.
  *  - [requiresPlan] (default `true`): lines are expected to carry a plan; UI
  *    displays plan labels and the progress bar uses the plan value.
  */
@@ -20,9 +23,16 @@ data class AvailableDocumentType(
     val description: String,
     val allowsOverPlan: Boolean? = null,
     val allowsExtraLines: Boolean? = null,
-    val requiresPlan: Boolean? = null
+    val requiresPlan: Boolean? = null,
+    val mode: String? = null
 ) {
+    val isGuided: Boolean get() = mode == GUIDED_MODE
+
     fun allowsOverPlanOrDefault(): Boolean = allowsOverPlan ?: false
     fun allowsExtraLinesOrDefault(): Boolean = allowsExtraLines ?: false
     fun requiresPlanOrDefault(): Boolean = requiresPlan ?: true
+
+    companion object {
+        const val GUIDED_MODE = "guided"
+    }
 }

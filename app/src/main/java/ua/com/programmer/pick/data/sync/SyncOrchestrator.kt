@@ -471,7 +471,15 @@ class SyncOrchestrator @Inject constructor(
                         // before the first sync round-trip fires below.
                         authState.heldStageLocks
                             ?.takeIf { it.isNotEmpty() }
-                            ?.let { reassertHeldStageLocksFromLogin(it) }
+                            ?.let {
+                                reassertHeldStageLocksFromLogin(
+                                    it,
+                                    excluding = authState.openTasks
+                                        ?.mapNotNull { task -> task.documentId?.takeIf(String::isNotBlank) }
+                                        .orEmpty()
+                                        .toSet(),
+                                )
+                            }
 
                         // Push local dirty state BEFORE requesting server state.
                         // Otherwise a stale SYNC_DATA response can race ahead of
@@ -2544,14 +2552,29 @@ class SyncOrchestrator @Inject constructor(
      * suppressed correctly because by that point both heldStageLocks contains
      * the doc AND the local state matches the server's in-process state.
      *
+     * [excluding] carries the external_ids of documents the worker holds an
+     * open guided task on. Those locks belong to the task engine, not to the
+     * classic screen: the device has no dirty edits to protect for them (the
+     * server mirrors every confirmed line into the document itself), and
+     * treating them as held would arm the cooperative force-release path on a
+     * task-locked document. See the guided-tasks plan, D3.
+     *
      * No journal row — the diagnostic value is captured by the existing
      * DOC_SYNC_SUPPRESSED rows that fire when suppression actually engages.
      */
-    private fun reassertHeldStageLocksFromLogin(externalIds: List<String>) {
+    private fun reassertHeldStageLocksFromLogin(
+        externalIds: List<String>,
+        excluding: Set<String> = emptySet(),
+    ) {
         scope.launch {
             var reasserted = 0
             var unknown = 0
+            var skippedGuided = 0
             externalIds.forEach { ext ->
+                if (ext in excluding) {
+                    skippedGuided++
+                    return@forEach
+                }
                 val local = documentDao.getDocumentByExternalId(ext)
                 if (local != null) {
                     if (heldStageLocks.add(local.id)) reasserted++
@@ -2559,10 +2582,10 @@ class SyncOrchestrator @Inject constructor(
                     unknown++
                 }
             }
-            if (reasserted > 0 || unknown > 0) {
+            if (reasserted > 0 || unknown > 0 || skippedGuided > 0) {
                 AppLog.i(
                     TAG,
-                    "Reasserted $reasserted held stage lock(s) from USER_LOGIN_RESULT (unknown_to_local=$unknown, total_reported=${externalIds.size})"
+                    "Reasserted $reasserted held stage lock(s) from USER_LOGIN_RESULT (unknown_to_local=$unknown, guided_task=$skippedGuided, total_reported=${externalIds.size})"
                 )
             }
         }
