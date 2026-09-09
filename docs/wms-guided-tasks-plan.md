@@ -4,7 +4,8 @@
 
 | | |
 |---|---|
-| App baseline | `master` @ `2d20232` (in sync with `origin/master`, checked 2026-09-07). No guided-task code exists yet. |
+| Delivery | **Phases 0–3 shipped** on `master` (2026-09-09): `8b4211a` protocol plumbing, `d4f1c40` task screen + home entry, `6accf8c` document-bound flows, plus this phase's hardening and docs. The field-test matrix in §7 is the remaining sign-off. |
+| App baseline | `master` @ `2d20232` (in sync with `origin/master`, checked 2026-09-07). No guided-task code existed at planning time. |
 | Server baseline | Pick backend, WMS addressing module phases 0–5 delivered (Sept 2026). Contract: server repo `docs/device-api.md` § "Guided tasks", concept `docs/wms-addressing.md`, delivery record `docs/archive/wms-addressing-plan.md`. |
 | Goal | The terminal renders **server-driven guided tasks** (cell recount, placement, cell move, replenishment) and runs the **document-bound guided flows** (addressed Collect, receiving) — while every tenant without the module keeps today's behaviour byte for byte. |
 | Out of scope | Any warehouse logic on the device. The server owns the step machine, the texts, the route, the ledger. This plan adds a renderer and the wiring around it. |
@@ -394,7 +395,47 @@ Not blockers; tracked here so they are not lost.
 
 ## 9. Open questions
 
-1. **Cancel semantics on back.** This plan makes *Back* leave the task open (resume later) and reserves `cancel` for the explicit button. Confirm with the warehouse lead that an accidentally abandoned recount holding a cell lock until TTL is acceptable (the spec's F-5 says yes).
-2. **Quantity unit.** `quantity` is integer pieces on the wire. Confirm no guided flow needs fractional units before Phase 1 ships the digits-only field.
-3. **Camera-only devices.** Is the camera FAB required on the task screen for the pilot, or are all pilot devices Zebra with hardware scanners?
-4. **Demo flow.** Worth building the scripted demo recount (Phase 3, optional) for sales demos, or skip?
+1. **Cancel semantics on back.** Shipped as planned: *Back* leaves the task open
+   (it reappears under *Unfinished tasks*) and only the server's `cancel` action
+   closes it. Still worth confirming with the warehouse lead that an abandoned
+   recount holding a cell lock until TTL is acceptable — F-5 says yes.
+2. **Quantity unit.** *Resolved.* The server's `TaskActionRequest.Quantity` is
+   `*int64`, so the wire is integer pieces; the digits-only field is correct.
+3. **Camera-only devices.** *Still open — deferred.* The task screen uses the
+   global `BarcodeService` (hardware scanner) only. No screen in the app hosts
+   the camera **barcode** scanner yet, so adding the FAB is real work; it waits
+   until the pilot fleet is known.
+4. **Demo flow.** *Skipped.* `DemoTransport` answers every task message with
+   `DEMO_UNSUPPORTED`, and the demo login offers no guided types, so nothing
+   guided is reachable in demo mode. Build the scripted recount only if sales
+   asks.
+
+---
+
+## 10. Deviations from this plan
+
+Recorded where the implementation knowingly differs from §3.
+
+1. **Full-set purge protected too.** The plan exempted the active task's
+   document only in `purgeDocumentsOutsideVisibleSet`, but
+   `GET /device/documents` answers `full_set: true`, and *that* branch is the
+   one that would drop a joined receiving document — it is absent from the list
+   the server returns to this worker, who is nonetheless working it. Both
+   branches now share `SyncOrchestrator.activeTaskDocumentIds()`.
+2. **No explicit list refresh on DONE.** `DocumentsScreen` already refreshes in
+   a `LifecycleResumeEffect`, so navigating there from a finished task refreshes
+   with the correct selected type; the planned
+   `requestDocumentListRefresh(selectedType)` would have been a second
+   round-trip.
+3. **`refreshOpenTasks()` is gated on WMS being on.** The plan guarded it on
+   `isOnline` alone, but `/device/tasks/open` sits behind the module gate, so an
+   unguarded call collects a 403 on every Home resume of every classic tenant.
+   It now also requires a guided type in the login catalog (or a known open
+   task) — the same client-side hint the plan uses for *Join receiving*.
+4. **One ERP code is known by name.** `AvailableDocumentType.CODE_INCOMING_RECEIPT`
+   gates the guided bar's wording and the *Join receiving* shortcut, and nothing
+   else. Server follow-up 2 (§8) would let the app drop it.
+5. **No Room migration test.** The repo has no migration-test infrastructure
+   (`room-testing` is not a dependency and schemas are not wired into androidTest
+   assets) and migrations 16→17 and 17→18 shipped without one. 18→19 is three
+   DDL statements validated against the exported `19.json` at runtime.

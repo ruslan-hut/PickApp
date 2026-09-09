@@ -289,6 +289,30 @@ class TaskViewModelTest {
         coVerify(exactly = 0) { documentRepository.applyServerLineUpdates(any(), any()) }
     }
 
+    @Test
+    fun `an error-level step message buzzes, a warning does not`() = runTest {
+        coEvery { repository.start(any(), any()) } returns success(
+            step(),
+            message = ua.com.programmer.pick.domain.model.TaskMessage("warning", "shelf is short"),
+        )
+        val warned = build(type = "CELL_RECOUNT")
+        val warnEvents = mutableListOf<TaskUiEvent>()
+        backgroundScope.launch(mainDispatcher) { warned.events.collect { warnEvents += it } }
+        coEvery { repository.act(any(), any(), any(), any(), any(), any()) } returns success(
+            step(),
+            message = ua.com.programmer.pick.domain.model.TaskMessage("warning", "still short"),
+        )
+        warned.onAction("confirm")
+        assertTrue(warnEvents.none { it is TaskUiEvent.VibrateError })
+
+        coEvery { repository.act(any(), any(), any(), any(), any(), any()) } returns success(
+            step(),
+            message = ua.com.programmer.pick.domain.model.TaskMessage("error", "wrong cell"),
+        )
+        warned.onAction("confirm")
+        assertTrue(warnEvents.any { it is TaskUiEvent.VibrateError })
+    }
+
     // --- helpers ---
 
     private fun build(

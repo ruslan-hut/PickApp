@@ -39,7 +39,12 @@ The device authenticates over REST and is issued a JWT pair.
   carries an **access + refresh JWT pair** plus the `USER_LOGIN_RESULT` payload:
   user identity, role, tenant, an `offline_hash` for offline re-authentication,
   the per-type capability flags (`available_document_types`), the per-device
-  `debug_journal_enabled` flag, and any `held_stage_locks`.
+  `debug_journal_enabled` flag, and any `held_stage_locks`. Where the WMS
+  addressing module is on, it also carries `mode: "guided"` on the guided
+  entries of `available_document_types`, and an `open_tasks` array — the
+  worker's unfinished guided tasks, for the continue / cancel offer. Both are
+  absent everywhere else. See [sync-protocol.md](sync-protocol.md)
+  §"Guided Tasks".
 - **`POST device/refresh`** — exchanges the stored refresh token for a fresh
   access/refresh pair (token rotation).
 - **Access-token attachment & retry:** the auth interceptor attaches
@@ -182,6 +187,14 @@ package (which nests inside a parcel).
 
 ### Document
 
+`collect_mode` is `"guided"` on a LOADED / COLLECTING document whose warehouse
+works it as a guided WMS task; the device then opens it as a task instead of
+locking it classically. It is recomputed on every list load, so the tenant's
+emergency switch takes effect on the next refresh. `line_key` is the ERP's own
+stable line id when it supplies one — opaque to the device, used by guided
+`line_updates` to address a line; classic flows key on `line_number`. Both are
+absent outside the addressing module.
+
 ```json
 {
   "id": "string",
@@ -194,6 +207,7 @@ package (which nests inside a parcel).
   "client_name": "string (optional)",
   "warehouse_id": "string (optional)",
   "warehouse_name": "string (optional)",
+  "collect_mode": "guided (optional)",
   "notes": "string (optional)",
   "total_planned": 100.0,
   "total_actual": 0.0,
@@ -210,6 +224,7 @@ package (which nests inside a parcel).
       "id": "string",
       "document_id": "string",
       "line_number": 1,
+      "line_key": "string (ERP's stable line id, optional)",
       "product_id": "string (ERP external_id on v2)",
       "product_code": "string (optional)",
       "product_name": "string (optional)",
@@ -456,5 +471,6 @@ ERP ◀──REST/SOAP──▶ Backend ◀──REST──▶ Mobile App
 | Optimistic locking + `erp_sync_blocked` ownership guard | ✅ Shipped |
 | Cooperative force-release (`FORCE_RELEASE_REQUEST`) | ✅ Shipped |
 | Debug journal upload (`DEBUG_EVENT_BATCH`) | ✅ Shipped |
+| Guided WMS tasks (`device/tasks*`, `collect_mode`, `line_key`, `open_tasks`) | ✅ Shipped — see [wms-guided-tasks-plan.md](wms-guided-tasks-plan.md) |
 | ERP inbound / outbound integration | ✅ Shipped |
 | Ownership-model hardening (PACK/DELIVERY reset, cross-device push, …) | ◻ In progress — see [ownership-model-plan.md](ownership-model-plan.md) |

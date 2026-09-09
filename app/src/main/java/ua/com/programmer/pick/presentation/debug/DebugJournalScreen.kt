@@ -106,8 +106,14 @@ private fun EventList(grouped: Map<String?, List<DebugJournalEntity>>) {
         grouped.forEach { (docId, events) ->
             item(key = "header-${docId ?: "none"}") {
                 Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                    // Guided-task rows key on "task:<id>" when the task is not
+                    // bound to a document, so they group like any document.
                     Text(
-                        text = "Document: ${docId ?: "(session-scoped)"}",
+                        text = when {
+                            docId == null -> "(session-scoped)"
+                            docId.startsWith("task:") -> "Task: ${docId.removePrefix("task:")}"
+                            else -> "Document: $docId"
+                        },
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(

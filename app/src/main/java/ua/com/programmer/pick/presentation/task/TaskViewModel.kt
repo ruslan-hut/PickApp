@@ -222,6 +222,11 @@ class TaskViewModel @Inject constructor(
                 pendingAction = null
                 applyLineUpdates(result.task)
                 render(result.task)
+                // A refusal the worker must notice without looking up from the
+                // shelf. Warnings and acknowledgements stay silent.
+                if (result.task.message?.isError == true) {
+                    _events.emit(TaskUiEvent.VibrateError)
+                }
                 // A cancel closes the task: leave as soon as the server confirms.
                 if (cancelled) finish()
             }

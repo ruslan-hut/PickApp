@@ -51,6 +51,7 @@ class GuidedTaskRepositoryImpl @Inject constructor(
         const val TAG = "GuidedTaskRepository"
         const val MAX_ATTEMPTS = 3
         val RETRY_DELAYS_MS = longArrayOf(1_000L, 2_000L, 4_000L)
+        const val CODE_NOT_FOUND = "NOT_FOUND"
     }
 
     private val scope = CoroutineScope(ioDispatcher)
@@ -91,7 +92,7 @@ class GuidedTaskRepositoryImpl @Inject constructor(
     }
 
     override suspend fun get(taskId: String): TaskCallResult =
-        call(journalKey = taskId) { SyncMessage.TaskGet(newId(), now(), taskId) }
+        call(taskId = taskId) { SyncMessage.TaskGet(newId(), now(), taskId) }
 
     override suspend fun act(
         taskId: String,
@@ -108,7 +109,7 @@ class GuidedTaskRepositoryImpl @Inject constructor(
             documentId = journalDocumentId(taskId),
             payload = mapOf("task_id" to taskId, "operation_id" to opId, "value" to value, "quantity" to quantity),
         )
-        return call(journalKey = taskId) {
+        return call(taskId = taskId) {
             SyncMessage.TaskAction(newId(), now(), taskId, opId, stepId, action, value, quantity)
         }
     }
@@ -119,7 +120,7 @@ class GuidedTaskRepositoryImpl @Inject constructor(
             message = "cancel task",
             documentId = journalDocumentId(taskId),
         )
-        return call(journalKey = taskId) {
+        return call(taskId = taskId) {
             SyncMessage.TaskCancel(newId(), now(), taskId, UUID.randomUUID().toString())
         }
     }
@@ -146,7 +147,7 @@ class GuidedTaskRepositoryImpl @Inject constructor(
      * `operation_id` — while the transport fails to produce a server answer.
      */
     private suspend fun call(
-        journalKey: String? = null,
+        taskId: String? = null,
         documentId: String? = null,
         build: () -> SyncMessage,
     ): TaskCallResult {
@@ -164,7 +165,7 @@ class GuidedTaskRepositoryImpl @Inject constructor(
                 debugJournal.log(
                     eventType = DebugEventType.TASK_ACTION_RESULT,
                     message = "step=${task.stepId ?: "-"} state=${task.state}",
-                    documentId = task.documentId ?: journalKey?.let { "task:$it" },
+                    documentId = task.documentId ?: taskId?.let { "task:$it" },
                     payload = mapOf(
                         "replayed" to task.replayed,
                         "line_updates" to task.lineUpdates.size,
@@ -183,17 +184,25 @@ class GuidedTaskRepositoryImpl @Inject constructor(
             debugJournal.log(
                 eventType = DebugEventType.TASK_ACTION_FAILED,
                 message = "attempt ${attempt + 1}/$MAX_ATTEMPTS: ${lastMessage ?: "failed"}",
-                documentId = documentId ?: journalKey?.let { "task:$it" },
+                documentId = documentId ?: taskId?.let { "task:$it" },
                 severity = DebugJournal.SEVERITY_WARN,
             )
             if (attempt < MAX_ATTEMPTS - 1) {
                 debugJournal.log(
                     eventType = DebugEventType.TASK_ACTION_RETRY,
                     message = "retrying with the same operation_id",
-                    documentId = documentId ?: journalKey?.let { "task:$it" },
+                    documentId = documentId ?: taskId?.let { "task:$it" },
                 )
                 delay(RETRY_DELAYS_MS[attempt])
             }
+        }
+
+        // An admin-cancelled (and purged) task can still sit in the worker's
+        // unfinished list. Drop it here rather than waiting for the next
+        // refreshOpen, so *Continue* never leads back to a dead task.
+        if (lastCode == CODE_NOT_FOUND && taskId != null) {
+            _openTasks.value = _openTasks.value.filterNot { it.id == taskId }
+            _active.value = _active.value?.takeIf { it.id != taskId }
         }
 
         AppLog.w(TAG, "task call failed: code=$lastCode message=$lastMessage")

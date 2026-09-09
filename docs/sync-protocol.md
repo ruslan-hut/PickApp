@@ -103,6 +103,11 @@ below; the response is parsed and emitted as the listed result message.
 | `LINE_PHOTO_UPLOAD_URL` | `POST device/documents/{id}/lines/{lineNumber}/photo-url` | `LINE_PHOTO_UPLOAD_URL_RESULT` |
 | (shipment label) | `GET device/documents/{id}/shipment/label` | shipment label result |
 | (shipment track) | `POST device/documents/{id}/shipment/track` | shipment track result |
+| `TASK_START` | `POST device/tasks` | `TASK_RESULT` |
+| `TASK_GET` | `GET device/tasks/{id}` | `TASK_RESULT` |
+| `TASK_OPEN` | `GET device/tasks/open` | `TASK_OPEN_RESULT` |
+| `TASK_ACTION` | `POST device/tasks/{id}/actions` | `TASK_RESULT` |
+| `TASK_CANCEL` | `POST device/tasks/{id}/cancel` | `TASK_RESULT` |
 | `ERROR_REPORT` | `POST device/error-report` | none (fire-and-forget) |
 | `DEBUG_EVENT_BATCH` | `POST device/debug-events` | `DEBUG_EVENT_BATCH_RESULT` |
 
@@ -1057,6 +1062,96 @@ Client                                         Server                ERP
    resync.
 4. Conflicts: server wins for documents not locked by this device; for
    worker-owned documents, dirty line preservation protects the worker's edits.
+
+---
+
+## Guided Tasks (WMS addressing module)
+
+Present only where the tenant has the `wms_addressing` module and the worker's
+warehouse has it switched on; elsewhere the endpoints answer
+`403 FEATURE_DISABLED` and the guided types never reach the login response.
+Authoritative contract: server repo `docs/device-api.md` § "Guided tasks".
+
+The device is a **renderer**: the server owns the step machine, the route and
+every text the worker reads (already in the tenant's locale). The app shows
+`step` verbatim, sends one action back, and shows the next `step`. It never
+branches on the step id or the task type.
+
+`GuidedTaskRepository` is the only caller of the five messages above; it owns
+the `operation_id` and the retry that reuses it. Nothing about a task is
+persisted on the device.
+
+### Envelope
+
+Every task endpoint answers the same shape, carried by `TASK_RESULT`
+(`TASK_OPEN_RESULT` carries an array of them):
+
+```json
+{
+  "task": { "id": "…", "type": "CELL_RECOUNT", "warehouse_id": "WH", "document_id": "",
+            "state": "OPEN", "step_id": "rc_count", "metric_category": "RECOUNT",
+            "started_at": 1788700000000, "updated_at": 1788700100000 },
+  "step": { "id": "rc_count", "title": "…", "expect": "product",
+            "rows": [ { "text": "…", "planned": 10, "actual": 5, "highlight": true } ],
+            "actions": [ { "code": "confirm", "label": "…", "style": "primary" } ],
+            "hint": "…", "lock_info": "…" },
+  "message": { "level": "warning", "text": "…" },
+  "replayed": false,
+  "line_updates": [ { "line_key": "K1", "line_number": 1, "actual_quantity": 8, "is_completed": true } ]
+}
+```
+
+| Field | Meaning for the app |
+|-------|---------------------|
+| `step.expect` | `cell` / `product` / `batch` / `qty` / `document` / `none`. An unknown value is treated as `none`; scans are still forwarded. |
+| `step.actions[].code` | `scan` / `confirm` / `empty` / `skip` / `manual_cell` / `no_stock` / `cancel` / `done`. Only the offered ones are listed, and `scan` never is — it is what the scanner sends. An unknown code renders as a plain button and is sent as-is. |
+| `step.rows` | Context lines rendered as they come. `highlight` marks rows still needing attention. |
+| `task.state` | `OPEN` / `DONE` / `CANCELLED`. After the last two the step is a final screen with a single `done`. |
+| `message` | One-shot notice about the last action; not part of the step. `error` also fires a haptic. |
+| `line_updates` | Document-bound tasks only — applied to the cached document with no sync round-trip. |
+
+### Login fields
+
+| Field | Meaning |
+|-------|---------|
+| `available_document_types[].mode` | `"guided"` marks a task type. The server omits guided types where the module is off, so a plain client never sees one. |
+| `open_tasks[]` | `{id, type, document_id?, step_title, started_at}` — the worker's unfinished tasks, for the continue / cancel offer. |
+| `held_stage_locks[]` | Includes the Collect lock the task engine took for a guided document. The orchestrator **excludes** every id present in `open_tasks[].document_id`. |
+
+### Idempotency, stale screens, locks
+
+* `operation_id` is a fresh UUID per action and is **reused verbatim on retry**
+  (3 attempts, 1/2/4 s). A repeat answers the original response with
+  `replayed: true` and never applies twice. A response carrying a server error
+  code is a verdict, not a hiccup, and is not retried.
+* A `step_id` the server has moved past is ignored; the current step comes back
+  with a warning `message` and the app simply re-renders.
+* Cell / line locks are extended by the ordinary `POST /device/sync` and by
+  every task action. Since a guided document holds no client stage lock, the
+  task screen drives that poll itself on the orchestrator's 8 s cadence while
+  it is resumed. Backgrounding the app lets the lock expire after the
+  warehouse's `lock_ttl_sec`; the next action may then answer `LOCKED` with the
+  holder named in the server message.
+
+### Document fields
+
+| Field | Meaning |
+|-------|---------|
+| `collect_mode` | `"guided"` on a LOADED / COLLECTING document whose warehouse works it as a task. Recomputed on every list load, so the tenant's emergency switch flips the detail screen on the next refresh. Absent = classic screen. |
+| `lines[].line_key` | The ERP's stable line id, when supplied. `line_updates` address a line by it; classic flows keep using `line_number`. |
+
+### Error codes
+
+| Code | HTTP | App behaviour |
+|------|------|---------------|
+| `FEATURE_DISABLED` / `WMS_WAREHOUSE_DISABLED` | 403 / 409 | toast, leave the task screen |
+| `GUIDED_OFF` | 409 | toast, go back; the detail screen shows the classic bar on the next load |
+| `NO_WAREHOUSE` | 409 | toast, leave |
+| `LOCKED` | 409 | show the server message, stay on the step |
+| `WRONG_STATE` / `DOCUMENT_LOCKED` / `DOCUMENT_WAREHOUSE` | 409 | toast, go back |
+| `NOT_FOUND` | 404 | toast, leave; the task is dropped from the unfinished list |
+| `FORBIDDEN` | 403 | toast, leave |
+| `BAD_REQUEST` | 400 | logged at ERROR; the step is re-fetched |
 
 ---
 

@@ -180,6 +180,38 @@ class GuidedTaskRepositoryImplTest {
         assertEquals(5L, task.startedAt)
     }
 
+    @Test
+    fun `NOT_FOUND drops the task from the unfinished list`() = runTest {
+        seedOpenTask("t1")
+        coEvery {
+            transport.sendAndAwait(any(), SyncMessage.TaskResult::class.java, any())
+        } returns SyncMessage.TaskResult(
+            id = "r", timestamp = "t", success = false,
+            errorCode = "NOT_FOUND", errorMessage = "task not found",
+        )
+
+        val result = repository.get("t1")
+
+        assertTrue(result is TaskCallResult.Failure)
+        // Continue must not lead back to a task an admin cancelled and purged.
+        assertTrue(repository.openTasks.value.isEmpty())
+    }
+
+    @Test
+    fun `another server code leaves the unfinished list alone`() = runTest {
+        seedOpenTask("t1")
+        coEvery {
+            transport.sendAndAwait(any(), SyncMessage.TaskResult::class.java, any())
+        } returns SyncMessage.TaskResult(
+            id = "r", timestamp = "t", success = false,
+            errorCode = "LOCKED", errorMessage = "held by someone else",
+        )
+
+        repository.act("t1", "rc_count", "scan", value = "A")
+
+        assertEquals(listOf("t1"), repository.openTasks.value.map { it.id })
+    }
+
     /** The login response is the only production seed for the open-task list. */
     private fun seedOpenTask(id: String) {
         authState.value = UserAuthState.Authenticated(
