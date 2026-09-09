@@ -226,7 +226,10 @@ fun PickNavGraph(
                 val documentId = backStackEntry.arguments?.getString(Screen.DOCUMENT_ID_ARG) ?: ""
                 DocumentDetailScreen(
                     documentId = documentId,
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToTask = { externalId ->
+                        navController.navigate(Screen.Task.byDocument(externalId))
+                    }
                 )
             }
 

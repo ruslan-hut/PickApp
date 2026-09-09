@@ -16,6 +16,7 @@ import ua.com.programmer.pick.data.mapper.toLineDomainList
 import ua.com.programmer.pick.domain.model.Document
 import ua.com.programmer.pick.domain.model.DocumentLine
 import ua.com.programmer.pick.domain.model.DocumentState
+import ua.com.programmer.pick.domain.model.TaskLineUpdate
 import ua.com.programmer.pick.domain.repository.DocumentRepository
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -260,6 +261,41 @@ class DocumentRepositoryImpl @Inject constructor(
 
     override suspend fun markAllLinesAsSynced(documentId: String) = withContext(ioDispatcher) {
         documentLineDao.markAllLinesAsSynced(documentId)
+    }
+
+    override suspend fun applyServerLineUpdates(
+        documentExternalId: String,
+        updates: List<TaskLineUpdate>
+    ): Int = withContext(ioDispatcher) {
+        if (updates.isEmpty()) return@withContext 0
+        // The task carries the ERP id; a device that fetched the document by
+        // ObjectID hex stores that as the row id instead.
+        val document = documentDao.getDocumentByExternalId(documentExternalId)
+            ?: documentDao.getDocumentById(documentExternalId)
+            ?: return@withContext 0
+
+        var applied = 0
+        updates.forEach { update ->
+            val byKey = update.lineKey?.let {
+                documentLineDao.updateActualByLineKey(
+                    document.id, it, update.actualQuantity, update.isCompleted
+                )
+            } ?: 0
+            applied += if (byKey > 0) {
+                byKey
+            } else {
+                documentLineDao.updateActualByLineNumber(
+                    document.id, update.lineNumber, update.actualQuantity, update.isCompleted
+                )
+            }
+        }
+        if (applied > 0) {
+            // Recompute without touching is_dirty / last_modified: these are the
+            // server's own numbers, and marking the document dirty would have
+            // resyncDirtyDocuments push them back as worker edits.
+            documentDao.recomputeTotalActualForDocs(listOf(document.id))
+        }
+        applied
     }
 
     private suspend fun updateDocumentTotals(lineId: String) {

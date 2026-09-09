@@ -20,6 +20,7 @@ import ua.com.programmer.pick.data.debug.DebugJournal
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.domain.model.GuidedTask
 import ua.com.programmer.pick.domain.model.TaskExpect
+import ua.com.programmer.pick.domain.repository.DocumentRepository
 import ua.com.programmer.pick.domain.repository.GuidedTaskRepository
 import ua.com.programmer.pick.domain.repository.TaskCallResult
 import ua.com.programmer.pick.presentation.navigation.Screen
@@ -41,6 +42,7 @@ import javax.inject.Inject
 class TaskViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val guidedTaskRepository: GuidedTaskRepository,
+    private val documentRepository: DocumentRepository,
     private val barcodeService: BarcodeService,
     private val networkMonitor: NetworkMonitor,
     private val syncOrchestrator: SyncOrchestrator,
@@ -218,6 +220,7 @@ class TaskViewModel @Inject constructor(
         when (result) {
             is TaskCallResult.Success -> {
                 pendingAction = null
+                applyLineUpdates(result.task)
                 render(result.task)
                 // A cancel closes the task: leave as soon as the server confirms.
                 if (cancelled) finish()
@@ -236,6 +239,33 @@ class TaskViewModel @Inject constructor(
                 if (isOpening || result.code.leavesScreen()) finish(force = true)
             }
         }
+    }
+
+    /**
+     * D5: the server mirrors every confirmed line into the document, so the
+     * updates go straight to Room. The classic detail screen — read-only for a
+     * guided document — and the list progress therefore follow the task live,
+     * with no sync round-trip and no dirty flag.
+     */
+    private suspend fun applyLineUpdates(task: GuidedTask) {
+        val documentId = task.documentId ?: return
+        if (task.lineUpdates.isEmpty()) return
+        val applied = try {
+            documentRepository.applyServerLineUpdates(documentId, task.lineUpdates)
+        } catch (e: Exception) {
+            AppLog.w(TAG, "applying task line updates failed: ${e.message}")
+            return
+        }
+        debugJournal.log(
+            eventType = DebugEventType.TASK_LINE_UPDATES_APPLIED,
+            message = "$applied of ${task.lineUpdates.size} line(s) written",
+            documentId = documentId,
+            severity = if (applied < task.lineUpdates.size) {
+                DebugJournal.SEVERITY_WARN
+            } else {
+                DebugJournal.SEVERITY_INFO
+            },
+        )
     }
 
     private fun render(task: GuidedTask) {

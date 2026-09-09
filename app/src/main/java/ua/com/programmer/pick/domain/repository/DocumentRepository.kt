@@ -5,6 +5,7 @@ import ua.com.programmer.pick.core.util.Result
 import ua.com.programmer.pick.domain.model.Document
 import ua.com.programmer.pick.domain.model.DocumentLine
 import ua.com.programmer.pick.domain.model.DocumentState
+import ua.com.programmer.pick.domain.model.TaskLineUpdate
 
 interface DocumentRepository {
 
@@ -91,4 +92,20 @@ interface DocumentRepository {
     suspend fun markLineAsSynced(lineId: String)
 
     suspend fun markAllLinesAsSynced(documentId: String)
+
+    /**
+     * Writes the line values a guided task's last action produced straight into
+     * the cached document, so the classic detail screen and the list progress
+     * follow the task in real time without a sync round-trip.
+     *
+     * [documentExternalId] is the ERP id the task carries. Lines are matched by
+     * `line_key` when the update has one, else by `line_number`. The values are
+     * server-authored — the task engine already mirrored them into the document
+     * — so `is_dirty` is deliberately left alone and no DOCUMENT_UPDATE is
+     * emitted. Returns the number of lines actually written.
+     */
+    suspend fun applyServerLineUpdates(
+        documentExternalId: String,
+        updates: List<TaskLineUpdate>
+    ): Int
 }

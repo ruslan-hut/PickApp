@@ -1,6 +1,7 @@
 package ua.com.programmer.pick.presentation.document
 
 import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
@@ -86,6 +87,7 @@ fun DocumentDetailScreen(
     modifier: Modifier = Modifier,
     documentId: String,
     onNavigateBack: (() -> Unit)? = null,
+    onNavigateToTask: ((String) -> Unit)? = null,
     viewModel: DocumentDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -123,6 +125,9 @@ fun DocumentDetailScreen(
                 }
                 is DocumentDetailUiEvent.NavigateBack -> {
                     onNavigateBack?.invoke()
+                }
+                is DocumentDetailUiEvent.NavigateToTask -> {
+                    onNavigateToTask?.invoke(event.documentExternalId)
                 }
                 is DocumentDetailUiEvent.LockLost -> {
                     lockLost = event
@@ -337,9 +342,14 @@ fun DocumentDetailScreen(
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         bottomBar = {
-            // Only show "Take into Work" button for LOADED documents
-            if (uiState.canTakeIntoWork) {
-                TakeIntoWorkBar(
+            when {
+                // A guided document is opened as a task, never locked from here.
+                uiState.canStartGuided -> GuidedStartBar(
+                    labelRes = uiState.guidedButtonLabelRes,
+                    onStartGuided = { viewModel.startGuidedTask() }
+                )
+                // Only show "Take into Work" button for LOADED documents
+                uiState.canTakeIntoWork -> TakeIntoWorkBar(
                     isProcessing = uiState.isProcessingAction,
                     onTakeIntoWork = { viewModel.takeIntoWork() }
                 )
@@ -447,6 +457,7 @@ fun DocumentDetailScreen(
                                             DocumentHeaderCard(
                                                 clientName = uiState.document?.clientName ?: "",
                                                 clientLanguage = uiState.document?.clientLanguage,
+                                                isGuided = uiState.isGuidedCollect,
                                                 warehouseName = uiState.document?.warehouseName ?: "",
                                                 notes = uiState.document?.notes,
                                                 totalPlanned = uiState.document?.totalPlanned ?: 0.0,
@@ -613,6 +624,7 @@ private fun PinnedProgressBar(
 private fun DocumentHeaderCard(
     clientName: String,
     clientLanguage: String?,
+    isGuided: Boolean,
     warehouseName: String,
     notes: String?,
     totalPlanned: Double,
@@ -683,6 +695,14 @@ private fun DocumentHeaderCard(
                         )
                     } else {
                         Spacer(modifier = Modifier.weight(1f))
+                    }
+                    if (isGuided) {
+                        ClientLanguageChip(
+                            language = stringResource(R.string.task_guided_badge),
+                            containerColor = MaterialTheme.colorScheme.tertiary,
+                            contentColor = MaterialTheme.colorScheme.onTertiary,
+                            modifier = Modifier.padding(end = 6.dp)
+                        )
                     }
                     if (!clientLanguage.isNullOrBlank()) {
                         ClientLanguageChip(
@@ -775,6 +795,32 @@ private fun DocumentHeaderCard(
                         }
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GuidedStartBar(
+    @StringRes labelRes: Int,
+    onStartGuided: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        tonalElevation = 3.dp,
+        shadowElevation = 8.dp
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Button(
+                onClick = onStartGuided,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(labelRes))
             }
         }
     }

@@ -886,6 +886,23 @@ class DocumentDetailViewModel @Inject constructor(
         )
     }
 
+    /**
+     * Hands a `collect_mode: "guided"` document to the task screen. No lock is
+     * claimed here — `POST /device/tasks {document_id}` takes the Collect lock
+     * on the server with the same semantics, and the device must not hold a
+     * classic claim on top of it (D3).
+     */
+    fun startGuidedTask() {
+        val document = _uiState.value.document ?: return
+        viewModelScope.launch {
+            _uiEvents.emit(
+                DocumentDetailUiEvent.NavigateToTask(
+                    document.externalId?.takeIf { it.isNotBlank() } ?: document.id
+                )
+            )
+        }
+    }
+
     fun takeIntoWork() {
         // Guard against re-entry from rapid double-clicks: if a lock request
         // is already in flight, ignore this invocation.

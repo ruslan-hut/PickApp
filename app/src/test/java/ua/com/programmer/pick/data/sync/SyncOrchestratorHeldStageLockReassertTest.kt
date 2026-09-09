@@ -100,6 +100,9 @@ class SyncOrchestratorHeldStageLockReassertTest {
             boxDao = mockk(relaxed = true),
             documentBoxDao = mockk(relaxed = true),
             outgoingOperationRepository = mockk(relaxed = true),
+            guidedTaskRepository = mockk(relaxed = true) {
+                every { active } returns MutableStateFlow(null)
+            },
             debugJournal = mockk(relaxed = true),
             debugJournalUploader = mockk(relaxed = true),
             linePhotoUploader = mockk(relaxed = true),

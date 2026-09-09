@@ -29,6 +29,12 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.presentation.common.EmptyState
 import ua.com.programmer.pick.presentation.common.PickAppBar
@@ -50,6 +56,7 @@ fun DocumentsScreen(
         onPauseOrDispose { }
     }
     var searchQuery by remember { mutableStateOf("") }
+    var showOverflow by remember { mutableStateOf(false) }
 
     val filteredDocuments = remember(uiState.documents, searchQuery) {
         if (searchQuery.isBlank()) {
@@ -68,7 +75,29 @@ fun DocumentsScreen(
             PickAppBar(
                 title = stringResource(R.string.documents),
                 onNavigateBack = onNavigateBack,
-                scrollBehavior = scrollBehavior
+                scrollBehavior = scrollBehavior,
+                actions = {
+                    if (uiState.canJoinReceiving) {
+                        IconButton(onClick = { showOverflow = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = stringResource(R.string.more_actions_cd)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showOverflow,
+                            onDismissRequest = { showOverflow = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.task_join_receiving)) },
+                                onClick = {
+                                    showOverflow = false
+                                    viewModel.onJoinReceiving(onNavigate)
+                                }
+                            )
+                        }
+                    }
+                }
             )
         }
     ) { paddingValues ->

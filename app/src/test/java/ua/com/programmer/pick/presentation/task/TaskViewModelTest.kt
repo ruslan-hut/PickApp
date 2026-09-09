@@ -31,8 +31,10 @@ import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.domain.model.GuidedTask
 import ua.com.programmer.pick.domain.model.TaskActionButton
 import ua.com.programmer.pick.domain.model.TaskExpect
+import ua.com.programmer.pick.domain.model.TaskLineUpdate
 import ua.com.programmer.pick.domain.model.TaskState
 import ua.com.programmer.pick.domain.model.TaskStep
+import ua.com.programmer.pick.domain.repository.DocumentRepository
 import ua.com.programmer.pick.domain.repository.GuidedTaskRepository
 import ua.com.programmer.pick.domain.repository.TaskCallResult
 import ua.com.programmer.pick.presentation.navigation.Screen
@@ -50,6 +52,7 @@ class TaskViewModelTest {
     private val mainDispatcher = UnconfinedTestDispatcher()
 
     private lateinit var repository: GuidedTaskRepository
+    private lateinit var documentRepository: DocumentRepository
     private lateinit var scans: MutableSharedFlow<ScannedBarcode>
     private lateinit var isOnline: MutableStateFlow<Boolean>
 
@@ -57,6 +60,7 @@ class TaskViewModelTest {
     fun setUp() {
         Dispatchers.setMain(mainDispatcher)
         repository = mockk(relaxed = true)
+        documentRepository = mockk(relaxed = true)
         scans = MutableSharedFlow(extraBufferCapacity = 4)
         isOnline = MutableStateFlow(true)
     }
@@ -254,6 +258,37 @@ class TaskViewModelTest {
         assertNull(vm.uiState.value.step)
     }
 
+    @Test
+    fun `line updates on a document task are written to the cached document`() = runTest {
+        val updates = listOf(
+            TaskLineUpdate(lineKey = "K1", lineNumber = 1, actualQuantity = 8.0, isCompleted = true),
+        )
+        coEvery { repository.start(null, "ERP-DOC-1") } returns
+            success(step(), documentId = "ERP-DOC-1", lineUpdates = updates)
+
+        build(documentId = "ERP-DOC-1")
+
+        coVerify(exactly = 1) { documentRepository.applyServerLineUpdates("ERP-DOC-1", updates) }
+    }
+
+    @Test
+    fun `a system task never touches the document cache`() = runTest {
+        coEvery { repository.start(any(), any()) } returns success(step())
+
+        build(type = "CELL_RECOUNT")
+
+        coVerify(exactly = 0) { documentRepository.applyServerLineUpdates(any(), any()) }
+    }
+
+    @Test
+    fun `an envelope without line updates writes nothing`() = runTest {
+        coEvery { repository.start(null, "ERP-DOC-1") } returns success(step(), documentId = "ERP-DOC-1")
+
+        build(documentId = "ERP-DOC-1")
+
+        coVerify(exactly = 0) { documentRepository.applyServerLineUpdates(any(), any()) }
+    }
+
     // --- helpers ---
 
     private fun build(
@@ -277,6 +312,7 @@ class TaskViewModelTest {
         return TaskViewModel(
             savedStateHandle = handle,
             guidedTaskRepository = repository,
+            documentRepository = documentRepository,
             barcodeService = barcodeService,
             networkMonitor = networkMonitor,
             syncOrchestrator = mockk<SyncOrchestrator>(relaxed = true),
@@ -296,6 +332,7 @@ class TaskViewModelTest {
         documentId: String? = null,
         message: ua.com.programmer.pick.domain.model.TaskMessage? = null,
         replayed: Boolean = false,
+        lineUpdates: List<TaskLineUpdate> = emptyList(),
     ) = TaskCallResult.Success(
         GuidedTask(
             id = "t1",
@@ -306,6 +343,7 @@ class TaskViewModelTest {
             step = step,
             message = message,
             replayed = replayed,
+            lineUpdates = lineUpdates,
         ),
     )
 

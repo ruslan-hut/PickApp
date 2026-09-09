@@ -8,6 +8,12 @@ sealed class DocumentDetailUiEvent {
     data class ShowBarcodeAlert(val alertType: BarcodeAlertType) : DocumentDetailUiEvent()
     data object NavigateBack : DocumentDetailUiEvent()
     /**
+     * The document is worked as a guided task: hand it to the task screen,
+     * which asks the server to start (or resume) it. [documentExternalId] is
+     * the ERP id the task endpoint expects.
+     */
+    data class NavigateToTask(val documentExternalId: String) : DocumentDetailUiEvent()
+    /**
      * M5″ recovery exhausted the silent re-lock budget; the worker's dirty
      * edits were dropped on this device. The screen should show a banner /
      * dialog explaining what happened and (typically) navigate the worker

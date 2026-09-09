@@ -93,6 +93,13 @@ fun DocumentListItem(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (document.isGuidedCollect) {
+                        ClientLanguageChip(
+                            language = stringResource(R.string.task_guided_badge),
+                            containerColor = MaterialTheme.colorScheme.tertiary,
+                            contentColor = MaterialTheme.colorScheme.onTertiary
+                        )
+                    }
                     if (!document.clientLanguage.isNullOrBlank()) {
                         ClientLanguageChip(language = document.clientLanguage)
                     }

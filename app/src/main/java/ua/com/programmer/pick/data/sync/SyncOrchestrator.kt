@@ -158,6 +158,7 @@ class SyncOrchestrator @Inject constructor(
     private val boxDao: BoxDao,
     private val documentBoxDao: DocumentBoxDao,
     private val outgoingOperationRepository: OutgoingOperationRepository,
+    private val guidedTaskRepository: ua.com.programmer.pick.domain.repository.GuidedTaskRepository,
     private val debugJournal: ua.com.programmer.pick.data.debug.DebugJournal,
     private val debugJournalUploader: ua.com.programmer.pick.data.debug.DebugJournalUploader,
     private val linePhotoUploader: ua.com.programmer.pick.data.remote.LinePhotoUploader,
@@ -2066,6 +2067,18 @@ class SyncOrchestrator @Inject constructor(
      * lands, or STAGE_COMPLETE returns "document not found" and
      * purgeMissingDocument cleans up deliberately.
      */
+    /**
+     * Both ids of the document behind an open guided task — the ERP external_id
+     * the task carries and the local row id — so either form is exempt from a
+     * purge. Empty when no task is running, which is always the case on a
+     * tenant without the WMS addressing module.
+     */
+    private suspend fun activeTaskDocumentIds(): Set<String> {
+        val externalId = guidedTaskRepository.active.value?.documentId ?: return emptySet()
+        val localId = documentDao.getDocumentByExternalId(externalId)?.id
+        return setOfNotNull(externalId, localId)
+    }
+
     private suspend fun purgeDocumentsOutsideVisibleSet(visibleIds: List<String>) {
         val cached = documentDao.getAllDocumentIds()
         if (cached.isEmpty()) return
@@ -2074,6 +2087,9 @@ class SyncOrchestrator @Inject constructor(
         keep.addAll(heldStageLocks)
         keep.addAll(documentDao.getLocallyModifiedDocumentIds())
         keep.addAll(outgoingOperationRepository.getUnsentEntityIds())
+        // A document being worked as a guided task is deliberately not in
+        // heldStageLocks (D3), so it needs its own exemption.
+        keep.addAll(activeTaskDocumentIds())
 
         val stale = cached.filterNot { it in keep }
         if (stale.isEmpty()) return
@@ -2135,10 +2151,16 @@ class SyncOrchestrator @Inject constructor(
         // client's last cursor, and purging non-received docs would silently
         // drop unchanged ones. See SyncDataPayload.full_set on the server.
         if (fullSet) {
-            if (receivedIds.isEmpty()) {
+            // The document behind an open guided task survives the complete-set
+            // purge. A receiving document another worker holds is absent from
+            // the list the server returns to *this* worker, yet the worker
+            // joined it through the server's picker and is standing in front of
+            // it — dropping it would empty the screen underneath them.
+            val keep = receivedIds + activeTaskDocumentIds()
+            if (keep.isEmpty()) {
                 documentDao.deleteAllDocuments()
             } else {
-                documentDao.deleteDocumentsNotIn(receivedIds.toList())
+                documentDao.deleteDocumentsNotIn(keep.toList())
             }
         } else if (visibleIds != null) {
             purgeDocumentsOutsideVisibleSet(visibleIds)

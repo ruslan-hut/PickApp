@@ -34,5 +34,14 @@ data class AvailableDocumentType(
 
     companion object {
         const val GUIDED_MODE = "guided"
+
+        /**
+         * The one ERP type code the app knows by name. It gates two cosmetic
+         * choices only — the guided bar's wording and the "join receiving"
+         * shortcut — never what the server returns or allows. See the guided-
+         * tasks plan §8: a `wms_enabled` flag on the login response would let
+         * the app drop even this.
+         */
+        const val CODE_INCOMING_RECEIPT = "INCOMING_RECEIPT"
     }
 }

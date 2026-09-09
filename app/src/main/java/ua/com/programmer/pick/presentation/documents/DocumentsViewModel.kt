@@ -38,6 +38,13 @@ class DocumentsViewModel @Inject constructor(
     init {
         observeDocuments()
         observeDocumentTypeConfigs()
+        observeSelectedDocumentType()
+    }
+
+    private fun observeSelectedDocumentType() {
+        appPreferences.selectedDocumentType
+            .onEach { code -> _uiState.update { it.copy(selectedDocumentType = code) } }
+            .launchIn(viewModelScope)
     }
 
     private fun observeDocumentTypeConfigs() {
@@ -74,5 +81,15 @@ class DocumentsViewModel @Inject constructor(
 
     fun onDocumentClick(documentId: String, onNavigate: (String) -> Unit) {
         onNavigate(Screen.DocumentDetail.createRoute(documentId))
+    }
+
+    /**
+     * Opens the server's receiving picker (`rv_pick_doc`) so a worker can join
+     * a document already in another worker's hands. The server decides which
+     * documents it offers.
+     */
+    fun onJoinReceiving(onNavigate: (String) -> Unit) {
+        val type = _uiState.value.selectedDocumentType ?: return
+        onNavigate(Screen.Task.byType(type))
     }
 }

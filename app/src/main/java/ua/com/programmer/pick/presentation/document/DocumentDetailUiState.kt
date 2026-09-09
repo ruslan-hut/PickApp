@@ -1,5 +1,8 @@
 package ua.com.programmer.pick.presentation.document
 
+import androidx.annotation.StringRes
+import ua.com.programmer.pick.R
+import ua.com.programmer.pick.domain.model.AvailableDocumentType
 import ua.com.programmer.pick.domain.model.Box
 import ua.com.programmer.pick.domain.model.Document
 import ua.com.programmer.pick.domain.model.DocumentBox
@@ -84,7 +87,34 @@ data class DocumentDetailUiState(
      * user is told why.
      */
     val canTakeIntoWork: Boolean
-        get() = document != null && !hasStageLock
+        get() = document != null && !hasStageLock && !isGuidedCollect
+
+    /**
+     * The warehouse works this Collect-stage document as a guided task. The
+     * classic "Take into work" bar is replaced by the guided bar: the task
+     * engine takes the Collect lock itself, so the worker must never claim a
+     * classic one on top of it (D3/D7). Recomputed from the server's
+     * `collect_mode` on every list load, so a tenant flipping the emergency
+     * switch falls back to the classic screen on the next refresh.
+     */
+    val isGuidedCollect: Boolean
+        get() = document?.isGuidedCollect == true &&
+            (document.state == DocumentState.LOADED || document.state == DocumentState.COLLECTING)
+
+    val canStartGuided: Boolean get() = isGuidedCollect
+
+    /** Start vs resume, and receiving vs picking. Chrome only — the step titles
+     *  inside the task are server-authored. */
+    @get:StringRes
+    val guidedButtonLabelRes: Int
+        get() {
+            val resuming = document?.state == DocumentState.COLLECTING
+            return if (document?.type == AvailableDocumentType.CODE_INCOMING_RECEIPT) {
+                if (resuming) R.string.task_continue_receiving else R.string.task_start_receiving
+            } else {
+                if (resuming) R.string.task_resume_picking else R.string.task_start_picking
+            }
+        }
 
     val canComplete: Boolean
         get() = canEdit
