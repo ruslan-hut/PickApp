@@ -78,7 +78,8 @@ fun DocumentLineRow(
     isSelected: Boolean = false,
     canEdit: Boolean = false,
     allowsOverPlan: Boolean = false,
-    requiresPlan: Boolean = true
+    requiresPlan: Boolean = true,
+    scanOnly: Boolean = false
 ) {
     var showImagePreview by remember { mutableStateOf(false) }
     var showPhotoPreview by remember { mutableStateOf(false) }
@@ -94,6 +95,7 @@ fun DocumentLineRow(
             canEdit = canEdit,
             allowsOverPlan = allowsOverPlan,
             requiresPlan = requiresPlan,
+            scanOnly = scanOnly,
             onQuantityChange = onQuantityChange,
             onNoteChange = onNoteChange,
             onNoteFocusChanged = { noteFieldFocused = it },
@@ -180,6 +182,7 @@ private fun LineCardContent(
     canEdit: Boolean,
     allowsOverPlan: Boolean,
     requiresPlan: Boolean,
+    scanOnly: Boolean,
     onQuantityChange: (String, Double) -> Unit,
     onNoteChange: (String, String) -> Unit,
     onNoteFocusChanged: (Boolean) -> Unit,
@@ -372,7 +375,8 @@ private fun LineCardContent(
                         line.plannedQuantity > 0 -> line.plannedQuantity
                         else -> Double.MAX_VALUE
                     },
-                    enabled = canEdit
+                    enabled = canEdit,
+                    scanOnly = scanOnly
                 )
             }
 

@@ -62,6 +62,7 @@ data class UserLoginResult(
     val tenantId: String? = null,
     val availableDocumentTypes: List<AvailableDocumentTypeDto>? = null,
     val debugJournalEnabled: Boolean? = null,
+    val scanOnly: Boolean? = null,
     val openTasks: List<DeviceDto.OpenTask>? = null,
     val errorMessage: String? = null
 )

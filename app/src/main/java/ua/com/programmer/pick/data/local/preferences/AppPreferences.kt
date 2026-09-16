@@ -43,6 +43,7 @@ class AppPreferences @Inject constructor(
         private val TENANT_ID = stringPreferencesKey("tenant_id")
         private val LAST_LOGIN = stringPreferencesKey("last_login")
         private val DEBUG_JOURNAL_ENABLED = booleanPreferencesKey("debug_journal_enabled")
+        private val SCAN_ONLY = booleanPreferencesKey("scan_only")
         private val DEMO_MODE = booleanPreferencesKey("demo_mode")
         private val LAST_REPORTED_EXIT_TS = longPreferencesKey("last_reported_exit_ts")
         // Plaintext keys kept for migration only
@@ -272,6 +273,17 @@ class AppPreferences @Inject constructor(
 
     suspend fun setDebugJournalEnabled(enabled: Boolean) {
         context.dataStore.edit { it[DEBUG_JOURNAL_ENABLED] = enabled }
+    }
+
+    /**
+     * Device option set by the tenant admin: line quantities can only be
+     * counted by scanning; +/- and manual entry are disabled, reset is allowed.
+     * A device setting, so it survives logout and applies to offline logins.
+     */
+    val scanOnly: Flow<Boolean> = context.dataStore.data.map { it[SCAN_ONLY] ?: false }
+
+    suspend fun setScanOnly(enabled: Boolean) {
+        context.dataStore.edit { it[SCAN_ONLY] = enabled }
     }
 
     fun getDebugJournalEnabledSync(): Boolean = runBlocking {

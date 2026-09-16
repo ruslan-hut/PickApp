@@ -52,6 +52,8 @@ object DeviceDto {
         @SerializedName("tenant_id") val tenantId: String,
         @SerializedName("available_document_types") val availableDocumentTypes: List<AvailableDocumentType>? = null,
         @SerializedName("debug_journal_enabled") val debugJournalEnabled: Boolean = false,
+        /** Tenant device option: quantities are counted by scanning only. */
+        @SerializedName("scan_only") val scanOnly: Boolean = false,
         @SerializedName("held_stage_locks") val heldStageLocks: List<String>? = null,
         @SerializedName("open_tasks") val openTasks: List<OpenTask>? = null,
     )
@@ -87,6 +89,8 @@ object DeviceDto {
         @SerializedName("entities") val entities: List<SyncEntity>? = null,
         @SerializedName("next_cursors") val nextCursors: Map<String, String>? = null,
         @SerializedName("has_more") val hasMore: Boolean = false,
+        /** Device "scan only" option repeated on every sync; null = unknown, keep last value. */
+        @SerializedName("scan_only") val scanOnly: Boolean? = null,
     )
 
     /** One entity batch. `data` is the raw entity-row array (same shape the legacy wire

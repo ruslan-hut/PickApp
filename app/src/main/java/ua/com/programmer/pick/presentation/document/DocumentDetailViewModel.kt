@@ -26,6 +26,7 @@ import ua.com.programmer.pick.core.util.Result
 import ua.com.programmer.pick.data.debug.DebugEventType
 import kotlinx.coroutines.withContext
 import ua.com.programmer.pick.data.debug.DebugJournal
+import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.mapper.toDocumentBoxDomainList
 import ua.com.programmer.pick.data.mapper.toDomain
 import ua.com.programmer.pick.data.repository.DocumentTypeConfigProvider
@@ -56,6 +57,7 @@ class DocumentDetailViewModel @Inject constructor(
     private val documentTypeConfigProvider: DocumentTypeConfigProvider,
     private val imageCompressor: ImageCompressor,
     private val linePhotoStore: LinePhotoStore,
+    private val appPreferences: AppPreferences,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -82,6 +84,13 @@ class DocumentDetailViewModel @Inject constructor(
         subscribeToScans()
         subscribeToDocumentTypeConfigs()
         subscribeToOrchestratorEvents()
+        subscribeToScanOnly()
+    }
+
+    private fun subscribeToScanOnly() {
+        appPreferences.scanOnly
+            .onEach { enabled -> _uiState.update { it.copy(scanOnly = enabled) } }
+            .launchIn(viewModelScope)
     }
 
     /**
@@ -539,6 +548,8 @@ class DocumentDetailViewModel @Inject constructor(
             }
             return
         }
+        // Scan-only devices count by scanning; the only manual change is a reset.
+        if (_uiState.value.scanOnly && newQuantity != 0.0) return
 
         // Snapshot the prior value so we can roll back the optimistic UI
         // update if the persist step fails. Without this, a failed save

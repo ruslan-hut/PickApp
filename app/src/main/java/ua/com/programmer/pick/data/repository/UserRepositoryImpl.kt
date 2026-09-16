@@ -184,6 +184,10 @@ class UserRepositoryImpl @Inject constructor(
             loginResult.debugJournalEnabled?.let {
                 appPreferences.setDebugJournalEnabled(it)
             }
+            // Persist the device "scan only" option (tenant-admin setting).
+            loginResult.scanOnly?.let {
+                appPreferences.setScanOnly(it)
+            }
 
             // Hash password for offline login
             val passwordHash = passwordHasher.hash(password, login)

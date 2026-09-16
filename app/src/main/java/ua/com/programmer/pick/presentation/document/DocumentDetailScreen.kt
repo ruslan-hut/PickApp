@@ -510,7 +510,8 @@ fun DocumentDetailScreen(
                                                     // product list is strictly read-only per the server-owned invariant.
                                                     canEdit = uiState.canEditLines,
                                                     allowsOverPlan = uiState.allowsOverPlan,
-                                                    requiresPlan = uiState.requiresPlan
+                                                    requiresPlan = uiState.requiresPlan,
+                                                    scanOnly = uiState.scanOnly
                                                 )
                                             }
                                         }

@@ -12,6 +12,9 @@
     <string name="minus">-</string>
     <string name="enter_quantity">Введіть кількість</string>
     <string name="quantity_overflow_title">Кількість перевищує план</string>
+    <string name="quantity_scan_only_title">Лише сканування</string>
+    <string name="quantity_scan_only_message">Кількість: %1$s\nНа цьому пристрої кількість вноситься скануванням товарів по одному. Можна скинути кількість і сканувати знову.</string>
+    <string name="quantity_reset">Скинути</string>
     <string name="quantity_overflow_fmt">Введена кількість %1$.0f перевищує заплановану %2$.0f. Значення не змінено.</string>
 
     <!-- Home -->

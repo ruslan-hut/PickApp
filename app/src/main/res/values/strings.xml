@@ -12,6 +12,9 @@
     <string name="minus">-</string>
     <string name="enter_quantity">Enter Quantity</string>
     <string name="quantity_overflow_title">Quantity exceeds plan</string>
+    <string name="quantity_scan_only_title">Scan only</string>
+    <string name="quantity_scan_only_message">Quantity: %1$s\nThis device counts by scanning items one by one. You can reset the quantity and scan again.</string>
+    <string name="quantity_reset">Reset</string>
     <string name="quantity_overflow_fmt">Entered quantity %1$.0f is more than planned %2$.0f. Value was not changed.</string>
 
     <!-- Home -->

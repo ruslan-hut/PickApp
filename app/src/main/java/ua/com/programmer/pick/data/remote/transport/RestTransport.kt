@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.util.AppLog
+import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.remote.api.DeviceApiException
 import ua.com.programmer.pick.data.remote.api.DeviceRestClient
 import ua.com.programmer.pick.data.remote.dto.DeviceDto
@@ -38,6 +39,7 @@ import javax.inject.Singleton
 class RestTransport @Inject constructor(
     private val client: DeviceRestClient,
     private val messageParser: MessageParser,
+    private val appPreferences: AppPreferences,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) : SyncTransport {
 
@@ -121,6 +123,7 @@ class RestTransport @Inject constructor(
                     tenantId = r.tenantId,
                     availableDocumentTypes = r.availableDocumentTypes?.map { it.toWire() },
                     debugJournalEnabled = r.debugJournalEnabled,
+                    scanOnly = r.scanOnly,
                     openTasks = r.openTasks,
                 )
             },
@@ -347,6 +350,9 @@ class RestTransport @Inject constructor(
             } ?: "none"
             AppLog.i(TAG, "DOC_TRACE delta sync page OK hasMore=${resp.hasMore} entities=[$summary] nextCursors=${resp.nextCursors}")
             isFull = false
+            // The server repeats the device "scan only" option on every poll so
+            // a tenant-admin toggle applies without a re-login.
+            resp.scanOnly?.let { appPreferences.setScanOnly(it) }
             emitEntities(resp)
             resp.nextCursors?.let { applied = it }
             if (!resp.hasMore) {

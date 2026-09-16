@@ -48,7 +48,10 @@ fun QuantityStepper(
     minValue: Double = 0.0,
     maxValue: Double = Double.MAX_VALUE,
     step: Double = 1.0,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    // Scan-only device: quantity changes only by scanning. +/- are disabled
+    // and tapping the value offers a reset instead of manual entry.
+    scanOnly: Boolean = false
 ) {
     var showDialog by remember { mutableStateOf(false) }
     var overflowEnteredValue by remember { mutableStateOf<Double?>(null) }
@@ -62,7 +65,7 @@ fun QuantityStepper(
         FilledIconButton(
             onClick = { onChange((value - step).coerceAtLeast(minValue)) },
             modifier = Modifier.size(40.dp),
-            enabled = enabled && value > minValue,
+            enabled = enabled && !scanOnly && value > minValue,
             colors = IconButtonDefaults.filledIconButtonColors(
                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -104,10 +107,12 @@ fun QuantityStepper(
         FilledIconButton(
             onClick = { onChange((value + step).coerceAtMost(maxValue)) },
             modifier = Modifier.size(40.dp),
-            enabled = enabled && value < maxValue,
+            enabled = enabled && !scanOnly && value < maxValue,
             colors = IconButtonDefaults.filledIconButtonColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
             )
         ) {
             Icon(
@@ -117,7 +122,17 @@ fun QuantityStepper(
         }
     }
 
-    if (showDialog) {
+    if (showDialog && scanOnly) {
+        QuantityResetDialog(
+            currentValue = value,
+            minValue = minValue,
+            onDismiss = { showDialog = false },
+            onReset = {
+                onChange(minValue)
+                showDialog = false
+            }
+        )
+    } else if (showDialog) {
         QuantityInputDialog(
             currentValue = value,
             minValue = minValue,
@@ -205,6 +220,45 @@ private fun QuantityInputDialog(
         confirmButton = {
             TextButton(onClick = confirmAction) {
                 Text(stringResource(R.string.ok))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+/**
+ * Scan-only replacement for [QuantityInputDialog]: shows the counted quantity
+ * and lets the worker reset it to start the count over — no manual entry.
+ */
+@Composable
+private fun QuantityResetDialog(
+    currentValue: Double,
+    minValue: Double,
+    onDismiss: () -> Unit,
+    onReset: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.quantity_scan_only_title)) },
+        text = {
+            Text(
+                text = stringResource(R.string.quantity_scan_only_message, formatQuantity(currentValue)),
+                style = MaterialTheme.typography.bodyLarge
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onReset,
+                enabled = currentValue > minValue
+            ) {
+                Text(
+                    text = stringResource(R.string.quantity_reset),
+                    color = if (currentValue > minValue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         },
         dismissButton = {

@@ -78,6 +78,9 @@ class DocumentDetailViewModelResolveScannedProductTest {
             documentTypeConfigProvider = documentTypeConfigProvider,
             imageCompressor = mockk(relaxed = true),
             linePhotoStore = mockk(relaxed = true),
+            appPreferences = mockk(relaxed = true) {
+                every { scanOnly } returns flowOf(false)
+            },
             ioDispatcher = mainDispatcher
         )
     }

@@ -56,6 +56,10 @@ data class DocumentDetailUiState(
     // When false, the type doesn't carry planned quantities — the UI hides
     // plan labels and progress bars. Defaults to true to match pre-flags.
     val requiresPlan: Boolean = true,
+    // Device "scan only" option (tenant admin). Quantities change only by
+    // scanning; the stepper's +/- are disabled and tapping the value offers
+    // a reset to zero instead of manual entry.
+    val scanOnly: Boolean = false,
     // Toggled by tapping the pinned progress bar. When true, the products
     // list hides lines already marked as completed so the worker can focus
     // on the remaining items. Reset to false on every document load.
