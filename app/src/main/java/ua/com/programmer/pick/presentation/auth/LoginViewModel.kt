@@ -17,6 +17,8 @@ import ua.com.programmer.pick.core.util.AppLog
 import ua.com.programmer.pick.core.util.NetworkMonitor
 import ua.com.programmer.pick.core.util.Result
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
+import ua.com.programmer.pick.domain.model.DeviceNotLinkedException
+import ua.com.programmer.pick.domain.model.EnrollmentQr
 import ua.com.programmer.pick.domain.repository.UserRepository
 import javax.inject.Inject
 
@@ -34,6 +36,10 @@ class LoginViewModel @Inject constructor(
         const val ERROR_EMPTY_CREDENTIALS = "ERROR_EMPTY_CREDENTIALS"
         const val ERROR_LOGIN_FAILED = "ERROR_LOGIN_FAILED"
     }
+
+    // The login back-stack entry stays alive under the pairing screen and would
+    // otherwise react to a QR scanned there too.
+    private var isScreenActive = false
 
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
@@ -87,6 +93,10 @@ class LoginViewModel @Inject constructor(
                     }
                 }
                 is Result.Error -> {
+                    if (result.exception is DeviceNotLinkedException) {
+                        _uiState.update { it.copy(isLoading = false, needsDeviceLink = true) }
+                        return@launch
+                    }
                     _uiState.update {
                         it.copy(
                             isLoading = false,
@@ -101,6 +111,15 @@ class LoginViewModel @Inject constructor(
         }
     }
 
+    fun setScreenActive(active: Boolean) {
+        isScreenActive = active
+    }
+
+    /** The pairing screen was opened; reset the one-shot triggers. */
+    fun onDeviceLinkOpened() {
+        _uiState.update { it.copy(needsDeviceLink = false, enrollQr = null) }
+    }
+
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }
     }
@@ -108,6 +127,10 @@ class LoginViewModel @Inject constructor(
     private fun subscribeToQRLogin() {
         barcodeService.scannedBarcodes
             .onEach { scanned ->
+                if (scanned.rawValue.trim().startsWith(EnrollmentQr.PREFIX)) {
+                    if (isScreenActive) _uiState.update { it.copy(enrollQr = scanned.rawValue.trim()) }
+                    return@onEach
+                }
                 val credentials = parseLoginQR(scanned.rawValue) ?: return@onEach
                 login(credentials.first, credentials.second)
             }

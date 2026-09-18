@@ -324,4 +324,27 @@
     <string name="task_continue_receiving">Продовжити приймання</string>
     <string name="task_join_receiving">Приєднатися до приймання</string>
     <string name="more_actions_cd">Інші дії</string>
+
+    <!-- Device linking ("Connect to company") -->
+    <string name="device_link_title">Підключення до компанії</string>
+    <string name="device_link_open">Підключити до компанії</string>
+    <string name="device_link_scan_title">Відскануйте QR-код</string>
+    <string name="device_link_scan_hint">В адмін-панелі відкрийте Пристрої → Додати пристрій і відскануйте QR-код сканером цього пристрою.</string>
+    <string name="device_link_or">або</string>
+    <string name="device_link_code_title">Продиктуйте адміністратору цей код</string>
+    <string name="device_link_code_hint">Він вводить його в Пристрої → Додати пристрій → Ввести код.</string>
+    <string name="device_link_code_expires_fmt">Новий код через %1$s</string>
+    <string name="device_link_waiting">Отримуємо код…</string>
+    <string name="device_link_connecting">Підключення…</string>
+    <string name="device_link_success_title">Пристрій підключено</string>
+    <string name="device_link_success_fmt">Пристрій підключено до %1$s. Увійдіть, щоб почати роботу.</string>
+    <string name="device_link_sign_in">Увійти</string>
+    <string name="device_link_rejected_title">Пристрій заблоковано</string>
+    <string name="device_link_error_rejected">Адміністратор заблокував цей пристрій. Зверніться до адміністратора.</string>
+    <string name="device_link_error_invalid">Цей QR-код більше не дійсний. Попросіть адміністратора створити новий.</string>
+    <string name="device_link_error_elsewhere">Цей пристрій належить іншій компанії, спершу його треба відʼєднати там.</string>
+    <string name="device_link_error_limit">Ваша компанія досягла ліміту пристроїв. Попросіть адміністратора його збільшити.</string>
+    <string name="device_link_error_other_server">Цей QR-код для іншого сервера.</string>
+    <string name="device_link_error_unreachable">Немає звʼязку із сервером. Перевірте мережу.</string>
+    <string name="device_link_error_generic">Не вдалося підключити пристрій. Спробуйте ще раз.</string>
 </resources>

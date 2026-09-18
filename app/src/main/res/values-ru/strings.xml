@@ -309,4 +309,27 @@
     <string name="task_continue_receiving">Продолжить приёмку</string>
     <string name="task_join_receiving">Присоединиться к приёмке</string>
     <string name="more_actions_cd">Другие действия</string>
+
+    <!-- Device linking ("Connect to company") -->
+    <string name="device_link_title">Подключение к компании</string>
+    <string name="device_link_open">Подключить к компании</string>
+    <string name="device_link_scan_title">Отсканируйте QR-код</string>
+    <string name="device_link_scan_hint">В админ-панели откройте Устройства → Добавить устройство и отсканируйте QR-код сканером этого устройства.</string>
+    <string name="device_link_or">или</string>
+    <string name="device_link_code_title">Продиктуйте администратору этот код</string>
+    <string name="device_link_code_hint">Он вводит его в Устройства → Добавить устройство → Ввести код.</string>
+    <string name="device_link_code_expires_fmt">Новый код через %1$s</string>
+    <string name="device_link_waiting">Получаем код…</string>
+    <string name="device_link_connecting">Подключение…</string>
+    <string name="device_link_success_title">Устройство подключено</string>
+    <string name="device_link_success_fmt">Устройство подключено к %1$s. Войдите, чтобы начать работу.</string>
+    <string name="device_link_sign_in">Войти</string>
+    <string name="device_link_rejected_title">Устройство заблокировано</string>
+    <string name="device_link_error_rejected">Администратор заблокировал это устройство. Обратитесь к администратору.</string>
+    <string name="device_link_error_invalid">Этот QR-код больше не действителен. Попросите администратора создать новый.</string>
+    <string name="device_link_error_elsewhere">Это устройство принадлежит другой компании, сначала его нужно отвязать там.</string>
+    <string name="device_link_error_limit">Ваша компания достигла лимита устройств. Попросите администратора его увеличить.</string>
+    <string name="device_link_error_other_server">Этот QR-код для другого сервера.</string>
+    <string name="device_link_error_unreachable">Нет связи с сервером. Проверьте сеть.</string>
+    <string name="device_link_error_generic">Не удалось подключить устройство. Попробуйте ещё раз.</string>
 </resources>

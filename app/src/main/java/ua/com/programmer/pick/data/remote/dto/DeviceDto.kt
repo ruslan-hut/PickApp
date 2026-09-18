@@ -40,6 +40,42 @@ object DeviceDto {
         @SerializedName("app_version") val appVersion: String,
     )
 
+    // --- Device linking (public, before any login) ---
+
+    /** Poll body while the device is not linked to a tenant yet. */
+    data class PairingRequest(
+        @SerializedName("app_token") val appToken: String,
+        @SerializedName("device_id") val deviceId: String,
+        @SerializedName("app_version") val appVersion: String,
+        @SerializedName("model") val model: String,
+    )
+
+    /**
+     * `status` is PENDING (show [code]), APPROVED (linked, go to login) or
+     * REJECTED (blocked by the global admin). [expiresInSec] is relative, so a
+     * wrong device clock still counts down correctly.
+     */
+    data class PairingResponse(
+        @SerializedName("status") val status: String,
+        @SerializedName("code") val code: String? = null,
+        @SerializedName("expires_in_sec") val expiresInSec: Int? = null,
+        @SerializedName("tenant_name") val tenantName: String? = null,
+    )
+
+    data class EnrollRequest(
+        @SerializedName("app_token") val appToken: String,
+        @SerializedName("device_id") val deviceId: String,
+        @SerializedName("token") val token: String,
+        @SerializedName("app_version") val appVersion: String,
+        @SerializedName("model") val model: String,
+    )
+
+    data class EnrollResponse(
+        @SerializedName("status") val status: String,
+        @SerializedName("tenant_name") val tenantName: String? = null,
+        @SerializedName("device_name") val deviceName: String? = null,
+    )
+
     data class LoginResponse(
         @SerializedName("access_token") val accessToken: String,
         @SerializedName("refresh_token") val refreshToken: String,

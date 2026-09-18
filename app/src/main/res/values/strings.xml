@@ -324,4 +324,27 @@
     <string name="task_continue_receiving">Continue receiving</string>
     <string name="task_join_receiving">Join receiving</string>
     <string name="more_actions_cd">More actions</string>
+
+    <!-- Device linking ("Connect to company") -->
+    <string name="device_link_title">Connect to company</string>
+    <string name="device_link_open">Connect to company</string>
+    <string name="device_link_scan_title">Scan the QR code</string>
+    <string name="device_link_scan_hint">In the admin panel open Devices → Add device and scan the QR code with this device\'s scanner.</string>
+    <string name="device_link_or">or</string>
+    <string name="device_link_code_title">Tell the administrator this code</string>
+    <string name="device_link_code_hint">They type it in Devices → Add device → Enter code.</string>
+    <string name="device_link_code_expires_fmt">New code in %1$s</string>
+    <string name="device_link_waiting">Getting a code…</string>
+    <string name="device_link_connecting">Connecting…</string>
+    <string name="device_link_success_title">Device connected</string>
+    <string name="device_link_success_fmt">This device is now linked to %1$s. Sign in to start working.</string>
+    <string name="device_link_sign_in">Sign in</string>
+    <string name="device_link_rejected_title">Device blocked</string>
+    <string name="device_link_error_rejected">The administrator blocked this device. Contact your administrator.</string>
+    <string name="device_link_error_invalid">This QR code is no longer valid. Ask the administrator for a new one.</string>
+    <string name="device_link_error_elsewhere">This device belongs to another company. It has to be released there first.</string>
+    <string name="device_link_error_limit">Your company has reached its device limit. Ask the administrator to raise it.</string>
+    <string name="device_link_error_other_server">This QR code is for a different server.</string>
+    <string name="device_link_error_unreachable">No connection to the server. Check the network.</string>
+    <string name="device_link_error_generic">Could not connect the device. Try again.</string>
 </resources>

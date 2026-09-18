@@ -19,6 +19,7 @@ import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.mapper.toDomain
 import ua.com.programmer.pick.data.remote.transport.ConnectionState
 import ua.com.programmer.pick.data.remote.transport.SyncTransport
+import ua.com.programmer.pick.domain.model.DeviceNotLinkedException
 import ua.com.programmer.pick.domain.model.User
 import ua.com.programmer.pick.data.remote.transport.demo.DemoVariant
 import ua.com.programmer.pick.domain.model.UserRole
@@ -248,6 +249,13 @@ class UserRepositoryImpl @Inject constructor(
         } else {
             val error = loginResult.errorMessage ?: "Login failed"
             AppLog.w(TAG, "transport login failed: $error")
+
+            // The server refused this device, not the worker: falling back to
+            // an offline login would let a released device keep working.
+            val code = loginResult.errorCode
+            if (code != null && code in DeviceNotLinkedException.CODES) {
+                return Result.Error(DeviceNotLinkedException(code), error)
+            }
 
             // If transport login fails, try offline login as fallback
             // (in case user exists locally with valid credentials)

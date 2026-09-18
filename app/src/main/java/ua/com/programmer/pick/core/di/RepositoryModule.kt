@@ -6,6 +6,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import ua.com.programmer.pick.data.repository.BoxRepositoryImpl
 import ua.com.programmer.pick.data.repository.ClientRepositoryImpl
+import ua.com.programmer.pick.data.repository.DeviceLinkRepositoryImpl
 import ua.com.programmer.pick.data.repository.DocumentRepositoryImpl
 import ua.com.programmer.pick.data.repository.GuidedTaskRepositoryImpl
 import ua.com.programmer.pick.data.repository.OutgoingOperationRepositoryImpl
@@ -14,6 +15,7 @@ import ua.com.programmer.pick.data.repository.UserRepositoryImpl
 import ua.com.programmer.pick.data.repository.WarehouseRepositoryImpl
 import ua.com.programmer.pick.domain.repository.BoxRepository
 import ua.com.programmer.pick.domain.repository.ClientRepository
+import ua.com.programmer.pick.domain.repository.DeviceLinkRepository
 import ua.com.programmer.pick.domain.repository.DocumentRepository
 import ua.com.programmer.pick.domain.repository.GuidedTaskRepository
 import ua.com.programmer.pick.domain.repository.OutgoingOperationRepository
@@ -25,6 +27,12 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryModule {
+
+    @Binds
+    @Singleton
+    abstract fun bindDeviceLinkRepository(
+        impl: DeviceLinkRepositoryImpl
+    ): DeviceLinkRepository
 
     @Binds
     @Singleton

@@ -28,6 +28,16 @@ interface DeviceApi {
     @POST("device/refresh")
     suspend fun refresh(@Body request: DeviceDto.RefreshRequest): Response<ApiEnvelope<DeviceDto.RefreshResponse>>
 
+    // --- Device linking (public; gated by the app token) ---
+
+    /** Unlinked-device poll: the pairing code to show, or APPROVED once claimed. */
+    @POST("device/pairing")
+    suspend fun pairing(@Body request: DeviceDto.PairingRequest): Response<ApiEnvelope<DeviceDto.PairingResponse>>
+
+    /** Links the device through a scanned tenant enrollment QR token. */
+    @POST("device/enroll")
+    suspend fun enroll(@Body request: DeviceDto.EnrollRequest): Response<ApiEnvelope<DeviceDto.EnrollResponse>>
+
     // --- Sync ---
 
     /** Delta pull. `full=1` resets cursors first; the device loops while has_more. */

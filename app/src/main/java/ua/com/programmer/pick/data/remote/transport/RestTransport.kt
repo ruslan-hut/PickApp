@@ -131,7 +131,7 @@ class RestTransport @Inject constructor(
                 val error = e.message ?: "Login failed"
                 _userAuthState.value = UserAuthState.AuthFailed(error)
                 AppLog.w(TAG, "User authentication failed (REST): $error")
-                UserLoginResult(success = false, errorMessage = error)
+                UserLoginResult(success = false, errorMessage = error, errorCode = (e as? DeviceApiException)?.code)
             },
         )
     }

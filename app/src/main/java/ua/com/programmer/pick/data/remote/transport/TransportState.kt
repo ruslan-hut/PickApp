@@ -64,5 +64,7 @@ data class UserLoginResult(
     val debugJournalEnabled: Boolean? = null,
     val scanOnly: Boolean? = null,
     val openTasks: List<DeviceDto.OpenTask>? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    // Server error code of a refused login (DEVICE_PENDING, INVALID_CREDENTIALS…).
+    val errorCode: String? = null
 )

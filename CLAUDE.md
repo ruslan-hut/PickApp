@@ -107,6 +107,30 @@ server repo `docs/device-api.md` § "Guided tasks"; app plan
 - **No role branching.** The server decides which types, documents and tasks
   the worker sees.
 
+### Device Linking ("Connect to company")
+
+A device that is not linked to a tenant cannot log in; the server answers
+`DEVICE_PENDING` / `DEVICE_NOT_APPROVED` / `DEVICE_NO_TENANT`. Contract: server
+repo `docs/device-api.md` § "Device linking".
+
+- **`presentation/pairing/`** is the one screen for it. The hardware scanner is
+  live on the whole screen for the tenant's enrollment QR
+  (`pick://enroll?s=<origin>&t=<token>` → `POST /device/enroll`), and below it
+  the 8-digit pairing code from `POST /device/pairing` is the fallback the
+  administrator types into the web UI. The poll runs only while the screen is
+  resumed — the server stops honouring a code the device stops polling for.
+- **Entry points**: a login refused with one of those codes
+  (`DeviceNotLinkedException`), an enrollment QR scanned on the login screen
+  (handed over as the `qr` nav argument), and the "Connect to company" link the
+  login screen shows until someone has signed in on the install.
+- **No offline fallback for a device verdict.** `UserRepositoryImpl` returns the
+  refusal instead of trying `loginOffline`, so a released device stops working.
+- **The QR's server is checked, not followed.** The base URL is compiled in
+  (`BACK_BASE_URL`); `EnrollmentQr.parse` refuses a code whose `s` origin
+  differs. The Settings `serverUrl` preference is not read by networking.
+- Linking calls `DeviceRestClient` directly (`DeviceLinkRepository`), not the
+  sync transport: it happens before login and never in the demo session.
+
 ### Document Workflow
 
 Core domain concept — documents flow through states:

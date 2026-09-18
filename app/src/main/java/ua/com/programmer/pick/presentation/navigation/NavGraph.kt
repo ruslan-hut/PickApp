@@ -40,6 +40,8 @@ import ua.com.programmer.pick.presentation.document.DocumentDetailScreen
 import ua.com.programmer.pick.presentation.documents.DocumentsScreen
 import ua.com.programmer.pick.presentation.home.HomeScreen
 import ua.com.programmer.pick.presentation.home.HomeViewModel
+import ua.com.programmer.pick.presentation.pairing.DevicePairingScreen
+import ua.com.programmer.pick.presentation.pairing.DevicePairingViewModel
 import ua.com.programmer.pick.presentation.debug.DebugJournalScreen
 import ua.com.programmer.pick.presentation.profile.ProfileScreen
 import ua.com.programmer.pick.presentation.courier.CourierScreen
@@ -114,13 +116,54 @@ fun PickNavGraph(
                     onClearError = viewModel::clearError,
                     onScanLogin = {
                         navController.navigate(Screen.ScanLogin.route)
+                    },
+                    onOpenDeviceLink = { enrollQr ->
+                        viewModel.onDeviceLinkOpened()
+                        navController.navigate(Screen.DevicePairing.create(enrollQr)) {
+                            launchSingleTop = true
+                        }
                     }
+                )
+                LifecycleResumeEffect(Unit) {
+                    viewModel.setScreenActive(true)
+                    onPauseOrDispose { viewModel.setScreenActive(false) }
+                }
+            }
+
+            composable(
+                route = Screen.DevicePairing.route,
+                arguments = listOf(navArgument(Screen.ENROLL_QR_ARG) { defaultValue = "" })
+            ) {
+                val viewModel: DevicePairingViewModel = hiltViewModel()
+                val uiState by viewModel.uiState.collectAsState()
+
+                // The poll is what keeps the pairing code claimable, so it runs
+                // only while the screen is actually in front of the worker.
+                LifecycleResumeEffect(Unit) {
+                    viewModel.onResume()
+                    onPauseOrDispose { viewModel.onPause() }
+                }
+
+                DevicePairingScreen(
+                    uiState = uiState,
+                    onNavigateBack = { navController.popBackStack() },
+                    onSignIn = { navController.popBackStack(Screen.Login.route, inclusive = false) }
                 )
             }
 
             composable(route = Screen.ScanLogin.route) {
                 val viewModel: LoginViewModel = hiltViewModel()
                 val uiState by viewModel.uiState.collectAsState()
+
+                // A QR login can be refused for the device too.
+                LaunchedEffect(uiState.needsDeviceLink) {
+                    if (uiState.needsDeviceLink) {
+                        viewModel.onDeviceLinkOpened()
+                        navController.navigate(Screen.DevicePairing.create()) {
+                            popUpTo(Screen.ScanLogin.route) { inclusive = true }
+                        }
+                    }
+                }
 
                 ScanLoginScreen(
                     uiState = uiState,

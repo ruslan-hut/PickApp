@@ -1,5 +1,6 @@
 package ua.com.programmer.pick.data.remote.api
 
+import android.os.Build
 import com.google.gson.Gson
 import retrofit2.Response
 import ua.com.programmer.pick.BuildConfig
@@ -61,6 +62,33 @@ class DeviceRestClient @Inject constructor(
         result.getOrNull()?.let { appPreferences.setTokensSync(it.accessToken, it.refreshToken) }
         return result
     }
+
+    // --- Device linking (no session yet, so never a refresh-retry) ---
+
+    suspend fun pairing(): Result<DeviceDto.PairingResponse> {
+        val request = DeviceDto.PairingRequest(
+            appToken = Constants.Network.APP_TOKEN,
+            deviceId = appPreferences.getDeviceIdSync(),
+            appVersion = BuildConfig.VERSION_NAME,
+            model = deviceModel(),
+        )
+        return envelopeCall(allowRefresh = false) { deviceApi.pairing(request) }
+    }
+
+    suspend fun enroll(token: String): Result<DeviceDto.EnrollResponse> {
+        val request = DeviceDto.EnrollRequest(
+            appToken = Constants.Network.APP_TOKEN,
+            deviceId = appPreferences.getDeviceIdSync(),
+            token = token,
+            appVersion = BuildConfig.VERSION_NAME,
+            model = deviceModel(),
+        )
+        return envelopeCall(allowRefresh = false) { deviceApi.enroll(request) }
+    }
+
+    /** "Zebra TC21" — shown to the tenant admin next to the linked device. */
+    private fun deviceModel(): String =
+        listOf(Build.MANUFACTURER, Build.MODEL).filter { it.isNotBlank() }.joinToString(" ")
 
     // --- Sync ---
 

@@ -54,7 +54,8 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onClearError: () -> Unit,
     modifier: Modifier = Modifier,
-    onScanLogin: () -> Unit = {}
+    onScanLogin: () -> Unit = {},
+    onOpenDeviceLink: (enrollQr: String?) -> Unit = {}
 ) {
     var login by remember { mutableStateOf(uiState.lastLogin) }
     var password by remember { mutableStateOf("") }
@@ -71,6 +72,13 @@ fun LoginScreen(
     LaunchedEffect(uiState.isLoggedIn) {
         if (uiState.isLoggedIn) {
             onLoginSuccess()
+        }
+    }
+
+    // Not linked to a company, or the company's QR was just scanned here.
+    LaunchedEffect(uiState.needsDeviceLink, uiState.enrollQr) {
+        if (uiState.needsDeviceLink || uiState.enrollQr != null) {
+            onOpenDeviceLink(uiState.enrollQr)
         }
     }
 
@@ -218,6 +226,24 @@ fun LoginScreen(
                         modifier = Modifier.padding(end = 8.dp)
                     )
                     Text(stringResource(R.string.scan_to_login))
+                }
+
+                // Nobody has signed in on this install yet, so it is most likely
+                // a fresh device that still has to be linked to the company.
+                if (uiState.lastLogin.isBlank()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    TextButton(
+                        onClick = { onOpenDeviceLink(null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !uiState.isLoading
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.baseline_link_24),
+                            contentDescription = null,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        Text(stringResource(R.string.device_link_open))
+                    }
                 }
 
                 // Offline demo session against the in-memory fake server. It

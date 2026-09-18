@@ -1,5 +1,7 @@
 package ua.com.programmer.pick.presentation.navigation
 
+import android.net.Uri
+
 sealed class Screen(val route: String) {
 
     data object Splash : Screen("splash")
@@ -20,6 +22,14 @@ sealed class Screen(val route: String) {
     data object DebugJournal : Screen("debug_journal")
 
     /**
+     * "Connect to company". [ENROLL_QR_ARG] optionally carries an enrollment QR
+     * that was scanned on the login screen, so the link starts right away.
+     */
+    data object DevicePairing : Screen("device_pairing?qr={qr}") {
+        fun create(enrollQr: String? = null) = "device_pairing?qr=${Uri.encode(enrollQr.orEmpty())}"
+    }
+
+    /**
      * The generic guided-task screen. Exactly one argument is meaningful per
      * navigation: [TASK_ID_ARG] resumes an open task, [TASK_TYPE_ARG] starts a
      * system task type, [DOCUMENT_ID_ARG] starts (or resumes) the task bound to
@@ -35,5 +45,6 @@ sealed class Screen(val route: String) {
         const val DOCUMENT_ID_ARG = "documentId"
         const val TASK_ID_ARG = "taskId"
         const val TASK_TYPE_ARG = "type"
+        const val ENROLL_QR_ARG = "qr"
     }
 }
