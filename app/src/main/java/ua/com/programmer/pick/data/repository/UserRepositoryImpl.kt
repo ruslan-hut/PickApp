@@ -125,7 +125,9 @@ class UserRepositoryImpl @Inject constructor(
         userDao.insertUser(userEntity)
         appPreferences.setCurrentUserId(userId)
         appPreferences.setUserCredentials(DemoVariant.LOGIN, DemoVariant.PASSWORD)
-        appPreferences.setLastLogin(DemoVariant.LOGIN)
+        // No setLastLogin: a demo session is not a sign-in on this install. It
+        // would hide the login screen's "Connect to company" link on a device
+        // that still has to be linked.
 
         return Result.Success(userEntity.toDomain())
     }

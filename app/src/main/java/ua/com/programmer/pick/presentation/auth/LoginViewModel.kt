@@ -17,6 +17,7 @@ import ua.com.programmer.pick.core.util.AppLog
 import ua.com.programmer.pick.core.util.NetworkMonitor
 import ua.com.programmer.pick.core.util.Result
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
+import ua.com.programmer.pick.data.remote.transport.demo.DemoVariant
 import ua.com.programmer.pick.domain.model.DeviceNotLinkedException
 import ua.com.programmer.pick.domain.model.EnrollmentQr
 import ua.com.programmer.pick.domain.repository.UserRepository
@@ -53,7 +54,10 @@ class LoginViewModel @Inject constructor(
     private fun loadInitialState() {
         viewModelScope.launch {
             val fullId = appPreferences.deviceId.first()
-            val lastLogin = appPreferences.lastLogin.first() ?: ""
+            // Installs that ran the demo before it stopped recording lastLogin
+            // still carry the demo login; it says nothing about linking.
+            val lastLogin = (appPreferences.lastLogin.first() ?: "")
+                .takeUnless { it == DemoVariant.LOGIN } ?: ""
             _uiState.update {
                 it.copy(
                     deviceId = fullId.take(8),

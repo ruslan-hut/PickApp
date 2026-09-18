@@ -350,9 +350,6 @@ class RestTransport @Inject constructor(
             } ?: "none"
             AppLog.i(TAG, "DOC_TRACE delta sync page OK hasMore=${resp.hasMore} entities=[$summary] nextCursors=${resp.nextCursors}")
             isFull = false
-            // The server repeats the device "scan only" option on every poll so
-            // a tenant-admin toggle applies without a re-login.
-            resp.scanOnly?.let { appPreferences.setScanOnly(it) }
             emitEntities(resp)
             resp.nextCursors?.let { applied = it }
             if (!resp.hasMore) {
@@ -386,6 +383,10 @@ class RestTransport @Inject constructor(
     }
 
     private suspend fun emitEntities(resp: DeviceDto.SyncResponse) {
+        // The server repeats the device "scan only" option on sync, list refresh
+        // and document products, so a tenant-admin toggle applies without a
+        // re-login — the list and detail screens never call /device/sync.
+        resp.scanOnly?.let { appPreferences.setScanOnly(it) }
         resp.entities?.forEach { e ->
             emit(
                 SyncMessage.SyncData(
