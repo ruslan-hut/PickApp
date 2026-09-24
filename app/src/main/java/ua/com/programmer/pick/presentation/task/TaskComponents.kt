@@ -23,15 +23,20 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import ua.com.programmer.pick.R
@@ -129,36 +134,43 @@ private fun formatQuantities(row: TaskRow): String? = when {
 /**
  * The input panel for the step's `expect`. PRODUCT / BATCH / NONE need no
  * input — the scanner is always live — so they only prompt.
+ *
+ * A quantity is never typed into this screen: `MainActivity.dispatchKeyEvent`
+ * hands every printable key to the scanner's wedge buffer, and both the
+ * hardware keypad and the numeric soft keyboard deliver digits as key events.
+ * The panel shows the value and [onQtyEntry] opens [TaskQuantityDialog] — a
+ * dialog is its own window, out of that path, exactly like the classic
+ * document's quantity dialog.
  */
 @Composable
 fun TaskInputPanel(
     expect: TaskExpect,
     qtyInput: String,
     enabled: Boolean,
-    canSubmitQty: Boolean,
     manualEntryLabel: String?,
-    onQtyChange: (String) -> Unit,
-    onQtySubmit: () -> Unit,
+    onQtyEntry: () -> Unit,
     onManualEntry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     when (expect) {
         TaskExpect.QTY -> Column(modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-            OutlinedTextField(
-                value = qtyInput,
-                onValueChange = onQtyChange,
+            OutlinedButton(
+                onClick = onQtyEntry,
                 enabled = enabled,
-                singleLine = true,
-                label = { Text(stringResource(R.string.task_enter_quantity)) },
-                textStyle = MaterialTheme.typography.headlineSmall,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Number,
-                    imeAction = ImeAction.Done,
-                ),
-                keyboardActions = KeyboardActions(onDone = { if (canSubmitQty) onQtySubmit() }),
                 shape = CardShape,
-                modifier = Modifier.fillMaxWidth(),
-            )
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = ACTION_HEIGHT),
+            ) {
+                Text(
+                    text = qtyInput.ifEmpty { stringResource(R.string.task_enter_quantity) },
+                    style = if (qtyInput.isEmpty()) {
+                        MaterialTheme.typography.titleMedium
+                    } else {
+                        MaterialTheme.typography.headlineSmall
+                    },
+                )
+            }
         }
 
         TaskExpect.CELL, TaskExpect.DOCUMENT -> {
@@ -325,6 +337,58 @@ fun TaskManualEntryDialog(
                 onClick = { onSubmit(text) },
                 enabled = text.isNotBlank(),
             ) { Text(stringResource(R.string.ok)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+        shape = CardShape,
+        containerColor = MaterialTheme.colorScheme.surface,
+    )
+}
+
+/**
+ * Quantity entry for an `expect: qty` step. [confirmLabel] is the server's
+ * primary action label, so the dialog's button says what the step's button
+ * would. Digits only: `quantity` is integer pieces on the wire.
+ */
+@Composable
+fun TaskQuantityDialog(
+    title: String,
+    initialValue: String,
+    confirmLabel: String,
+    onSubmit: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var value by remember {
+        mutableStateOf(TextFieldValue(text = initialValue, selection = TextRange(0, initialValue.length)))
+    }
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    val canSubmit = value.text.isNotEmpty()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = title, style = MaterialTheme.typography.headlineSmall) },
+        text = {
+            OutlinedTextField(
+                value = value,
+                onValueChange = { if (it.text.all(Char::isDigit)) value = it },
+                singleLine = true,
+                label = { Text(stringResource(R.string.task_enter_quantity)) },
+                textStyle = MaterialTheme.typography.headlineSmall,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(onDone = { if (canSubmit) onSubmit(value.text) }),
+                shape = CardShape,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester),
+            )
+        },
+        confirmButton = {
+            Button(onClick = { onSubmit(value.text) }, enabled = canSubmit) { Text(confirmLabel) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }

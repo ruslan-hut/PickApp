@@ -64,6 +64,14 @@ fun TaskScreen(
 
     var confirmAction by remember { mutableStateOf<TaskActionButton?>(null) }
     var manualEntryFor by remember { mutableStateOf<TaskExpect?>(null) }
+    var qtyDialogOpen by remember { mutableStateOf(false) }
+
+    // A quantity step asks for one thing, so its dialog opens on arrival. Keyed
+    // by step id: a stale-step re-render of the same step does not reopen it
+    // after the worker dismissed it.
+    LaunchedEffect(uiState.step?.id) {
+        qtyDialogOpen = uiState.expect == TaskExpect.QTY && uiState.canAct
+    }
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -181,10 +189,8 @@ fun TaskScreen(
                     expect = uiState.expect,
                     qtyInput = uiState.qtyInput,
                     enabled = uiState.canAct,
-                    canSubmitQty = uiState.canAct && uiState.qtyValue != null,
                     manualEntryLabel = uiState.manualEntryLabel(),
-                    onQtyChange = viewModel::onQtyInputChange,
-                    onQtySubmit = viewModel::confirmQuantity,
+                    onQtyEntry = { qtyDialogOpen = true },
                     onManualEntry = { manualEntryFor = uiState.expect },
                 )
             }
@@ -203,6 +209,20 @@ fun TaskScreen(
                 viewModel.onAction(action.code)
             },
             onDismiss = { confirmAction = null },
+        )
+    }
+
+    if (qtyDialogOpen && uiState.expect == TaskExpect.QTY && !uiState.isFinished) {
+        TaskQuantityDialog(
+            title = uiState.step?.title ?: stringResource(R.string.task_enter_quantity),
+            initialValue = uiState.qtyInput,
+            confirmLabel = uiState.primaryAction?.label ?: stringResource(R.string.ok),
+            onSubmit = { value ->
+                qtyDialogOpen = false
+                viewModel.onQtyInputChange(value)
+                viewModel.confirmQuantity()
+            },
+            onDismiss = { qtyDialogOpen = false },
         )
     }
 
