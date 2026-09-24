@@ -21,10 +21,10 @@ data class DocumentsUiState(
      * because another worker holds its line locks: it opens the server's
      * document picker instead of a list row.
      *
-     * A guided type in the login catalog is the only client-side signal that
-     * the warehouse runs the WMS module (guided-tasks plan §8, follow-up 2).
+     * The server names a receiving type by its `wms_flow`, and sends it only
+     * where the warehouse runs the WMS module — the type code is the ERP's own
+     * (1C: "ПриходнаяНакладная") and never interpreted here.
      */
     val canJoinReceiving: Boolean
-        get() = selectedDocumentType == AvailableDocumentType.CODE_INCOMING_RECEIPT &&
-            documentTypeConfigs.values.any { it.isGuided }
+        get() = selectedDocumentType?.let { documentTypeConfigs[it]?.isGuidedReceiving } == true
 }

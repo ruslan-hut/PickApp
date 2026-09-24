@@ -25,6 +25,8 @@ import ua.com.programmer.pick.core.scanner.ScannedBarcode
 import ua.com.programmer.pick.data.repository.DocumentTypeConfigProvider
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.domain.model.Product
+import ua.com.programmer.pick.domain.model.ProductLookupHit
+import ua.com.programmer.pick.domain.model.ScannedBatch
 import ua.com.programmer.pick.domain.repository.ProductRepository
 
 /**
@@ -81,7 +83,9 @@ class DocumentDetailViewModelResolveScannedProductTest {
             appPreferences = mockk(relaxed = true) {
                 every { scanOnly } returns flowOf(false)
             },
-            ioDispatcher = mainDispatcher
+            ioDispatcher = mainDispatcher,
+            guidedTaskRepository = mockk(relaxed = true),
+            networkMonitor = mockk(relaxed = true),
         )
     }
 
@@ -101,31 +105,39 @@ class DocumentDetailViewModelResolveScannedProductTest {
 
         val resolved = vm.resolveScannedProduct(scan("BC1"))
 
-        assertEquals("P1", resolved)
-        coVerify(exactly = 0) { syncOrchestrator.lookupProductByBarcode(any()) }
+        assertEquals(ProductLookupHit("P1"), resolved)
+        coVerify(exactly = 0) { syncOrchestrator.lookupProduct(any()) }
     }
 
     @Test
-    fun `cache miss then successful server lookup resolves via re-read`() = runTest {
+    fun `cache miss then successful server lookup returns the server's product`() = runTest {
         val vm = buildViewModel()
-        // First read misses (not synced yet); after the lookup persists it, the
-        // second read hits.
-        coEvery { productRepository.getProductByBarcode("BC2") } returnsMany
-            listOf(null, product("P2"))
-        coEvery { syncOrchestrator.lookupProductByBarcode("BC2") } returns true
+        coEvery { productRepository.getProductByBarcode("BC2") } returns null
+        coEvery { syncOrchestrator.lookupProduct("BC2") } returns ProductLookupHit("P2")
 
         val resolved = vm.resolveScannedProduct(scan("BC2"))
 
-        assertEquals("P2", resolved)
-        coVerify(exactly = 1) { syncOrchestrator.lookupProductByBarcode("BC2") }
-        coVerify(exactly = 2) { productRepository.getProductByBarcode("BC2") }
+        assertEquals(ProductLookupHit("P2"), resolved)
+        coVerify(exactly = 1) { syncOrchestrator.lookupProduct("BC2") }
+    }
+
+    @Test
+    fun `a batch label resolves to its product and the batch`() = runTest {
+        val vm = buildViewModel()
+        val batch = ScannedBatch(id = "B-1", number = "ПН-000123")
+        coEvery { productRepository.getProductByBarcode("LBL-B1") } returns null
+        coEvery { syncOrchestrator.lookupProduct("LBL-B1") } returns ProductLookupHit("P1", batch)
+
+        val resolved = vm.resolveScannedProduct(scan("LBL-B1"))
+
+        assertEquals(ProductLookupHit("P1", batch), resolved)
     }
 
     @Test
     fun `cache miss and failed server lookup returns null without a second read`() = runTest {
         val vm = buildViewModel()
         coEvery { productRepository.getProductByBarcode("BC3") } returns null
-        coEvery { syncOrchestrator.lookupProductByBarcode("BC3") } returns false
+        coEvery { syncOrchestrator.lookupProduct("BC3") } returns null
 
         val resolved = vm.resolveScannedProduct(scan("BC3"))
 
@@ -142,7 +154,7 @@ class DocumentDetailViewModelResolveScannedProductTest {
 
         assertNull(resolved)
         coVerify(exactly = 0) { productRepository.getProductByBarcode(any()) }
-        coVerify(exactly = 0) { syncOrchestrator.lookupProductByBarcode(any()) }
+        coVerify(exactly = 0) { syncOrchestrator.lookupProduct(any()) }
     }
 
     @Test
@@ -152,6 +164,6 @@ class DocumentDetailViewModelResolveScannedProductTest {
 
         val resolved = vm.resolveScannedProduct(scan(raw = "]d2raw-envelope", gtin = "4600000000001"))
 
-        assertEquals("P5", resolved)
+        assertEquals(ProductLookupHit("P5"), resolved)
     }
 }

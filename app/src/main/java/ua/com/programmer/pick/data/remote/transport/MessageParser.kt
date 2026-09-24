@@ -367,7 +367,8 @@ class MessageParser @Inject constructor(
                 allowsOverPlan = obj.nullableBool(FIELD_ALLOWS_OVER_PLAN),
                 allowsExtraLines = obj.nullableBool(FIELD_ALLOWS_EXTRA_LINES),
                 requiresPlan = obj.nullableBool(FIELD_REQUIRES_PLAN),
-                mode = obj.get(FIELD_MODE)?.takeIf { !it.isJsonNull }?.asString
+                mode = obj.get(FIELD_MODE)?.takeIf { !it.isJsonNull }?.asString,
+                wmsFlow = obj.get("wms_flow")?.takeIf { !it.isJsonNull }?.asString
             )
         }
 

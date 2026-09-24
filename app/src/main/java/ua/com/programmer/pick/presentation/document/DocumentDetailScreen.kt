@@ -1,5 +1,17 @@
 package ua.com.programmer.pick.presentation.document
 
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import ua.com.programmer.pick.domain.model.TaskActionButton
+import ua.com.programmer.pick.domain.model.TaskExpect
+import ua.com.programmer.pick.presentation.common.DestructiveConfirmDialog
+import ua.com.programmer.pick.presentation.task.GuidedTaskSession
+import ua.com.programmer.pick.presentation.task.TaskManualEntryDialog
+import ua.com.programmer.pick.presentation.task.TaskQuantityDialog
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
@@ -91,6 +103,14 @@ fun DocumentDetailScreen(
     viewModel: DocumentDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    // The document's guided task, when it is being worked in place.
+    val guided by viewModel.guidedState.collectAsState()
+    var guidedConfirmAction by remember { mutableStateOf<TaskActionButton?>(null) }
+    var guidedManualCell by remember { mutableStateOf(false) }
+    var guidedQtyOpen by remember { mutableStateOf(false) }
+    val hostView = LocalView.current
+    val hostContext = LocalContext.current
+    val hostLifecycle = LocalLifecycleOwner.current
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -132,7 +152,43 @@ fun DocumentDetailScreen(
                 is DocumentDetailUiEvent.LockLost -> {
                     lockLost = event
                 }
+                is DocumentDetailUiEvent.GuidedToast -> {
+                    Toast.makeText(
+                        hostContext,
+                        event.serverText ?: hostContext.getString(event.messageType.resId),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+                is DocumentDetailUiEvent.GuidedVibrate -> {
+                    hostView.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                }
             }
+        }
+    }
+
+    // D4: while a guided task runs here, this screen is its heartbeat — the
+    // document is never in the orchestrator's heldStageLocks.
+    val guidedActive = guided != null
+    LaunchedEffect(hostLifecycle, guidedActive) {
+        if (!guidedActive) return@LaunchedEffect
+        hostLifecycle.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                viewModel.guidedHeartbeat()
+                delay(GuidedTaskSession.HEARTBEAT_INTERVAL_MS)
+            }
+        }
+    }
+    // A quantity step asks for one thing, so its dialog opens on arrival;
+    // keyed by step id so a re-render of the same step does not reopen it.
+    LaunchedEffect(guided?.step?.id) {
+        val g = guided
+        guidedQtyOpen = g != null && g.expect == TaskExpect.QTY && g.canAct
+    }
+    // An info message is an acknowledgement, not a warning: let it fade.
+    LaunchedEffect(guided?.message) {
+        if (guided?.message?.isInfo == true) {
+            delay(4_000L)
+            viewModel.guidedDismissMessage()
         }
     }
 
@@ -153,6 +209,66 @@ fun DocumentDetailScreen(
     // Intercept back navigation when user owns an in-progress document
     BackHandler(enabled = uiState.canEdit) {
         showSaveOnBackDialog = true
+    }
+    // Guided: leaving is a pause — ask first, as the classic screen does.
+    var showGuidedLeave by remember { mutableStateOf(false) }
+    BackHandler(enabled = guided?.let { !it.isFinished } == true) {
+        showGuidedLeave = true
+    }
+    if (showGuidedLeave) {
+        AlertDialog(
+            onDismissRequest = { showGuidedLeave = false },
+            title = { Text(stringResource(R.string.guided_leave_title)) },
+            text = { Text(stringResource(R.string.guided_leave_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showGuidedLeave = false
+                    viewModel.guidedPauseAndLeave()
+                }) { Text(stringResource(R.string.guided_leave_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showGuidedLeave = false }) { Text(stringResource(R.string.guided_leave_stay)) }
+            },
+        )
+    }
+
+    guided?.let { g ->
+        if (guidedQtyOpen && g.expect == TaskExpect.QTY && !g.isFinished) {
+            TaskQuantityDialog(
+                title = g.step?.title ?: stringResource(R.string.task_enter_quantity),
+                initialValue = g.qtyInput,
+                confirmLabel = g.primaryAction?.label ?: stringResource(R.string.ok),
+                onSubmit = { value ->
+                    guidedQtyOpen = false
+                    viewModel.guidedConfirmQuantity(value)
+                },
+                onDismiss = { guidedQtyOpen = false },
+            )
+        }
+        if (guidedManualCell) {
+            TaskManualEntryDialog(
+                title = stringResource(R.string.task_enter_cell),
+                onSubmit = { value ->
+                    guidedManualCell = false
+                    viewModel.guidedManualCell(value)
+                },
+                onDismiss = { guidedManualCell = false },
+            )
+        }
+        guidedConfirmAction?.let { action ->
+            DestructiveConfirmDialog(
+                title = action.label,
+                message = stringResource(
+                    if (action.code == GuidedTaskSession.ACTION_CANCEL) R.string.task_cancel_message
+                    else R.string.task_no_stock_confirm,
+                ),
+                onConfirm = {
+                    guidedConfirmAction = null
+                    viewModel.guidedAction(action.code)
+                },
+                onDismiss = { guidedConfirmAction = null },
+            )
+        }
     }
 
     barcodeAlert?.let { alertType ->
@@ -293,11 +409,11 @@ fun DocumentDetailScreen(
         topBar = {
             PickAppBar(
                 title = uiState.document?.number ?: stringResource(R.string.documents),
-                onNavigateBack = if (uiState.canEdit) {
+                onNavigateBack = when {
                     // Show dialog instead of navigating directly
-                    { showSaveOnBackDialog = true }
-                } else {
-                    onNavigateBack
+                    uiState.canEdit -> { { showSaveOnBackDialog = true } }
+                    guided?.let { !it.isFinished } == true -> { { showGuidedLeave = true } }
+                    else -> onNavigateBack
                 },
                 actions = {
                     if (uiState.canEdit) {
@@ -342,8 +458,23 @@ fun DocumentDetailScreen(
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         bottomBar = {
+            val g = guided
             when {
-                // A guided document is opened as a task, never locked from here.
+                // Guided mode: the task's step panel takes the bar's place.
+                g != null -> GuidedStepPanel(
+                    state = g,
+                    onAction = { action ->
+                        when (action.code) {
+                            // Carries a typed address: the dialog collects it.
+                            GuidedTaskSession.ACTION_MANUAL_CELL -> guidedManualCell = true
+                            GuidedTaskSession.ACTION_CANCEL, GuidedTaskSession.ACTION_NO_STOCK -> guidedConfirmAction = action
+                            else -> viewModel.guidedAction(action.code)
+                        }
+                    },
+                    onQtyEntry = { guidedQtyOpen = true },
+                    onRetry = viewModel::guidedRetry,
+                )
+                // A guided document is started in place, never locked from here.
                 uiState.canStartGuided -> GuidedStartBar(
                     labelRes = uiState.guidedButtonLabelRes,
                     onStartGuided = { viewModel.startGuidedTask() }
@@ -494,10 +625,12 @@ fun DocumentDetailScreen(
                                                     line = line,
                                                     productImage = uiState.productImages[line.productId],
                                                     onQuantityChange = { lineId, qty ->
-                                                        viewModel.updateLineQuantity(lineId, qty)
+                                                        if (guided != null) viewModel.guidedSetQuantity(lineId, qty)
+                                                        else viewModel.updateLineQuantity(lineId, qty)
                                                     },
                                                     onToggleCompleted = { lineId, completed ->
-                                                        viewModel.setLineCompleted(lineId, completed)
+                                                        if (guided != null) viewModel.guidedSwipe(lineId, completed)
+                                                        else viewModel.setLineCompleted(lineId, completed)
                                                     },
                                                     onNoteChange = { lineId, note ->
                                                         viewModel.updateLineNote(lineId, note)
@@ -511,7 +644,16 @@ fun DocumentDetailScreen(
                                                     canEdit = uiState.canEditLines,
                                                     allowsOverPlan = uiState.allowsOverPlan,
                                                     requiresPlan = uiState.requiresPlan,
-                                                    scanOnly = uiState.scanOnly
+                                                    scanOnly = uiState.scanOnly,
+                                                    // Guided: the task owns the lines; only the step's
+                                                    // line swipes (its main action) and takes +/−.
+                                                    swipeEnabled = guided?.let { g ->
+                                                        !g.isFinished && g.canAct && g.primaryAction != null &&
+                                                            viewModel.isGuidedFocusLine(line.id)
+                                                    } ?: uiState.canEditLines,
+                                                    quantityEditable = guided?.let {
+                                                        viewModel.isGuidedQuantityEditable(line.id)
+                                                    } ?: uiState.canEditLines
                                                 )
                                             }
                                         }

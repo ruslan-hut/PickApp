@@ -450,7 +450,9 @@ sealed class SyncMessage {
         override val timestamp: String,
         val success: Boolean,
         val product: JsonElement? = null,  // ProductDto as JSON
-        val error: String? = null
+        val error: String? = null,
+        // The batch behind a scanned batch label; null for a product barcode.
+        val batch: ua.com.programmer.pick.domain.model.ScannedBatch? = null
     ) : SyncMessage() {
         override val type = MessageType.PRODUCT_LOOKUP_RESULT
     }
@@ -749,7 +751,10 @@ sealed class SyncMessage {
         val stepId: String,
         val action: String,
         val value: String? = null,
-        val quantity: Long? = null
+        val quantity: Long? = null,
+        // The document line a set_quantity is for; null = the step's line.
+        val lineKey: String? = null,
+        val lineNumber: Int? = null
     ) : SyncMessage() {
         override val type = MessageType.TASK_ACTION
     }
@@ -846,6 +851,8 @@ data class DocumentLineUpdate(
     val lineNumber: Int,
     val actualQuantity: Double,
     val batchNumber: String? = null,
+    // Batch-label breakdown, full-state; null = omit (the server keeps its own).
+    val batches: List<ua.com.programmer.pick.domain.model.LineBatch>? = null,
     val isCompleted: Boolean = false,
     // Worker-owned line note. Sent full-state on every line update: the server
     // overwrites its copy with whatever arrives, so an omitted/empty note clears
@@ -865,5 +872,8 @@ data class AvailableDocumentTypeDto(
     val requiresPlan: Boolean? = null,
     // "guided" marks a WMS task type rather than a document type. Null on a
     // server without the addressing module.
-    val mode: String? = null
+    val mode: String? = null,
+    // "collect" / "receive": the guided WMS flow of a classic type; sent only
+    // where the worker's warehouse has the module on.
+    val wmsFlow: String? = null
 )

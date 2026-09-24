@@ -50,6 +50,10 @@ data class DocumentLineDto(
     @SerializedName("batch_number")
     val batchNumber: String?,
 
+    // Part of actual_quantity collected by batch-label scans.
+    @SerializedName("batches")
+    val batches: List<LineBatchDto>? = null,
+
     @SerializedName("expiration_date")
     val expirationDate: Long?,
 
@@ -126,4 +130,10 @@ data class LineUpdateRequestDto(
 
     @SerializedName("timestamp")
     val timestamp: Long
+)
+
+/** One entry of a line's batch breakdown on the wire (`batches`). */
+data class LineBatchDto(
+    @SerializedName("batch_id") val batchId: String,
+    @SerializedName("qty") val qty: Double,
 )

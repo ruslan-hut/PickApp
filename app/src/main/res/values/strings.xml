@@ -319,9 +319,9 @@
     <string name="task_error_demo">Guided tasks are not available in demo mode</string>
     <string name="task_error_generic">The task action failed</string>
 
-    <string name="task_guided_badge">Guided</string>
-    <string name="task_start_picking">Start guided picking</string>
-    <string name="task_resume_picking">Resume guided picking</string>
+    <string name="task_guided_badge">By cells</string>
+    <string name="task_start_picking">Start picking</string>
+    <string name="task_resume_picking">Continue picking</string>
     <string name="task_start_receiving">Start receiving</string>
     <string name="task_continue_receiving">Continue receiving</string>
     <string name="task_join_receiving">Join receiving</string>
@@ -349,4 +349,9 @@
     <string name="device_link_error_other_server">This QR code is for a different server.</string>
     <string name="device_link_error_unreachable">No connection to the server. Check the network.</string>
     <string name="device_link_error_generic">Could not connect the device. Try again.</string>
+    <string name="line_batch_label_qty">By batch label: %1$.0f</string>
+    <string name="guided_leave_title">Leave the document?</string>
+    <string name="guided_leave_message">The work will be paused: what is counted is kept, and you can continue the document later.</string>
+    <string name="guided_leave_confirm">Pause and leave</string>
+    <string name="guided_leave_stay">Stay</string>
 </resources>

@@ -222,7 +222,7 @@ fun PickNavGraph(
                         navController.navigate(Screen.Courier.route)
                     },
                     onContinueTask = { task ->
-                        navController.navigate(Screen.Task.byTaskId(task.id))
+                        viewModel.continueTask(task) { route -> navController.navigate(route) }
                     },
                     onCancelTask = { task -> viewModel.cancelTask(task.id) },
                     taskTypeLabel = viewModel::taskTypeLabel

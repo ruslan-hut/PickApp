@@ -102,6 +102,9 @@ object DeviceDto {
         @SerializedName("requires_plan") val requiresPlan: Boolean? = null,
         /** "guided" marks a WMS task type; absent = classic document type. */
         @SerializedName("mode") val mode: String? = null,
+        /** "collect" / "receive": the guided WMS flow of a classic type; sent only
+         *  when the worker's warehouse has the module on. */
+        @SerializedName("wms_flow") val wmsFlow: String? = null,
     )
 
     data class RefreshRequest(
@@ -174,6 +177,8 @@ object DeviceDto {
         @SerializedName("line_number") val lineNumber: Int,
         @SerializedName("actual_quantity") val actualQuantity: Double,
         @SerializedName("batch_number") val batchNumber: String? = null,
+        /** Full-state batch-label breakdown; null = omitted, the server keeps its own. */
+        @SerializedName("batches") val batches: List<LineBatchDto>? = null,
         @SerializedName("is_completed") val isCompleted: Boolean,
         @SerializedName("notes") val notes: String? = null,
     )
@@ -228,7 +233,15 @@ object DeviceDto {
     data class ProductLookupResult(
         @SerializedName("success") val success: Boolean,
         @SerializedName("product") val product: JsonElement? = null,
+        /** Set when the code was a batch label: the scan is credited to this batch. */
+        @SerializedName("batch") val batch: LookupBatch? = null,
         @SerializedName("error") val error: String? = null,
+    )
+
+    data class LookupBatch(
+        @SerializedName("id") val id: String,
+        @SerializedName("number") val number: String? = null,
+        @SerializedName("expiry_date") val expiryDate: Long? = null,
     )
 
     data class ShipmentLabelResult(
@@ -278,6 +291,9 @@ object DeviceDto {
         @SerializedName("action") val action: String,
         @SerializedName("value") val value: String? = null,
         @SerializedName("quantity") val quantity: Long? = null,
+        /** set_quantity on a step with `adjustable`: which document line. */
+        @SerializedName("line_key") val lineKey: String? = null,
+        @SerializedName("line_number") val lineNumber: Int? = null,
     )
 
     data class TaskCancelRequest(
@@ -314,6 +330,17 @@ object DeviceDto {
         @SerializedName("actions") val actions: List<TaskAction>? = null,
         @SerializedName("hint") val hint: String? = null,
         @SerializedName("lock_info") val lockInfo: String? = null,
+        /** set_quantity is taken for any open line of the document. */
+        @SerializedName("adjustable") val adjustable: Boolean = false,
+        /** The document line a document-bound step is about. */
+        @SerializedName("line") val line: TaskStepLine? = null,
+    )
+
+    data class TaskStepLine(
+        @SerializedName("line_key") val lineKey: String? = null,
+        @SerializedName("line_number") val lineNumber: Int = 0,
+        /** The step takes `set_quantity` for this line (+/− and typed quantity). */
+        @SerializedName("adjustable") val adjustable: Boolean = false,
     )
 
     data class TaskRow(

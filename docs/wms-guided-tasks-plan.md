@@ -395,7 +395,7 @@ Not blockers; tracked here so they are not lost.
    worker cancels it. Until it lands, use the tenant UI's *Tasks* page to cancel
    the task instead of *Release lock* (WMS → *Tasks* tab, cancel pauses the
    document).
-2. **WMS-on hint on login.** The app infers "warehouse has WMS" from the presence of guided types (Phase 2 *Join receiving*). A `features` or `wms_enabled` boolean on the login response would make that explicit. Optional. *Still open (2026-09-24)* — so a test worker needs at least one guided type assigned for *Unfinished tasks* and *Join receiving* to appear.
+2. **WMS-on hint on login.** The app infers "warehouse has WMS" from the presence of guided types (Phase 2 *Join receiving*). A `features` or `wms_enabled` boolean on the login response would make that explicit. Optional. *Partly resolved (2026-09-24):* the login's classic types now carry `wms_flow` (sent only with the module on), and *Join receiving* keys on `wms_flow == "receive"`; *Unfinished tasks* still needs a guided type assigned.
 3. **Second worker discovery.** The classic list hides a receiving document another worker holds; the picker covers it (known limitation in the server plan). A `visible_ids`-style "shared documents" hint could let the list show it read-only. Optional.
 4. **`GET /device/tasks/open` payload** returns full envelopes; fine for a handful of tasks, worth capping server-side if a worker can accumulate many.
 
@@ -460,3 +460,42 @@ Recorded where the implementation knowingly differs from §3.
    assigned to someone else — not the `WRONG_STATE` §1.5 assumed. On a
    document-bound task both now map to the *document not available* toast;
    `FORBIDDEN` on a type start keeps *not assigned to you*.
+8. **The receiving type is named by `wms_flow`, not by code** (2026-09-24).
+   `AvailableDocumentType.CODE_INCOMING_RECEIPT` is gone (deviation 4 undone):
+   the Dark tenant's ERP (1C) sends `ПриходнаяНакладная`, and the server now
+   resolves each type's guided flow from its catalog (`wms_flow`, set by the
+   tenant admin). *Join receiving* and the guided bar's receiving wording read
+   `isGuidedReceiving`; `onJoinReceiving` already posted the selected type's
+   own code.
+9. **Batch-label scans reach the ERP** (2026-09-24). The classic screen
+   resolves a batch label through the server lookup (`batch` in the answer),
+   credits the unit to that batch in `DocumentLine.batches` (Room column,
+   migration 19→20) and sends the breakdown full-state in the PATCH; see
+   `sync-protocol.md` DOCUMENT_UPDATE / PRODUCT_LOOKUP.
+10. **Document-bound tasks run inside the document screen** (2026-09-24,
+    after the first field run). The separate task screen for a document
+    (Start → task screen → product step → back to a stale document with the
+    Start bar still showing) was confusing and never updated the document.
+    Now the step machine lives in `GuidedTaskSession`, hosted by the document
+    screen for guided Collect / receiving and by `TaskViewModel` only for
+    tasks without a document (recount, placement, move, replenishment, the
+    receiving picker). On a guided document: *Start* opens the session in
+    place; `GuidedStepPanel` replaces the bottom bar (title, hint, message,
+    quantity / address input, server buttons); scans go to the task; every
+    `line_updates` re-reads the lines from Room; `step.line` marks and scrolls
+    to the current line; a task left open re-attaches when the document is
+    opened (and *Continue* on Home opens the document when it is cached); the
+    screen is the heartbeat. DONE returns to the list, a cancel/pause leaves
+    the document with its classic *Continue* bar. Labels: *Start picking* /
+    *Start receiving*; the list badge reads *By cells* instead of *Guided*.
+11. **Compact step panel** (2026-09-24, second field run on a 4" Memor K).
+    The panel shows the step title (the server moved the essentials there:
+    "Go to A-01-01 — take 6", "Put 55 away to AA-1-2") and the message only —
+    no hint, no rows, no scan prompt. `cancel` is never a button: Back asks
+    "pause and leave?" and sends it. The main action is a swipe right on the
+    step's line (as on the classic screen) and a button only on steps about no
+    single line (review, final). The step's line takes +/− and a typed quantity
+    when `step.line.adjustable` (server action `set_quantity`, receiving count
+    steps), blocked only by the device's scan-only option. Receiving has no
+    "back" step any more: scanning another product of the document switches
+    lines and keeps the count.

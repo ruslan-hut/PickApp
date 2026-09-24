@@ -304,9 +304,9 @@
     <string name="task_error_demo">Управляемые задачи недоступны в демо-режиме</string>
     <string name="task_error_generic">Не удалось выполнить действие задачи</string>
 
-    <string name="task_guided_badge">Управляемая</string>
-    <string name="task_start_picking">Начать управляемую сборку</string>
-    <string name="task_resume_picking">Продолжить управляемую сборку</string>
+    <string name="task_guided_badge">По ячейкам</string>
+    <string name="task_start_picking">Начать сборку</string>
+    <string name="task_resume_picking">Продолжить сборку</string>
     <string name="task_start_receiving">Начать приёмку</string>
     <string name="task_continue_receiving">Продолжить приёмку</string>
     <string name="task_join_receiving">Присоединиться к приёмке</string>
@@ -334,4 +334,9 @@
     <string name="device_link_error_other_server">Этот QR-код для другого сервера.</string>
     <string name="device_link_error_unreachable">Нет связи с сервером. Проверьте сеть.</string>
     <string name="device_link_error_generic">Не удалось подключить устройство. Попробуйте ещё раз.</string>
+    <string name="line_batch_label_qty">По этикетке партии: %1$.0f</string>
+    <string name="guided_leave_title">Выйти из документа?</string>
+    <string name="guided_leave_message">Работа будет приостановлена: посчитанное сохранится, документ можно продолжить позже.</string>
+    <string name="guided_leave_confirm">Приостановить и выйти</string>
+    <string name="guided_leave_stay">Остаться</string>
 </resources>

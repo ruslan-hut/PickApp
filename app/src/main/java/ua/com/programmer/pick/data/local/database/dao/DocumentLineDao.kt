@@ -95,6 +95,11 @@ interface DocumentLineDao {
     @Query("UPDATE document_lines SET actual_quantity = actual_quantity + :delta, is_dirty = 1 WHERE id = :lineId")
     suspend fun incrementActualQuantity(lineId: String, delta: Double): Int
 
+    // Batch-label breakdown (JSON of List<LineBatch>). A worker edit, so the
+    // line is re-armed for the next PATCH like every other worker field.
+    @Query("UPDATE document_lines SET batches = :batches, is_dirty = 1 WHERE id = :lineId")
+    suspend fun updateLineBatches(lineId: String, batches: String?): Int
+
     @Query("UPDATE document_lines SET is_completed = :isCompleted, is_dirty = 1 WHERE id = :lineId")
     suspend fun updateLineCompleted(lineId: String, isCompleted: Boolean)
 

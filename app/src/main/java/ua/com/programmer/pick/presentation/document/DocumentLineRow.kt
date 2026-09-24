@@ -79,7 +79,12 @@ fun DocumentLineRow(
     canEdit: Boolean = false,
     allowsOverPlan: Boolean = false,
     requiresPlan: Boolean = true,
-    scanOnly: Boolean = false
+    scanOnly: Boolean = false,
+    // Split out of canEdit for a guided document, where the task owns the
+    // line: only its current line swipes (the step's main action) and takes
+    // +/− (set_quantity); notes and photos stay off.
+    swipeEnabled: Boolean = canEdit,
+    quantityEditable: Boolean = canEdit
 ) {
     var showImagePreview by remember { mutableStateOf(false) }
     var showPhotoPreview by remember { mutableStateOf(false) }
@@ -93,6 +98,7 @@ fun DocumentLineRow(
             productImage = productImage,
             isSelected = isSelected,
             canEdit = canEdit,
+            quantityEditable = quantityEditable,
             allowsOverPlan = allowsOverPlan,
             requiresPlan = requiresPlan,
             scanOnly = scanOnly,
@@ -105,7 +111,7 @@ fun DocumentLineRow(
         )
     }
 
-    if (canEdit) {
+    if (swipeEnabled) {
         // Swipe right → mark acknowledged (green); swipe left → clear mark (amber).
         // `submitted` prevents multi-fire: confirmValueChange is re-evaluated
         // throughout the drag, so without it one gesture could emit several
@@ -180,6 +186,7 @@ private fun LineCardContent(
     productImage: ProductImage?,
     isSelected: Boolean,
     canEdit: Boolean,
+    quantityEditable: Boolean,
     allowsOverPlan: Boolean,
     requiresPlan: Boolean,
     scanOnly: Boolean,
@@ -286,6 +293,17 @@ private fun LineCardContent(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
+                    // How much of the fact was scanned by batch label — the
+                    // part the ERP books to that batch rather than by FEFO.
+                    val byBatchLabel = line.batches.orEmpty().sumOf { it.qty }
+                    if (byBatchLabel > 0.0) {
+                        Text(
+                            text = stringResource(R.string.line_batch_label_qty, byBatchLabel),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
 
@@ -375,7 +393,7 @@ private fun LineCardContent(
                         line.plannedQuantity > 0 -> line.plannedQuantity
                         else -> Double.MAX_VALUE
                     },
-                    enabled = canEdit,
+                    enabled = quantityEditable,
                     scanOnly = scanOnly
                 )
             }

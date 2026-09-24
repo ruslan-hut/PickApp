@@ -18,6 +18,9 @@ import ua.com.programmer.pick.domain.model.DocumentLine
 import ua.com.programmer.pick.domain.model.DocumentState
 import ua.com.programmer.pick.domain.model.TaskLineUpdate
 import ua.com.programmer.pick.domain.repository.DocumentRepository
+import ua.com.programmer.pick.domain.model.LineBatchJson
+import ua.com.programmer.pick.domain.model.normalizedTo
+import ua.com.programmer.pick.domain.model.credit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -152,6 +155,7 @@ class DocumentRepositoryImpl @Inject constructor(
                     "Line $lineId no longer exists in local DB"
                 )
             }
+            fitLineBatches(lineId)
             notes?.let { documentLineDao.updateLineNotes(lineId, it) }
             updateDocumentTotals(lineId)
             Result.Success(Unit)
@@ -190,7 +194,7 @@ class DocumentRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun incrementLineQuantity(lineId: String, delta: Double): Result<Unit> = withContext(ioDispatcher) {
+    override suspend fun incrementLineQuantity(lineId: String, delta: Double, batchId: String?): Result<Unit> = withContext(ioDispatcher) {
         try {
             val rows = documentLineDao.incrementActualQuantity(lineId, delta)
             if (rows == 0) {
@@ -199,11 +203,29 @@ class DocumentRepositoryImpl @Inject constructor(
                     "Line $lineId no longer exists in local DB"
                 )
             }
+            fitLineBatches(lineId, creditBatchId = batchId, creditQty = delta)
             updateDocumentTotals(lineId)
             Result.Success(Unit)
         } catch (e: Exception) {
             Result.Error(e, e.message ?: "Failed to increment line quantity")
         }
+    }
+
+    /**
+     * Keeps the line's batch-label breakdown consistent with its quantity:
+     * credits a batch-label scan when [creditBatchId] is set, and trims the
+     * latest entries when the quantity went down (LineBatch.normalizedTo, the
+     * server's own rule). A line with no breakdown and no credit is left null
+     * — the PATCH then omits the field and the server keeps its value.
+     */
+    private suspend fun fitLineBatches(lineId: String, creditBatchId: String? = null, creditQty: Double = 0.0) {
+        val line = documentLineDao.getLineById(lineId) ?: return
+        val current = LineBatchJson.decode(line.batches)
+        if (current == null && creditBatchId == null) return
+        var next = current.orEmpty()
+        if (creditBatchId != null && creditQty > 0.0) next = next.credit(creditBatchId, creditQty)
+        next = next.normalizedTo(line.actualQuantity)
+        if (next != current) documentLineDao.updateLineBatches(lineId, LineBatchJson.encode(next))
     }
 
     override suspend fun updateLineCompleted(lineId: String, isCompleted: Boolean): Result<Unit> = withContext(ioDispatcher) {

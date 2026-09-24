@@ -44,7 +44,8 @@ class DocumentTypeConfigProvider @Inject constructor(
                 allowsOverPlan = it.allowsOverPlan,
                 allowsExtraLines = it.allowsExtraLines,
                 requiresPlan = it.requiresPlan,
-                mode = it.mode
+                mode = it.mode,
+                wmsFlow = it.wmsFlow
             )
         }
     }

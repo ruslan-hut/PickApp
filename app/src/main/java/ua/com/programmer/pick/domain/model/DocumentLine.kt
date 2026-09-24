@@ -16,6 +16,9 @@ data class DocumentLine(
     val plannedQuantity: Double,
     val actualQuantity: Double,
     val batchNumber: String?,
+    // Part of actualQuantity collected by batch-label scans; null = no
+    // breakdown known on the device (see LineBatchJson).
+    val batches: List<LineBatch>? = null,
     val expirationDate: Long?,
     val locationId: String?,
     val locationPath: String?,

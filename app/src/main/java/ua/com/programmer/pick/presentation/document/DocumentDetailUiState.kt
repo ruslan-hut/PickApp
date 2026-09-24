@@ -2,7 +2,6 @@ package ua.com.programmer.pick.presentation.document
 
 import androidx.annotation.StringRes
 import ua.com.programmer.pick.R
-import ua.com.programmer.pick.domain.model.AvailableDocumentType
 import ua.com.programmer.pick.domain.model.Box
 import ua.com.programmer.pick.domain.model.Document
 import ua.com.programmer.pick.domain.model.DocumentBox
@@ -56,6 +55,9 @@ data class DocumentDetailUiState(
     // When false, the type doesn't carry planned quantities — the UI hides
     // plan labels and progress bars. Defaults to true to match pre-flags.
     val requiresPlan: Boolean = true,
+    // The type's guided WMS flow is receiving (wms_flow = "receive") — picks
+    // the guided bar's wording only.
+    val isReceivingType: Boolean = false,
     // Device "scan only" option (tenant admin). Quantities change only by
     // scanning; the stepper's +/- are disabled and tapping the value offers
     // a reset to zero instead of manual entry.
@@ -113,7 +115,7 @@ data class DocumentDetailUiState(
     val guidedButtonLabelRes: Int
         get() {
             val resuming = document?.state == DocumentState.COLLECTING
-            return if (document?.type == AvailableDocumentType.CODE_INCOMING_RECEIPT) {
+            return if (isReceivingType) {
                 if (resuming) R.string.task_continue_receiving else R.string.task_start_receiving
             } else {
                 if (resuming) R.string.task_resume_picking else R.string.task_start_picking

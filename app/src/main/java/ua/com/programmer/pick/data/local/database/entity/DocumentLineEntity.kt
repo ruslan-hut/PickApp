@@ -68,6 +68,10 @@ data class DocumentLineEntity(
     @ColumnInfo(name = "batch_number")
     val batchNumber: String?,
 
+    // JSON of List<LineBatch> (LineBatchJson); null = no breakdown known.
+    @ColumnInfo(name = "batches")
+    val batches: String? = null,
+
     @ColumnInfo(name = "expiration_date")
     val expirationDate: Long?,
 

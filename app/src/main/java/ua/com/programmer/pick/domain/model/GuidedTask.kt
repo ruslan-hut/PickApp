@@ -39,7 +39,21 @@ data class TaskStep(
     val actions: List<TaskActionButton> = emptyList(),
     val hint: String? = null,
     /** Muted line naming the lock this step holds, when the server sends one. */
-    val lockInfo: String? = null
+    val lockInfo: String? = null,
+    /** The step takes `set_quantity` for any open line of the document: +/−
+     *  and a typed quantity on every such line card (unless scan-only). */
+    val adjustable: Boolean = false,
+    /** The document line a document-bound step is about; the document screen
+     *  marks and scrolls to it. Matched by [TaskStepLine.lineKey] first. */
+    val line: TaskStepLine? = null
+)
+
+data class TaskStepLine(
+    val lineKey: String? = null,
+    val lineNumber: Int,
+    /** The step takes `set_quantity` for this line: +/− and a typed quantity
+     *  on the line card (unless the device is scan-only). */
+    val adjustable: Boolean = false
 )
 
 data class TaskRow(

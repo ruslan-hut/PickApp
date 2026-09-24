@@ -1,5 +1,7 @@
 package ua.com.programmer.pick.data.sync
 
+import ua.com.programmer.pick.domain.model.LineBatchJson
+import ua.com.programmer.pick.domain.model.ProductLookupHit
 import ua.com.programmer.pick.core.util.AppLog
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -1384,6 +1386,7 @@ class SyncOrchestrator @Inject constructor(
                 lineNumber = line.lineNumber,
                 actualQuantity = line.actualQuantity,
                 batchNumber = line.batchNumber,
+                batches = LineBatchJson.decode(line.batches),
                 isCompleted = line.isCompleted,
                 notes = line.notes
             )
@@ -2812,6 +2815,9 @@ class SyncOrchestrator @Inject constructor(
                     actualQuantity = local.actualQuantity,
                     isCompleted = local.isCompleted,
                     batchNumber = local.batchNumber,
+                    // No local breakdown = no opinion: take the server's (a
+                    // guided task writes it there, never on the device).
+                    batches = local.batches ?: server.batches,
                     notes = local.notes ?: server.notes,
                     photoPath = local.photoPath,
                     photoPending = local.photoPending,
@@ -2825,6 +2831,7 @@ class SyncOrchestrator @Inject constructor(
                         actualQuantity = local.actualQuantity,
                         isCompleted = local.isCompleted,
                         batchNumber = local.batchNumber,
+                        batches = local.batches ?: server.batches,
                         notes = local.notes ?: server.notes,
                         photoPath = local.photoPath,
                         photoPending = local.photoPending,
@@ -2962,16 +2969,30 @@ class SyncOrchestrator @Inject constructor(
      * a synchronous request/response), so this method both awaits and persists
      * the reply itself.
      */
-    suspend fun lookupProductByBarcode(barcode: String): Boolean {
-        if (barcode.isBlank()) return false
-        if (!transport.isConnected() || !transport.isUserAuthenticated()) return false
+    /**
+     * Batch labels resolved this session. A label is never stored as a
+     * product barcode (a later local hit would lose the batch), so without
+     * this every repeat scan of the same label would be a server round-trip.
+     */
+    private val batchLabelHits = java.util.concurrent.ConcurrentHashMap<String, ProductLookupHit>()
+
+    /**
+     * Asks the server to resolve a barcode the local catalogue missed and
+     * stores the product. Returns the local product row plus, for a batch
+     * label, the batch the scan is credited to; null when the code is
+     * unknown (or the device is offline).
+     */
+    suspend fun lookupProduct(barcode: String): ProductLookupHit? {
+        if (barcode.isBlank()) return null
+        batchLabelHits[barcode]?.let { return it }
+        if (!transport.isConnected() || !transport.isUserAuthenticated()) return null
 
         val message = SyncMessage.ProductLookup(
             id = messageParser.generateMessageId(),
             timestamp = messageParser.getCurrentTimestamp(),
             barcode = barcode
         )
-        if (!transport.sendMessage(message)) return false
+        if (!transport.sendMessage(message)) return null
 
         val result = withTimeoutOrNull(PRODUCT_LOOKUP_TIMEOUT_MS) {
             transport.incomingMessages.first { it is SyncMessage.ProductLookupResult }
@@ -2979,22 +3000,24 @@ class SyncOrchestrator @Inject constructor(
 
         if (result == null) {
             AppLog.w(TAG, "Timeout waiting for product lookup result (barcode=$barcode)")
-            return false
+            return null
         }
 
         val product = result.product
         if (!result.success || product == null || product.isJsonNull || !product.isJsonObject) {
             AppLog.d(TAG, "Product lookup miss for barcode=$barcode (error=${result.error})")
-            return false
+            return null
         }
 
         return try {
             val dto = gson.fromJson(product, ProductDto::class.java)
             persistProduct(dto, product.asJsonObject)
-            true
+            val hit = ProductLookupHit(productId = dto.id, batch = result.batch)
+            if (hit.batch != null) batchLabelHits[barcode] = hit
+            hit
         } catch (e: Exception) {
             AppLog.e(TAG, "Failed to persist looked-up product: ${e.message}", e)
-            false
+            null
         }
     }
 
@@ -3225,6 +3248,7 @@ class SyncOrchestrator @Inject constructor(
                         lineNumber = line.lineNumber,
                         actualQuantity = line.actualQuantity,
                         batchNumber = line.batchNumber,
+                        batches = LineBatchJson.decode(line.batches),
                         isCompleted = line.isCompleted,
                         notes = line.notes
                     )
@@ -3276,11 +3300,13 @@ class SyncOrchestrator @Inject constructor(
                         val sentById = lineEntities.associateBy({ it.id }, {
                             Triple(it.actualQuantity, it.isCompleted, it.batchNumber)
                         })
+                        val sentBatches = lineEntities.associateBy({ it.id }, { it.batches })
                         documentLineDao.getLinesByDocumentIdSync(doc.id).forEach { current ->
                             val snap = sentById[current.id] ?: return@forEach
                             if (current.actualQuantity == snap.first &&
                                 current.isCompleted == snap.second &&
-                                current.batchNumber == snap.third) {
+                                current.batchNumber == snap.third &&
+                                current.batches == sentBatches[current.id]) {
                                 documentLineDao.markLineAsSynced(current.id)
                             }
                         }

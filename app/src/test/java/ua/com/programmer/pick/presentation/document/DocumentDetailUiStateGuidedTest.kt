@@ -5,7 +5,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import ua.com.programmer.pick.R
-import ua.com.programmer.pick.domain.model.AvailableDocumentType
 import ua.com.programmer.pick.domain.model.Document
 import ua.com.programmer.pick.domain.model.DocumentState
 
@@ -66,22 +65,22 @@ class DocumentDetailUiStateGuidedTest {
     }
 
     @Test
-    fun `a receipt says receiving rather than picking`() {
+    fun `a receiving-flow type says receiving rather than picking, whatever its code`() {
         assertEquals(
             R.string.task_start_receiving,
             state(
                 collectMode = "guided",
                 documentState = DocumentState.LOADED,
-                type = AvailableDocumentType.CODE_INCOMING_RECEIPT,
-            ).guidedButtonLabelRes,
+                type = "ПриходнаяНакладная",
+            ).copy(isReceivingType = true).guidedButtonLabelRes,
         )
         assertEquals(
             R.string.task_continue_receiving,
             state(
                 collectMode = "guided",
                 documentState = DocumentState.COLLECTING,
-                type = AvailableDocumentType.CODE_INCOMING_RECEIPT,
-            ).guidedButtonLabelRes,
+                type = "ПриходнаяНакладная",
+            ).copy(isReceivingType = true).guidedButtonLabelRes,
         )
     }
 

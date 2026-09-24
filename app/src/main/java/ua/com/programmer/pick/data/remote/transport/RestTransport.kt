@@ -17,6 +17,8 @@ import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.remote.api.DeviceApiException
 import ua.com.programmer.pick.data.remote.api.DeviceRestClient
 import ua.com.programmer.pick.data.remote.dto.DeviceDto
+import ua.com.programmer.pick.data.remote.dto.LineBatchDto
+import ua.com.programmer.pick.domain.model.ScannedBatch
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -196,6 +198,7 @@ class RestTransport @Inject constructor(
                         lineNumber = it.lineNumber,
                         actualQuantity = it.actualQuantity,
                         batchNumber = it.batchNumber,
+                        batches = it.batches?.map { b -> LineBatchDto(b.batchId, b.qty) },
                         isCompleted = it.isCompleted,
                         notes = it.notes,
                     )
@@ -237,7 +240,12 @@ class RestTransport @Inject constructor(
             )
 
             is SyncMessage.ProductLookup -> client.productLookup(message.barcode).fold(
-                { SyncMessage.ProductLookupResult(newId(), now(), it.success, it.product, it.error) },
+                {
+                    SyncMessage.ProductLookupResult(
+                        newId(), now(), it.success, it.product, it.error,
+                        batch = it.batch?.let { b -> ScannedBatch(b.id, b.number, b.expiryDate) },
+                    )
+                },
                 { SyncMessage.ProductLookupResult(newId(), now(), false, null, it.message) },
             )
 
@@ -301,6 +309,8 @@ class RestTransport @Inject constructor(
                         action = message.action,
                         value = message.value,
                         quantity = message.quantity,
+                        lineKey = message.lineKey,
+                        lineNumber = message.lineNumber,
                     ),
                 ),
             )
@@ -431,4 +441,5 @@ private fun DeviceDto.AvailableDocumentType.toWire(): AvailableDocumentTypeDto =
         allowsExtraLines = allowsExtraLines,
         requiresPlan = requiresPlan,
         mode = mode,
+        wmsFlow = wmsFlow,
     )

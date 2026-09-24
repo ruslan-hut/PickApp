@@ -319,9 +319,9 @@
     <string name="task_error_demo">Керовані задачі недоступні в демо-режимі</string>
     <string name="task_error_generic">Не вдалося виконати дію задачі</string>
 
-    <string name="task_guided_badge">Керована</string>
-    <string name="task_start_picking">Почати кероване збирання</string>
-    <string name="task_resume_picking">Продовжити кероване збирання</string>
+    <string name="task_guided_badge">По ячейках</string>
+    <string name="task_start_picking">Почати збирання</string>
+    <string name="task_resume_picking">Продовжити збирання</string>
     <string name="task_start_receiving">Почати приймання</string>
     <string name="task_continue_receiving">Продовжити приймання</string>
     <string name="task_join_receiving">Приєднатися до приймання</string>
@@ -349,4 +349,9 @@
     <string name="device_link_error_other_server">Цей QR-код для іншого сервера.</string>
     <string name="device_link_error_unreachable">Немає звʼязку із сервером. Перевірте мережу.</string>
     <string name="device_link_error_generic">Не вдалося підключити пристрій. Спробуйте ще раз.</string>
+    <string name="line_batch_label_qty">За етикеткою партії: %1$.0f</string>
+    <string name="guided_leave_title">Вийти з документа?</string>
+    <string name="guided_leave_message">Роботу буде призупинено: пораховане збережеться, документ можна продовжити пізніше.</string>
+    <string name="guided_leave_confirm">Призупинити й вийти</string>
+    <string name="guided_leave_stay">Залишитись</string>
 </resources>

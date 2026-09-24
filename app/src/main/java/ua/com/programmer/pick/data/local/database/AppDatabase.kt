@@ -51,7 +51,7 @@ import ua.com.programmer.pick.data.local.database.entity.WarehouseLocationEntity
         DocumentBoxEntity::class,
         DebugJournalEntity::class
     ],
-    version = 19, // Version 19: documents.collect_mode, document_lines.line_key
+    version = 20, // Version 20: document_lines.batches (batch-label scans)
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -309,6 +309,12 @@ abstract class AppDatabase : RoomDatabase() {
                     "CREATE INDEX IF NOT EXISTS index_document_lines_document_id_line_key " +
                         "ON document_lines (document_id, line_key)"
                 )
+            }
+        }
+
+        val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE document_lines ADD COLUMN batches TEXT DEFAULT NULL")
             }
         }
 

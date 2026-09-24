@@ -1,5 +1,8 @@
 package ua.com.programmer.pick.presentation.home
 
+import ua.com.programmer.pick.domain.model.OpenTask
+import ua.com.programmer.pick.presentation.navigation.Screen
+import ua.com.programmer.pick.domain.repository.DocumentRepository
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
@@ -30,7 +33,8 @@ class HomeViewModel @Inject constructor(
     private val syncOrchestrator: SyncOrchestrator,
     private val appPreferences: AppPreferences,
     private val guidedTaskRepository: GuidedTaskRepository,
-    private val gson: Gson
+    private val gson: Gson,
+    private val documentRepository: DocumentRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -97,7 +101,8 @@ class HomeViewModel @Inject constructor(
                                 allowsOverPlan = it.allowsOverPlan,
                                 allowsExtraLines = it.allowsExtraLines,
                                 requiresPlan = it.requiresPlan,
-                                mode = it.mode
+                                mode = it.mode,
+                                wmsFlow = it.wmsFlow
                             )
                         }
                     } catch (_: Exception) {
@@ -138,6 +143,22 @@ class HomeViewModel @Inject constructor(
         if (state.availableDocumentTypes.none { it.isGuided } && state.openTasks.isEmpty()) return
         viewModelScope.launch {
             guidedTaskRepository.refreshOpen()
+        }
+    }
+
+    /**
+     * Where "continue" goes: a document's guided task runs inside that
+     * document's screen (which re-attaches it on open), so it opens there when
+     * the document is cached here; a task without one — or a joined receiving
+     * document this device does not list — stays on the task screen.
+     */
+    fun continueTask(task: OpenTask, navigate: (String) -> Unit) {
+        viewModelScope.launch {
+            val docId = task.documentId
+            val cached = docId != null && runCatching { documentRepository.getDocumentById(docId) }.getOrNull() != null
+            navigate(
+                if (cached) Screen.DocumentDetail.createRoute(docId!!) else Screen.Task.byTaskId(task.id)
+            )
         }
     }
 

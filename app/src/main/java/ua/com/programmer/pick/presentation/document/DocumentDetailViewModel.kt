@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import ua.com.programmer.pick.core.di.IoDispatcher
 import ua.com.programmer.pick.core.scanner.BarcodeService
@@ -37,10 +38,20 @@ import ua.com.programmer.pick.data.local.database.dao.DocumentBoxDao
 import ua.com.programmer.pick.domain.model.AvailableDocumentType
 import ua.com.programmer.pick.domain.model.Box
 import ua.com.programmer.pick.domain.model.DocumentLine
+import ua.com.programmer.pick.domain.model.LineBatch
 import ua.com.programmer.pick.domain.model.DocumentState
 import ua.com.programmer.pick.domain.model.ProductImage
+import ua.com.programmer.pick.domain.model.ProductLookupHit
+import ua.com.programmer.pick.domain.model.ScannedBatch
 import ua.com.programmer.pick.domain.repository.DocumentRepository
 import ua.com.programmer.pick.domain.repository.ProductRepository
+import ua.com.programmer.pick.domain.repository.GuidedTaskRepository
+import ua.com.programmer.pick.core.util.NetworkMonitor
+import ua.com.programmer.pick.domain.model.TaskState
+import ua.com.programmer.pick.domain.model.TaskStepLine
+import ua.com.programmer.pick.presentation.task.GuidedTaskSession
+import ua.com.programmer.pick.presentation.task.TaskUiEvent
+import ua.com.programmer.pick.presentation.task.TaskUiState
 import javax.inject.Inject
 
 @HiltViewModel
@@ -58,7 +69,9 @@ class DocumentDetailViewModel @Inject constructor(
     private val imageCompressor: ImageCompressor,
     private val linePhotoStore: LinePhotoStore,
     private val appPreferences: AppPreferences,
-    @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
+    @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
+    private val guidedTaskRepository: GuidedTaskRepository,
+    private val networkMonitor: NetworkMonitor,
 ) : ViewModel() {
 
     companion object {
@@ -132,7 +145,8 @@ class DocumentDetailViewModel @Inject constructor(
                     it.copy(
                         allowsOverPlan = cfg?.allowsOverPlanOrDefault() ?: false,
                         allowsExtraLines = cfg?.allowsExtraLinesOrDefault() ?: false,
-                        requiresPlan = cfg?.requiresPlanOrDefault() ?: true
+                        requiresPlan = cfg?.requiresPlanOrDefault() ?: true,
+                        isReceivingType = cfg?.isGuidedReceiving == true
                     )
                 }
             }
@@ -202,12 +216,17 @@ class DocumentDetailViewModel @Inject constructor(
                         selectedLineId = null,
                         allowsOverPlan = cfg?.allowsOverPlanOrDefault() ?: false,
                         allowsExtraLines = cfg?.allowsExtraLinesOrDefault() ?: false,
-                        requiresPlan = cfg?.requiresPlanOrDefault() ?: true
+                        requiresPlan = cfg?.requiresPlanOrDefault() ?: true,
+                        isReceivingType = cfg?.isGuidedReceiving == true
                     )
                 }
 
                 // Reload images after sync completes (products may arrive after initial load)
                 reloadImagesAfterSync(productIds)
+
+                // A guided task this worker left open on the document: back
+                // straight into guided mode.
+                resumeOpenGuidedTask()
 
                 // Resubscribe to the document_boxes flow. The DAO query sorts
                 // parcels first (ORDER BY is_parcel DESC) so the UI can render
@@ -266,7 +285,14 @@ class DocumentDetailViewModel @Inject constructor(
         AppLog.d("DocumentDetailViewModel", "subscribeToScans")
         barcodeService.scannedBarcodes
             .onEach { scanned ->
-                handleScannedBarcode(scanned)
+                // In guided mode every scan belongs to the task: the server
+                // resolves it and answers with the next step.
+                val session = guidedSession
+                if (session != null && session.uiState.value.task?.isFinished == false) {
+                    session.onScan(scanned.rawValue)
+                } else {
+                    handleScannedBarcode(scanned)
+                }
             }
             .launchIn(viewModelScope)
     }
@@ -337,6 +363,9 @@ class DocumentDetailViewModel @Inject constructor(
             // `allows_extra_lines` flag so receipts or counts can opt in.
 
             // Resolve product info
+                // A batch label is not in the local catalogue: the server
+                // resolves it to the product and the batch the unit goes to.
+                var extraBatch: ScannedBatch? = null
                 val productId = scanned.productId ?: run {
                     // Try to lookup product by barcode if not already resolved
                     try {
@@ -344,6 +373,9 @@ class DocumentDetailViewModel @Inject constructor(
                     } catch (_: Exception) {
                         null
                     }
+                } ?: resolveScannedProduct(scanned)?.let { hit ->
+                    extraBatch = hit.batch
+                    hit.productId
                 }
 
                 if (productId == null) {
@@ -362,7 +394,7 @@ class DocumentDetailViewModel @Inject constructor(
                     // Persist change — and revert the optimistic update if the DB
                     // rejects it. Without this the UI drifts silently above what
                     // the server ever sees.
-                    val result = documentRepository.incrementLineQuantity(existingLine.id, 1.0)
+                    val result = documentRepository.incrementLineQuantity(existingLine.id, 1.0, extraBatch?.id)
                     when (result) {
                         is Result.Success -> {
                             maybeAutoMarkCompleted(existingLine.id, newQty)
@@ -400,6 +432,7 @@ class DocumentDetailViewModel @Inject constructor(
                         plannedQuantity = 0.0,
                         actualQuantity = 1.0,
                         batchNumber = null,
+                        batches = extraBatch?.let { listOf(LineBatch(it.id, 1.0)) },
                         expirationDate = null,
                         locationId = null,
                         locationPath = null,
@@ -432,6 +465,9 @@ class DocumentDetailViewModel @Inject constructor(
                 // Default: line must already exist in the document; search by
                 // productId first, then by productCode.
                 var line: DocumentLine? = null
+                // Set when the code was a batch label: the unit is credited to
+                // that batch too, so the ERP learns the batch was scanned.
+                var scannedBatch: ScannedBatch? = null
                 if (scanned.productId != null) {
                     try {
                         line = documentRepository.getLineByProductId(docId, scanned.productId)
@@ -452,16 +488,17 @@ class DocumentDetailViewModel @Inject constructor(
                 // classic "restart fixes scanning" symptom). Resolve the barcode
                 // on demand and retry before deciding the item isn't here.
                 if (line == null && scanned.productId == null) {
-                    val resolvedId = resolveScannedProduct(scanned)
-                    if (resolvedId == null) {
+                    val hit = resolveScannedProduct(scanned)
+                    if (hit == null) {
                         // Barcode is genuinely unknown to the ERP — a catalogue
                         // gap, not a "wrong document" situation. Say so instead
                         // of the misleading "not in this document".
                         _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.PRODUCT_NOT_FOUND))
                         return
                     }
+                    scannedBatch = hit.batch
                     try {
-                        line = documentRepository.getLineByProductId(docId, resolvedId)
+                        line = documentRepository.getLineByProductId(docId, hit.productId)
                     } catch (_: Exception) {
                     }
                 }
@@ -492,14 +529,20 @@ class DocumentDetailViewModel @Inject constructor(
                     // Persist change — revert the optimistic update if the DB
                     // rejects it (stale line id after resync, or real IO error).
                     val delta = newQty - line.actualQuantity
-                    val result = documentRepository.incrementLineQuantity(line.id, delta)
+                    val result = documentRepository.incrementLineQuantity(line.id, delta, scannedBatch?.id)
                     when (result) {
                         is Result.Success -> {
                             debugJournal.log(
                                 eventType = DebugEventType.LINE_EDIT,
-                                message = "line increment from barcode scan",
+                                message = if (scannedBatch != null) "line increment from batch label scan" else "line increment from barcode scan",
                                 documentId = docId,
-                                payload = mapOf("line_id" to line.id, "delta" to delta, "new_qty" to newQty, "barcode" to identifier)
+                                payload = buildMap {
+                                    put("line_id", line.id)
+                                    put("delta", delta)
+                                    put("new_qty", newQty)
+                                    put("barcode", identifier)
+                                    scannedBatch?.let { put("batch_id", it.id) }
+                                }
                             )
                             maybeAutoMarkCompleted(line.id, newQty)
                             notifyDocumentLinesChanged()
@@ -521,24 +564,23 @@ class DocumentDetailViewModel @Inject constructor(
     /**
      * Resolve a scanned barcode that missed the local product catalogue. Tries
      * the local cache once more (a concurrent sync may have filled it), then
-     * asks the server via an on-demand PRODUCT_LOOKUP and re-reads the cache.
-     * Returns the resolved local product id, or null if the barcode is unknown
-     * to the ERP. The barcode key mirrors BarcodeService.enrichWithProductInfo
+     * asks the server via an on-demand PRODUCT_LOOKUP. Returns the local
+     * product row — plus the batch when the code was a batch label — or null
+     * if the barcode is unknown to the ERP. The barcode key mirrors BarcodeService.enrichWithProductInfo
      * (GS1 product code when present, otherwise the raw scan).
      */
     @androidx.annotation.VisibleForTesting
-    internal suspend fun resolveScannedProduct(scanned: ScannedBarcode): String? {
+    internal suspend fun resolveScannedProduct(scanned: ScannedBarcode): ProductLookupHit? {
         val searchBarcode = scanned.gs1Data?.getProductBarcode() ?: scanned.rawValue
         if (searchBarcode.isBlank()) return null
 
         // A product sync may have landed since the scan was first enriched.
         runCatching { productRepository.getProductByBarcode(searchBarcode) }
-            .getOrNull()?.let { return it.id }
+            .getOrNull()?.let { return ProductLookupHit(it.id) }
 
-        // Ask the server to resolve it, then re-read the freshly-stored row.
-        if (!syncOrchestrator.lookupProductByBarcode(searchBarcode)) return null
-        return runCatching { productRepository.getProductByBarcode(searchBarcode) }
-            .getOrNull()?.id
+        // Ask the server. A batch label resolves to its product plus the
+        // batch; it is not a product barcode, so the cache is not re-read.
+        return syncOrchestrator.lookupProduct(searchBarcode)
     }
 
     fun updateLineQuantity(lineId: String, newQuantity: Double) {
@@ -897,21 +939,202 @@ class DocumentDetailViewModel @Inject constructor(
         )
     }
 
-    /**
-     * Hands a `collect_mode: "guided"` document to the task screen. No lock is
-     * claimed here — `POST /device/tasks {document_id}` takes the Collect lock
-     * on the server with the same semantics, and the device must not hold a
-     * classic claim on top of it (D3).
-     */
+    // --- Guided mode (collect_mode: "guided") ---
+    //
+    // A guided document is worked in place: the task's step panel replaces the
+    // document's own bottom bar, scans go to the task, and the line list
+    // follows the server's line_updates. No lock is claimed here —
+    // `POST /device/tasks {document_id}` takes the Collect lock on the server
+    // with the same semantics, and the device must not hold a classic claim on
+    // top of it (D3).
+
+    private var guidedSession: GuidedTaskSession? = null
+    private var guidedJobs: List<Job> = emptyList()
+
+    private val _guidedState = MutableStateFlow<TaskUiState?>(null)
+    /** The running guided task's screen state; null when not in guided mode. */
+    val guidedState: StateFlow<TaskUiState?> = _guidedState.asStateFlow()
+
+    /** "Start / continue" on a guided document: the step panel takes over. */
     fun startGuidedTask() {
         val document = _uiState.value.document ?: return
-        viewModelScope.launch {
-            _uiEvents.emit(
-                DocumentDetailUiEvent.NavigateToTask(
-                    document.externalId?.takeIf { it.isNotBlank() } ?: document.id
-                )
-            )
+        openGuidedSession(documentId = document.externalId?.takeIf { it.isNotBlank() } ?: document.id)
+    }
+
+    /**
+     * Re-attaches a task this worker left open on the document (back, app
+     * restart): the document opens straight in guided mode, no extra tap.
+     */
+    private fun resumeOpenGuidedTask() {
+        val document = _uiState.value.document ?: return
+        if (!document.isGuidedCollect || guidedSession != null) return
+        val externalId = document.externalId?.takeIf { it.isNotBlank() } ?: document.id
+        val open = guidedTaskRepository.openTasks.value.firstOrNull { it.documentId == externalId } ?: return
+        openGuidedSession(taskId = open.id, documentId = externalId)
+    }
+
+    private fun openGuidedSession(taskId: String? = null, documentId: String) {
+        if (guidedSession != null) return
+        val session = GuidedTaskSession(
+            scope = viewModelScope,
+            guidedTaskRepository = guidedTaskRepository,
+            documentRepository = documentRepository,
+            syncOrchestrator = syncOrchestrator,
+            debugJournal = debugJournal,
+            isOnline = networkMonitor.isOnline,
+            hostDocumentId = documentId,
+        )
+        guidedSession = session
+        guidedJobs = listOf(
+            session.uiState.onEach { state ->
+                _guidedState.value = state
+                focusGuidedLine(state.step?.line)
+            }.launchIn(viewModelScope),
+            session.events.onEach { handleGuidedEvent(it) }.launchIn(viewModelScope),
+            session.linesChanged.onEach { reloadLinesFromCache() }.launchIn(viewModelScope),
+        )
+        if (taskId != null) session.open(taskId = taskId) else session.open(documentId = documentId)
+    }
+
+    private suspend fun handleGuidedEvent(event: TaskUiEvent) {
+        when (event) {
+            is TaskUiEvent.ShowToast -> _uiEvents.emit(DocumentDetailUiEvent.GuidedToast(event.messageType, event.serverText))
+            is TaskUiEvent.VibrateError -> _uiEvents.emit(DocumentDetailUiEvent.GuidedVibrate)
+            // The task closed (done, cancelled/paused, or refused to open).
+            is TaskUiEvent.NavigateToDocuments, is TaskUiEvent.NavigateHome -> {
+                val done = _guidedState.value?.task?.state == TaskState.DONE
+                val leave = done || leaveAfterGuidedPause
+                leaveAfterGuidedPause = false
+                // Closing the session cancels its collectors — this handler runs
+                // in one of them — so the rest goes on its own coroutine, or the
+                // navigation below would be cancelled half way.
+                viewModelScope.launch {
+                    closeGuidedSession()
+                    if (leave) {
+                        // Done: the stage is complete on the server — back to the
+                        // list, as after a classic complete. Or the worker left
+                        // via Back and confirmed the pause.
+                        _uiEvents.emit(DocumentDetailUiEvent.NavigateBack)
+                    } else {
+                        // Paused: the classic bar reads the refreshed state.
+                        runCatching { syncOrchestrator.requestDeltaSyncIfStale(0) }
+                        reloadLinesFromCache()
+                    }
+                }
+            }
         }
+    }
+
+    private fun closeGuidedSession() {
+        guidedJobs.forEach { it.cancel() }
+        guidedJobs = emptyList()
+        guidedSession = null
+        _guidedState.value = null
+    }
+
+    /** Marks and scrolls to the line the current step is about. */
+    private fun focusGuidedLine(line: TaskStepLine?) {
+        line ?: return
+        val lines = _uiState.value.lines
+        val target = line.lineKey?.let { key -> lines.firstOrNull { it.lineKey == key } }
+            ?: lines.firstOrNull { it.lineNumber == line.lineNumber }
+            ?: return
+        if (_uiState.value.selectedLineId != target.id) {
+            _uiState.update { it.copy(selectedLineId = target.id) }
+        }
+    }
+
+    /**
+     * Re-reads the document and its lines from Room after the task wrote
+     * line_updates (or the stage moved), keeping device-local photo paths.
+     */
+    private fun reloadLinesFromCache() {
+        val documentId = currentDocumentId ?: return
+        viewModelScope.launch {
+            val doc = runCatching { documentRepository.getDocumentById(documentId) }.getOrNull()
+            val fresh = runCatching { documentRepository.getLinesByDocumentId(documentId).first() }.getOrNull() ?: return@launch
+            _uiState.update { state ->
+                val photos = state.lines.associate { it.id to it.photoPath }
+                state.copy(
+                    document = doc ?: state.document,
+                    lines = fresh.map { l -> if (l.photoPath == null) l.copy(photoPath = photos[l.id]) else l },
+                )
+            }
+            focusGuidedLine(_guidedState.value?.step?.line)
+        }
+    }
+
+    /** Set when the worker leaves via back: pause, then go back to the list. */
+    private var leaveAfterGuidedPause = false
+
+    /** The line the current step is about — the only one that swipes / takes +/−. */
+    fun isGuidedFocusLine(lineId: String): Boolean =
+        _guidedState.value?.step?.line != null && _uiState.value.selectedLineId == lineId
+
+    /**
+     * Swipe right on the step's line is the step's main action ("line
+     * complete", "no more batches") — the same gesture that completes a line
+     * on the classic screen. A left swipe means nothing here.
+     */
+    fun guidedSwipe(lineId: String, completed: Boolean) {
+        if (!completed || !isGuidedFocusLine(lineId)) return
+        val primary = _guidedState.value?.primaryAction ?: return
+        guidedSession?.onAction(primary.code)
+    }
+
+    /**
+     * +/− and a typed quantity: the line's new count. On a step that takes any
+     * line the server takes this one first (the current one keeps its count);
+     * otherwise only the step's own line counts.
+     */
+    fun guidedSetQuantity(lineId: String, quantity: Double) {
+        val session = guidedSession ?: return
+        if (_guidedState.value?.step?.adjustable == true) {
+            val line = _uiState.value.lines.firstOrNull { it.id == lineId } ?: return
+            session.setQuantity(quantity.toLong(), lineKey = line.lineKey, lineNumber = line.lineNumber.takeIf { line.lineKey == null })
+            return
+        }
+        if (!isGuidedFocusLine(lineId)) return
+        session.setQuantity(quantity.toLong())
+    }
+
+    /** +/− and typed quantity are live on this line in guided mode. */
+    fun isGuidedQuantityEditable(lineId: String): Boolean {
+        val g = _guidedState.value ?: return false
+        if (g.isFinished || !g.canAct) return false
+        val line = _uiState.value.lines.firstOrNull { it.id == lineId } ?: return false
+        if (line.isCompleted) return false
+        return g.step?.adjustable == true || (g.step?.line?.adjustable == true && isGuidedFocusLine(lineId))
+    }
+
+    /** Back in guided mode: pause the work (server `cancel`) and leave. */
+    fun guidedPauseAndLeave() {
+        val session = guidedSession
+        if (session == null || session.uiState.value.task?.isFinished != false) {
+            viewModelScope.launch { _uiEvents.emit(DocumentDetailUiEvent.NavigateBack) }
+            return
+        }
+        leaveAfterGuidedPause = true
+        session.onAction(GuidedTaskSession.ACTION_CANCEL)
+    }
+
+    // Step panel inputs, forwarded to the session.
+    fun guidedAction(code: String) { guidedSession?.onAction(code) }
+    fun guidedConfirmQuantity(value: String) {
+        val session = guidedSession ?: return
+        session.onQtyInputChange(value)
+        session.confirmQuantity()
+    }
+    fun guidedManualCell(value: String) { guidedSession?.submitManualCell(value) }
+    fun guidedRetry() { guidedSession?.retryPending() }
+    fun guidedDismissMessage() { guidedSession?.dismissMessage() }
+    suspend fun guidedHeartbeat() { guidedSession?.heartbeat() }
+
+    override fun onCleared() {
+        // Leaving the screen keeps the task open on the server (only `cancel`
+        // closes it); it reappears when the document is opened again.
+        guidedSession?.leave()
+        super.onCleared()
     }
 
     fun takeIntoWork() {

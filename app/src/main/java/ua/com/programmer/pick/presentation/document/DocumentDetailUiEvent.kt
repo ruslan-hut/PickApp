@@ -13,6 +13,13 @@ sealed class DocumentDetailUiEvent {
      * the ERP id the task endpoint expects.
      */
     data class NavigateToTask(val documentExternalId: String) : DocumentDetailUiEvent()
+    /** A guided-task notice (refusal, lock holder); [serverText] wins when set. */
+    data class GuidedToast(
+        val messageType: ua.com.programmer.pick.presentation.task.TaskToastMessage,
+        val serverText: String? = null,
+    ) : DocumentDetailUiEvent()
+    /** Buzz: a guided action was refused. */
+    data object GuidedVibrate : DocumentDetailUiEvent()
     /**
      * M5″ recovery exhausted the silent re-lock budget; the worker's dirty
      * edits were dropped on this device. The screen should show a banner /

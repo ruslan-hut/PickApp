@@ -6,6 +6,8 @@ import ua.com.programmer.pick.data.remote.dto.DocumentDto
 import ua.com.programmer.pick.data.remote.dto.DocumentLineDto
 import ua.com.programmer.pick.domain.model.Document
 import ua.com.programmer.pick.domain.model.DocumentLine
+import ua.com.programmer.pick.domain.model.LineBatch
+import ua.com.programmer.pick.domain.model.LineBatchJson
 import ua.com.programmer.pick.domain.model.DocumentState
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -57,6 +59,7 @@ class DocumentMapper @Inject constructor() {
             plannedQuantity = dto.plannedQuantity,
             actualQuantity = dto.actualQuantity,
             batchNumber = dto.batchNumber,
+            batches = LineBatchJson.encode(dto.batches?.map { LineBatch(it.batchId, it.qty) }),
             expirationDate = dto.expirationDate,
             locationId = dto.locationId,
             locationPath = dto.locationPath,
@@ -144,6 +147,7 @@ fun DocumentLineEntity.toDomain(): DocumentLine {
         plannedQuantity = plannedQuantity,
         actualQuantity = actualQuantity,
         batchNumber = batchNumber,
+        batches = LineBatchJson.decode(batches),
         expirationDate = expirationDate,
         locationId = locationId,
         locationPath = locationPath,
@@ -172,6 +176,7 @@ fun DocumentLine.toEntity(): DocumentLineEntity {
         plannedQuantity = plannedQuantity,
         actualQuantity = actualQuantity,
         batchNumber = batchNumber,
+        batches = LineBatchJson.encode(batches),
         expirationDate = expirationDate,
         locationId = locationId,
         locationPath = locationPath,

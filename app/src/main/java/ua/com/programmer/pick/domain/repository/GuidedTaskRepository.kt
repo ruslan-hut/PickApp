@@ -42,6 +42,8 @@ interface GuidedTaskRepository {
         value: String? = null,
         quantity: Long? = null,
         operationId: String? = null,
+        lineKey: String? = null,
+        lineNumber: Int? = null,
     ): TaskCallResult
 
     /** Abandon a task; the server releases its cell / line locks. */

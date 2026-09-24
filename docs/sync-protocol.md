@@ -600,6 +600,17 @@ device, and flushed before `STAGE_LOCK` / `STAGE_COMPLETE` / `STAGE_UNLOCK`
 Each line may also carry `notes` (worker-owned line note, sent full-state: an
 omitted/empty note clears the server's copy).
 
+Each line may also carry `batches` — the part of `actual_quantity` collected by
+scanning a **batch label**, per batch: `[{ "batch_id": "…", "qty": 4 }]`. The
+ERP books that part to the scanned batch and assigns batches for the rest
+(product scans) itself by expiry. It is full-state like the quantity; the app
+sends it only when it holds a breakdown for the line (Room `batches` column not
+null) and omits it otherwise, so the server keeps what a guided task wrote
+there. Both sides fit it to the quantity by the same rule
+(`LineBatch.normalizedTo` / `entity.NormalizeLineBatches`): repeats merged, the
+latest entries trimmed when the quantity goes down. On sync ingest a line with
+no local breakdown takes the server's.
+
 `actual_quantity` is **absolute** (the post-increment total), not a delta — so
 retries are idempotent. On success the endpoint returns a
 `DOCUMENT_UPDATE_RESULT` (the orchestrator clears `is_dirty` for the confirmed
@@ -638,6 +649,19 @@ Search for a product by barcode.
   }
 }
 ```
+
+A **batch label** (WMS module on, batch known from the ERP) resolves to the
+batch's product plus the batch:
+
+```json
+{ "success": true, "product": { ... ProductDto ... },
+  "batch": { "id": "76cf5c4d-…", "number": "ПН-000123", "expiry_date": 1830211200000 } }
+```
+
+`SyncOrchestrator.lookupProduct` stores the product (never the label as its
+barcode — a later local hit would lose the batch), caches the label → batch hit
+for the session, and the document screen adds the unit to the product's line
+and to its `batches` entry.
 
 **Result (not found):**
 ```json
@@ -1115,6 +1139,7 @@ Every task endpoint answers the same shape, carried by `TASK_RESULT`
 | Field | Meaning |
 |-------|---------|
 | `available_document_types[].mode` | `"guided"` marks a task type. The server omits guided types where the module is off, so a plain client never sees one. |
+| `available_document_types[].wms_flow` | `"collect"` / `"receive"`: the guided flow documents of a classic type run. Sent only where the worker's warehouse has the module on. The app keys *Join receiving* and the guided bar's wording on `wms_flow == "receive"` — never on the type code (1C sends its own, e.g. `ПриходнаяНакладная`). |
 | `open_tasks[]` | `{id, type, document_id?, step_title, started_at}` — the worker's unfinished tasks, for the continue / cancel offer. |
 | `held_stage_locks[]` | Includes the Collect lock the task engine took for a guided document. The orchestrator **excludes** every id present in `open_tasks[].document_id`. |
 

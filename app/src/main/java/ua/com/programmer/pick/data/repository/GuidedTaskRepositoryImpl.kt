@@ -101,6 +101,8 @@ class GuidedTaskRepositoryImpl @Inject constructor(
         value: String?,
         quantity: Long?,
         operationId: String?,
+        lineKey: String?,
+        lineNumber: Int?,
     ): TaskCallResult {
         val opId = operationId ?: UUID.randomUUID().toString()
         debugJournal.log(
@@ -110,7 +112,7 @@ class GuidedTaskRepositoryImpl @Inject constructor(
             payload = mapOf("task_id" to taskId, "operation_id" to opId, "value" to value, "quantity" to quantity),
         )
         return call(taskId = taskId) {
-            SyncMessage.TaskAction(newId(), now(), taskId, opId, stepId, action, value, quantity)
+            SyncMessage.TaskAction(newId(), now(), taskId, opId, stepId, action, value, quantity, lineKey, lineNumber)
         }
     }
 

@@ -75,7 +75,12 @@ interface DocumentRepository {
 
     suspend fun updateLinePhoto(lineId: String, photoPath: String): Result<Unit>
 
-    suspend fun incrementLineQuantity(lineId: String, delta: Double): Result<Unit>
+    /**
+     * Adds [delta] to the line's quantity. [batchId] set = the unit was
+     * identified by a batch-label scan: it is also credited to that batch in
+     * the line's breakdown (DocumentLine.batches).
+     */
+    suspend fun incrementLineQuantity(lineId: String, delta: Double, batchId: String? = null): Result<Unit>
 
     suspend fun updateLineCompleted(lineId: String, isCompleted: Boolean): Result<Unit>
 
