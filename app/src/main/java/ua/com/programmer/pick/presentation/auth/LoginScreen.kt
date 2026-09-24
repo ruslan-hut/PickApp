@@ -1,6 +1,7 @@
 package ua.com.programmer.pick.presentation.auth
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,6 +22,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.data.remote.transport.demo.DemoVariant
 import ua.com.programmer.pick.presentation.common.BrandLogo
+import ua.com.programmer.pick.presentation.common.ErrorSnackbar
 import ua.com.programmer.pick.presentation.common.LoadingButton
 import ua.com.programmer.pick.presentation.common.OfflineBanner
 import ua.com.programmer.pick.ui.theme.ButtonShape
@@ -91,194 +95,205 @@ fun LoginScreen(
         }
     }
 
+    // A snackbar rather than inline text: on a small screen the inline line
+    // sits below the fold, behind the keyboard. Editing a field clears the
+    // error, which cancels this effect and dismisses the snackbar with it.
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(mappedErrorText) {
+        mappedErrorText?.let {
+            snackbarHostState.showSnackbar(it, duration = SnackbarDuration.Long)
+            onClearError()
+        }
+    }
+
     Surface(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .imePadding()
-        ) {
-            // Offline banner at top
-            OfflineBanner(isOffline = uiState.isOfflineMode)
-
+        Box(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                    .imePadding()
             ) {
-                Spacer(modifier = Modifier.weight(0.3f))
+                // Offline banner at top
+                OfflineBanner(isOffline = uiState.isOfflineMode)
 
-                // Branding header
-                BrandLogo()
-
-                Spacer(modifier = Modifier.height(48.dp))
-
-                // Login input
-                OutlinedTextField(
-                    value = login,
-                    onValueChange = { login = it; onClearError() },
-                    label = { Text(stringResource(R.string.label_login)) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !uiState.isLoading,
-                    shape = ButtonShape,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                    ),
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Text,
-                        imeAction = ImeAction.Next
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onNext = { focusManager.moveFocus(FocusDirection.Down) }
-                    )
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Password input with visibility toggle
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it; onClearError() },
-                    label = { Text(stringResource(R.string.label_password)) },
-                    leadingIcon = {
-                        Icon(
-                            painter = painterResource(R.drawable.baseline_lock_24),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    },
-                    trailingIcon = {
-                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                            Icon(
-                                painter = painterResource(if (passwordVisible) {
-                                    R.drawable.outline_visibility_off_24
-                                } else {
-                                    R.drawable.outline_visibility_24
-                                }),
-                                contentDescription = stringResource(R.string.toggle_password_visibility_cd),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    },
-                    singleLine = true,
-                    visualTransformation = if (passwordVisible) {
-                        VisualTransformation.None
-                    } else {
-                        PasswordVisualTransformation()
-                    },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Password,
-                        imeAction = ImeAction.Done
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onDone = {
-                            focusManager.clearFocus()
-                            if (login.isNotBlank() && password.isNotBlank()) {
-                                onLoginClick(login, password)
-                            }
-                        }
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !uiState.isLoading,
-                    shape = ButtonShape,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                    )
-                )
-
-                Spacer(modifier = Modifier.height(32.dp))
-
-                // Login button
-                LoadingButton(
-                    text = stringResource(R.string.login_button),
-                    onClick = { onLoginClick(login, password) },
-                    modifier = Modifier.fillMaxWidth(),
-                    isLoading = uiState.isLoading,
-                    enabled = login.isNotBlank() && password.isNotBlank()
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                OutlinedButton(
-                    onClick = onScanLogin,
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !uiState.isLoading,
-                    shape = ButtonShape
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    Icon(
-                        painter = painterResource(R.drawable.baseline_qr_code_scanner_24),
-                        contentDescription = null,
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                    Text(stringResource(R.string.scan_to_login))
-                }
+                    Spacer(modifier = Modifier.weight(0.3f))
 
-                // Nobody has signed in on this install yet, so it is most likely
-                // a fresh device that still has to be linked to the company.
-                if (uiState.lastLogin.isBlank()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    TextButton(
-                        onClick = { onOpenDeviceLink(null) },
+                    // Branding header
+                    BrandLogo()
+
+                    Spacer(modifier = Modifier.height(48.dp))
+
+                    // Login input
+                    OutlinedTextField(
+                        value = login,
+                        onValueChange = { login = it; onClearError() },
+                        label = { Text(stringResource(R.string.label_login)) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = !uiState.isLoading
+                        enabled = !uiState.isLoading,
+                        shape = ButtonShape,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                        ),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Text,
+                            imeAction = ImeAction.Next
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Password input with visibility toggle
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it; onClearError() },
+                        label = { Text(stringResource(R.string.label_password)) },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(R.drawable.baseline_lock_24),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        trailingIcon = {
+                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                Icon(
+                                    painter = painterResource(if (passwordVisible) {
+                                        R.drawable.outline_visibility_off_24
+                                    } else {
+                                        R.drawable.outline_visibility_24
+                                    }),
+                                    contentDescription = stringResource(R.string.toggle_password_visibility_cd),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
+                        singleLine = true,
+                        visualTransformation = if (passwordVisible) {
+                            VisualTransformation.None
+                        } else {
+                            PasswordVisualTransformation()
+                        },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password,
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                focusManager.clearFocus()
+                                if (login.isNotBlank() && password.isNotBlank()) {
+                                    onLoginClick(login, password)
+                                }
+                            }
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !uiState.isLoading,
+                        shape = ButtonShape,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    // Login button
+                    LoadingButton(
+                        text = stringResource(R.string.login_button),
+                        onClick = { onLoginClick(login, password) },
+                        modifier = Modifier.fillMaxWidth(),
+                        isLoading = uiState.isLoading,
+                        enabled = login.isNotBlank() && password.isNotBlank()
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedButton(
+                        onClick = onScanLogin,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !uiState.isLoading,
+                        shape = ButtonShape
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.baseline_link_24),
+                            painter = painterResource(R.drawable.baseline_qr_code_scanner_24),
                             contentDescription = null,
                             modifier = Modifier.padding(end = 8.dp)
                         )
-                        Text(stringResource(R.string.device_link_open))
+                        Text(stringResource(R.string.scan_to_login))
+                    }
+
+                    // Nobody has signed in on this install yet, so it is most likely
+                    // a fresh device that still has to be linked to the company.
+                    if (uiState.lastLogin.isBlank()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        TextButton(
+                            onClick = { onOpenDeviceLink(null) },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !uiState.isLoading
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.baseline_link_24),
+                                contentDescription = null,
+                                modifier = Modifier.padding(end = 8.dp)
+                            )
+                            Text(stringResource(R.string.device_link_open))
+                        }
+                    }
+
+                    // Offline demo session against the in-memory fake server. It
+                    // serves both document types, so the mode is picked afterwards
+                    // on the home screen.
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    TextButton(
+                        onClick = { onLoginClick(DemoVariant.LOGIN, DemoVariant.PASSWORD) },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !uiState.isLoading
+                    ) {
+                        Text(stringResource(R.string.demo_login))
+                    }
+
+                    Spacer(modifier = Modifier.weight(0.5f))
+
+                    if (uiState.deviceId.isNotBlank()) {
+                        Text(
+                            text = stringResource(R.string.device_id_label_fmt, uiState.deviceId),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
-
-                // Offline demo session against the in-memory fake server. It
-                // serves both document types, so the mode is picked afterwards
-                // on the home screen.
-                Spacer(modifier = Modifier.height(12.dp))
-
-                TextButton(
-                    onClick = { onLoginClick(DemoVariant.LOGIN, DemoVariant.PASSWORD) },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !uiState.isLoading
-                ) {
-                    Text(stringResource(R.string.demo_login))
-                }
-
-                if (mappedErrorText != null) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = mappedErrorText,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-
-                Spacer(modifier = Modifier.weight(0.5f))
-
-                if (uiState.deviceId.isNotBlank()) {
-                    Text(
-                        text = stringResource(R.string.device_id_label_fmt, uiState.deviceId),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             }
+
+            ErrorSnackbar(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .imePadding()
+                    .padding(16.dp)
+            )
         }
     }
 }
