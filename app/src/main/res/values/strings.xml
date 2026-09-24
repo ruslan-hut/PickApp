@@ -56,6 +56,8 @@
     <string name="logging_in">Logging in…</string>
     <string name="error_empty_credentials">Please enter login and password</string>
     <string name="error_login_failed">Login failed</string>
+    <string name="error_invalid_credentials">Invalid login or password</string>
+    <string name="error_user_inactive">This user is deactivated. Contact your administrator</string>
 
     <!-- Documents list -->
     <string name="planned">Planned: %1$.0f</string>

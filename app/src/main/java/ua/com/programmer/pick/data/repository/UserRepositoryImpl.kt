@@ -20,6 +20,7 @@ import ua.com.programmer.pick.data.mapper.toDomain
 import ua.com.programmer.pick.data.remote.transport.ConnectionState
 import ua.com.programmer.pick.data.remote.transport.SyncTransport
 import ua.com.programmer.pick.domain.model.DeviceNotLinkedException
+import ua.com.programmer.pick.domain.model.LoginRefusedException
 import ua.com.programmer.pick.domain.model.User
 import ua.com.programmer.pick.data.remote.transport.demo.DemoVariant
 import ua.com.programmer.pick.domain.model.UserRole
@@ -264,6 +265,8 @@ class UserRepositoryImpl @Inject constructor(
             val offlineResult = loginOffline(login, password)
             if (offlineResult is Result.Success) {
                 offlineResult
+            } else if (code != null) {
+                Result.Error(LoginRefusedException(code, error), error)
             } else {
                 Result.Error(Exception(error), error)
             }
@@ -311,7 +314,7 @@ class UserRepositoryImpl @Inject constructor(
                 }
                 if (!isValid) {
                     return@withContext Result.Error(
-                        Exception("Invalid credentials"),
+                        LoginRefusedException(LoginRefusedException.INVALID_CREDENTIALS, "Invalid login or password"),
                         "Invalid login or password"
                     )
                 }

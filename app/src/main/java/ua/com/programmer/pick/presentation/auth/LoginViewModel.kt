@@ -20,6 +20,7 @@ import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.remote.transport.demo.DemoVariant
 import ua.com.programmer.pick.domain.model.DeviceNotLinkedException
 import ua.com.programmer.pick.domain.model.EnrollmentQr
+import ua.com.programmer.pick.domain.model.LoginRefusedException
 import ua.com.programmer.pick.domain.repository.UserRepository
 import javax.inject.Inject
 
@@ -36,6 +37,8 @@ class LoginViewModel @Inject constructor(
         private const val QR_LOGIN_PREFIX = "USR:"
         const val ERROR_EMPTY_CREDENTIALS = "ERROR_EMPTY_CREDENTIALS"
         const val ERROR_LOGIN_FAILED = "ERROR_LOGIN_FAILED"
+        const val ERROR_INVALID_CREDENTIALS = "ERROR_INVALID_CREDENTIALS"
+        const val ERROR_USER_INACTIVE = "ERROR_USER_INACTIVE"
     }
 
     // The login back-stack entry stays alive under the pairing screen and would
@@ -101,12 +104,14 @@ class LoginViewModel @Inject constructor(
                         _uiState.update { it.copy(isLoading = false, needsDeviceLink = true) }
                         return@launch
                     }
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            errorMessage = result.message ?: result.exception.message ?: ERROR_LOGIN_FAILED
-                        )
+                    // A known refusal code gets a localized string; anything
+                    // else still shows the server's text as-is.
+                    val errorKey = when ((result.exception as? LoginRefusedException)?.code) {
+                        LoginRefusedException.INVALID_CREDENTIALS -> ERROR_INVALID_CREDENTIALS
+                        LoginRefusedException.USER_INACTIVE -> ERROR_USER_INACTIVE
+                        else -> result.message ?: result.exception.message ?: ERROR_LOGIN_FAILED
                     }
+                    _uiState.update { it.copy(isLoading = false, errorMessage = errorKey) }
                 }
                 is Result.Loading -> {
                     // Already showing loading state

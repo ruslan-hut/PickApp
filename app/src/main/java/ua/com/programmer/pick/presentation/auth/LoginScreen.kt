@@ -91,6 +91,8 @@ fun LoginScreen(
         when (errKey) {
             LoginViewModel.ERROR_EMPTY_CREDENTIALS -> stringResource(R.string.error_empty_credentials)
             LoginViewModel.ERROR_LOGIN_FAILED -> stringResource(R.string.error_login_failed)
+            LoginViewModel.ERROR_INVALID_CREDENTIALS -> stringResource(R.string.error_invalid_credentials)
+            LoginViewModel.ERROR_USER_INACTIVE -> stringResource(R.string.error_user_inactive)
             else -> errKey
         }
     }

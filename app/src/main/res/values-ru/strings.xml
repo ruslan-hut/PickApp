@@ -55,6 +55,8 @@
     <string name="logging_in">Вход…</string>
     <string name="error_empty_credentials">Введите логин и пароль</string>
     <string name="error_login_failed">Ошибка входа</string>
+    <string name="error_invalid_credentials">Неверный логин или пароль</string>
+    <string name="error_user_inactive">Пользователь деактивирован. Обратитесь к администратору</string>
 
     <!-- Documents list -->
     <string name="planned">План: %1$.0f</string>
