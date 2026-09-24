@@ -5,11 +5,13 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -175,6 +177,36 @@ class TaskViewModelTest {
     }
 
     @Test
+    fun `the manual_cell button alone never posts an empty value`() = runTest {
+        coEvery { repository.start(any(), any()) } returns success(
+            step(
+                expect = TaskExpect.CELL,
+                actions = listOf(TaskActionButton("manual_cell", "Enter address"), TaskActionButton("cancel", "Cancel")),
+            ),
+        )
+        val vm = build(type = "CELL_RECOUNT")
+
+        vm.onAction("manual_cell")
+
+        coVerify(exactly = 0) { repository.act(any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `a refused document start reads as an unavailable document`() = runTest {
+        // CONFLICT (not in Collect) and FORBIDDEN (assigned to another worker)
+        // come from the document lock path, not from the task catalog.
+        for (code in listOf("CONFLICT", "FORBIDDEN")) {
+            assertEquals(TaskToastMessage.WRONG_STATE, openingToast(documentId = "ERP-DOC-1", code = code))
+        }
+    }
+
+    @Test
+    fun `a refused system task keeps its own wording`() = runTest {
+        assertEquals(TaskToastMessage.FORBIDDEN, openingToast(type = "CELL_RECOUNT", code = "FORBIDDEN"))
+        assertEquals(TaskToastMessage.GENERIC, openingToast(type = "CELL_RECOUNT", code = "CONFLICT"))
+    }
+
+    @Test
     fun `a server message is surfaced but a replay is not`() = runTest {
         coEvery { repository.start(any(), any()) } returns success(
             step(),
@@ -314,6 +346,29 @@ class TaskViewModelTest {
     }
 
     // --- helpers ---
+
+    /**
+     * The toast an opening failure produces. The start call is held until the
+     * collector is attached, because `events` has no replay and init{} would
+     * otherwise emit before anyone listens.
+     */
+    private suspend fun TestScope.openingToast(
+        type: String? = null,
+        documentId: String? = null,
+        code: String,
+    ): TaskToastMessage? {
+        val gate = CompletableDeferred<Unit>()
+        coEvery { repository.start(any(), any()) } coAnswers {
+            gate.await()
+            TaskCallResult.Failure(code, "refused")
+        }
+        val vm = build(type = type, documentId = documentId)
+        val events = mutableListOf<TaskUiEvent>()
+        val collector = backgroundScope.launch(mainDispatcher) { vm.events.collect { events += it } }
+        gate.complete(Unit)
+        collector.cancel()
+        return events.filterIsInstance<TaskUiEvent.ShowToast>().firstOrNull()?.messageType
+    }
 
     private fun build(
         taskId: String? = null,

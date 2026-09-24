@@ -1104,7 +1104,7 @@ Every task endpoint answers the same shape, carried by `TASK_RESULT`
 | Field | Meaning for the app |
 |-------|---------------------|
 | `step.expect` | `cell` / `product` / `batch` / `qty` / `document` / `none`. An unknown value is treated as `none`; scans are still forwarded. |
-| `step.actions[].code` | `scan` / `confirm` / `empty` / `skip` / `manual_cell` / `no_stock` / `cancel` / `done`. Only the offered ones are listed, and `scan` never is — it is what the scanner sends. An unknown code renders as a plain button and is sent as-is. |
+| `step.actions[].code` | `scan` / `confirm` / `empty` / `skip` / `manual_cell` / `no_stock` / `cancel` / `done`. Only the offered ones are listed, and `scan` never is — it is what the scanner sends. An unknown code renders as a plain button and is sent as-is. `manual_cell` is the one exception: its button opens the *enter address* dialog and the typed code goes out as `manual_cell` with `value` — the bare button is never posted (an empty value answers "cell not found"). |
 | `step.rows` | Context lines rendered as they come. `highlight` marks rows still needing attention. |
 | `task.state` | `OPEN` / `DONE` / `CANCELLED`. After the last two the step is a final screen with a single `done`. |
 | `message` | One-shot notice about the last action; not part of the step. `error` also fires a haptic. |
@@ -1149,8 +1149,9 @@ Every task endpoint answers the same shape, carried by `TASK_RESULT`
 | `NO_WAREHOUSE` | 409 | toast, leave |
 | `LOCKED` | 409 | show the server message, stay on the step |
 | `WRONG_STATE` / `DOCUMENT_LOCKED` / `DOCUMENT_WAREHOUSE` | 409 | toast, go back |
+| `CONFLICT` | 409 | on a `{document_id}` start: the document is not in the Collect stage (generic refusal of the lock path) — the *document not available* toast, go back. Elsewhere: generic toast |
 | `NOT_FOUND` | 404 | toast, leave; the task is dropped from the unfinished list |
-| `FORBIDDEN` | 403 | toast, leave |
+| `FORBIDDEN` | 403 | on a `{document_id}` start: the document is assigned to another worker — *document not available*. On a type start: the task type is not assigned to the worker. Toast, leave |
 | `BAD_REQUEST` | 400 | logged at ERROR; the step is re-fetched |
 
 ---

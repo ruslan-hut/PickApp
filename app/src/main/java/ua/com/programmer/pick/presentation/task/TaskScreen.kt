@@ -122,10 +122,13 @@ fun TaskScreen(
                     enabled = uiState.canAct || uiState.isFinished,
                     isSending = uiState.isSending,
                     onAction = { action ->
-                        if (action.needsConfirmation()) {
-                            confirmAction = action
-                        } else {
-                            viewModel.onAction(action.code)
+                        when {
+                            // `manual_cell` carries the typed address, so the
+                            // server's button opens the dialog instead of
+                            // posting an empty value.
+                            action.code == TaskViewModel.ACTION_MANUAL_CELL -> manualEntryFor = TaskExpect.CELL
+                            action.needsConfirmation() -> confirmAction = action
+                            else -> viewModel.onAction(action.code)
                         }
                     },
                 )
@@ -221,13 +224,13 @@ fun TaskScreen(
 private const val INFO_MESSAGE_TIMEOUT_MS = 4_000L
 
 /**
- * A cell may be typed only when the server offers `manual_cell` — and then with
- * the server's own label. A document number may always be typed, because the
- * receiving picker accepts it as a scan; that button is app chrome.
+ * A document number may always be typed, because the receiving picker accepts
+ * it as a scan; that button is app chrome. A cell is typed through the server's
+ * own `manual_cell` button in the actions bar, so the panel offers nothing for
+ * it — one button, in the server's order and with the server's label.
  */
 @Composable
 private fun TaskUiState.manualEntryLabel(): String? = when (expect) {
-    TaskExpect.CELL -> actions.firstOrNull { it.code == TaskViewModel.ACTION_MANUAL_CELL }?.label
     TaskExpect.DOCUMENT -> stringResource(R.string.task_manual_entry)
     else -> null
 }

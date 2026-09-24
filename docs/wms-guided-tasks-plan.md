@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| Delivery | **Phases 0–3 shipped** on `master` (2026-09-09): `8b4211a` protocol plumbing, `d4f1c40` task screen + home entry, `6accf8c` document-bound flows, plus this phase's hardening and docs. The field-test matrix in §7 is the remaining sign-off. |
+| Delivery | **Phases 0–3 shipped** on `master` (2026-09-09): `8b4211a` protocol plumbing, `d4f1c40` task screen + home entry, `6accf8c` document-bound flows, plus this phase's hardening and docs. Shipped to the market in 1.0.339. Contract re-checked against the server on 2026-09-24 (no device-protocol change since 2026-09-07); two fixes from that check are in §10 (6, 7). The field-test matrix in §7 is the remaining sign-off. |
 | App baseline | `master` @ `2d20232` (in sync with `origin/master`, checked 2026-09-07). No guided-task code existed at planning time. |
 | Server baseline | Pick backend, WMS addressing module phases 0–5 delivered (Sept 2026). Contract: server repo `docs/device-api.md` § "Guided tasks", concept `docs/wms-addressing.md`, delivery record `docs/archive/wms-addressing-plan.md`. |
 | Goal | The terminal renders **server-driven guided tasks** (cell recount, placement, cell move, replenishment) and runs the **document-bound guided flows** (addressed Collect, receiving) — while every tenant without the module keeps today's behaviour byte for byte. |
@@ -88,10 +88,12 @@ replenishment, `co_*` guided Collect, `rv_*` receiving.
 | `GUIDED_OFF` | 409 | `{document_id}` start on a document the warehouse now works classically | toast "open it from the list" and go back; the detail screen will show the classic bar on next load |
 | `NO_WAREHOUSE` | 409 | worker has no warehouse | toast |
 | `LOCKED` | 409 | another worker holds the cell / line (message names the holder) | show the message; stay on the step |
-| `WRONG_STATE` / `DOCUMENT_LOCKED` | 409 | document not in Collect stage / held by someone else | toast, go back |
+| `WRONG_STATE` | 409 | receiving document left the Collect stage | toast, go back |
+| `DOCUMENT_LOCKED` | 409 | guided Collect: document held by someone else | toast, go back |
+| `CONFLICT` | 409 | guided Collect: document not in the Collect stage — the lock path's generic refusal, not `WRONG_STATE` | *document not available* toast, go back |
 | `DOCUMENT_WAREHOUSE` | 409 | document belongs to another warehouse | toast |
 | `NOT_FOUND` | 404 | task id unknown (e.g. admin-cancelled and purged) | refresh open tasks, go home |
-| `FORBIDDEN` | 403 | task type not assigned to the worker | toast |
+| `FORBIDDEN` | 403 | type start: task type not assigned to the worker; `{document_id}` start: document assigned to another worker | toast (*not assigned* / *document not available*) |
 | `BAD_REQUEST` | 400 | malformed action | log at ERROR, re-fetch the step |
 
 ---
@@ -317,7 +319,7 @@ Tests:
 * **Back** leaves the screen; the task stays open on the server and appears under *Unfinished tasks*. Only the `cancel` action closes it.
 * **Scan** while `canAct`: send immediately, show a progress indicator on the actions bar, drop further scans until the response lands.
 * **`expect: qty`**: the primary action submits `quantity`; the field accepts digits only; empty → primary disabled; `skip` sends without quantity.
-* **`expect: cell`**: *Enter address* is shown only when the server offers `manual_cell`; the dialog result is sent as `manual_cell` with `value`.
+* **`expect: cell`**: *Enter address* is the server's own `manual_cell` button in the actions bar (server order and label) — shown only when offered; it opens the dialog, and the result is sent as `manual_cell` with `value`. The input panel shows only the scan prompt, so there is one button, not two (§10, 6).
 * **`expect: document`**: *Enter number* dialog → `scan` with the typed value.
 * **Final step** (`state != OPEN`): rows + hint + the single `done` button; tapping sends `done` (no await) and navigates.
 * **Message levels**: `info` → auto-dismiss 4 s; `warning` / `error` → stay until the next response.
@@ -387,7 +389,13 @@ Spec acceptance ids the matrix covers: Ф-2 (T5), Ф-4 (T4), Ф-5 (T7), В-4/В-
 Not blockers; tracked here so they are not lost.
 
 1. **Force-release on a task-locked document.** The tenant UI's document *Release lock* on a document with an open guided task should cancel the task (`AdminCancel`, which pauses the document) instead of flagging `release_requested`, which the device now ignores for guided documents (D3).
-2. **WMS-on hint on login.** The app infers "warehouse has WMS" from the presence of guided types (Phase 2 *Join receiving*). A `features` or `wms_enabled` boolean on the login response would make that explicit. Optional.
+   *Still open on the server (checked 2026-09-24):* cooperative release sets
+   `release_requested`, which the app ignores for a guided document, so nothing
+   happens; hard release frees the document but leaves the task open until the
+   worker cancels it. Until it lands, use the tenant UI's *Tasks* page to cancel
+   the task instead of *Release lock* (WMS → *Tasks* tab, cancel pauses the
+   document).
+2. **WMS-on hint on login.** The app infers "warehouse has WMS" from the presence of guided types (Phase 2 *Join receiving*). A `features` or `wms_enabled` boolean on the login response would make that explicit. Optional. *Still open (2026-09-24)* — so a test worker needs at least one guided type assigned for *Unfinished tasks* and *Join receiving* to appear.
 3. **Second worker discovery.** The classic list hides a receiving document another worker holds; the picker covers it (known limitation in the server plan). A `visible_ids`-style "shared documents" hint could let the list show it read-only. Optional.
 4. **`GET /device/tasks/open` payload** returns full envelopes; fine for a handful of tasks, worth capping server-side if a worker can accumulate many.
 
@@ -439,3 +447,16 @@ Recorded where the implementation knowingly differs from §3.
    (`room-testing` is not a dependency and schemas are not wired into androidTest
    assets) and migrations 16→17 and 17→18 shipped without one. 18→19 is three
    DDL statements validated against the exported `19.json` at runtime.
+6. **`manual_cell` lives in the actions bar only** (fixed 2026-09-24). The
+   server lists `manual_cell` among `step.actions`, and the first build rendered
+   it twice: as a bar button that posted the bare code (the server answered
+   "cell not found") and as the input panel's *Enter address*. The bar button
+   now opens the dialog, keeping the server's order and label; the panel shows
+   only the scan prompt on a cell step; `TaskViewModel.onAction` refuses a bare
+   `manual_cell` as a backstop.
+7. **Document-start refusals read as "document not available"** (fixed
+   2026-09-24). The server takes the Collect lock through the classic lock path,
+   which answers `CONFLICT` for a wrong state and `FORBIDDEN` for a document
+   assigned to someone else — not the `WRONG_STATE` §1.5 assumed. On a
+   document-bound task both now map to the *document not available* toast;
+   `FORBIDDEN` on a type start keeps *not assigned to you*.

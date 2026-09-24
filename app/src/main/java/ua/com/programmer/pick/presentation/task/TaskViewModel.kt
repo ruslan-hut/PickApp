@@ -138,10 +138,17 @@ class TaskViewModel @Inject constructor(
     /**
      * Any action button. `cancel` / `no_stock` are confirmed by the screen
      * before they get here; `done` closes the screen without waiting.
+     * `manual_cell` is never sent from here: it needs the typed address, which
+     * only [submitManualCell] has — without it the server answers "cell not
+     * found".
      */
     fun onAction(code: String) {
         if (code == ACTION_DONE) {
             finish()
+            return
+        }
+        if (code == ACTION_MANUAL_CELL) {
+            AppLog.w(TAG, "manual_cell without a value ignored")
             return
         }
         val quantity = if (_uiState.value.expect == TaskExpect.QTY) {
@@ -312,12 +319,18 @@ class TaskViewModel @Inject constructor(
     }
 
     private suspend fun emitError(code: String?, serverMessage: String?) {
+        // A document task takes the Collect lock through the same path as
+        // `POST /device/documents/{id}/lock`, whose refusals are generic:
+        // CONFLICT (not in the Collect stage) and FORBIDDEN (assigned to
+        // another worker). Both mean "this document is not yours to start".
+        val isDocumentTask = argDocumentId != null || _uiState.value.task?.documentId != null
         val toast = when (code) {
             "FEATURE_DISABLED", "WMS_WAREHOUSE_DISABLED" -> TaskToastMessage.FEATURE_DISABLED
             "GUIDED_OFF" -> TaskToastMessage.GUIDED_OFF
             "NO_WAREHOUSE" -> TaskToastMessage.NO_WAREHOUSE
             "NOT_FOUND" -> TaskToastMessage.NOT_FOUND
-            "FORBIDDEN" -> TaskToastMessage.FORBIDDEN
+            "FORBIDDEN" -> if (isDocumentTask) TaskToastMessage.WRONG_STATE else TaskToastMessage.FORBIDDEN
+            "CONFLICT" -> if (isDocumentTask) TaskToastMessage.WRONG_STATE else TaskToastMessage.GENERIC
             "WRONG_STATE", "DOCUMENT_LOCKED", "DOCUMENT_WAREHOUSE" -> TaskToastMessage.WRONG_STATE
             "DEMO_UNSUPPORTED" -> TaskToastMessage.DEMO
             else -> TaskToastMessage.GENERIC
