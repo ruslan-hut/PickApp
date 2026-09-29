@@ -11,8 +11,18 @@ class AuthInterceptor @Inject constructor(
     private val appPreferences: AppPreferences
 ) : Interceptor {
 
+    private companion object {
+        // Optional server features this build understands, sent on every
+        // request. "parking": the server may send PARKED documents — an older
+        // build would map that unknown state to LOADED, so it never gets them.
+        const val FEATURES_HEADER = "X-Device-Features"
+        const val FEATURES = "parking"
+    }
+
     override fun intercept(chain: Interceptor.Chain): Response {
-        val originalRequest = chain.request()
+        val originalRequest = chain.request().newBuilder()
+            .header(FEATURES_HEADER, FEATURES)
+            .build()
 
         // Skip auth header for login endpoint
         if (originalRequest.url.encodedPath.contains("auth/login")) {

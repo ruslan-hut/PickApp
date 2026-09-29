@@ -149,6 +149,31 @@ object DeviceDto {
         @SerializedName("stage") val stage: String,
     )
 
+    // --- Parking ---
+
+    data class ParkReasonDto(
+        @SerializedName("id") val id: String,
+        @SerializedName("name") val name: String,
+    )
+
+    data class ParkReasonsResult(
+        @SerializedName("reasons") val reasons: List<ParkReasonDto> = emptyList(),
+    )
+
+    data class ParkRequest(
+        @SerializedName("reason_id") val reasonId: String,
+        @SerializedName("note") val note: String? = null,
+    )
+
+    data class ParkResult(
+        @SerializedName("document_id") val documentId: String,
+        @SerializedName("success") val success: Boolean,
+        @SerializedName("state") val state: String,
+        @SerializedName("version") val version: Long = 0,
+        // Resume only: nothing else is in progress, the worker may take it now.
+        @SerializedName("ready_to_work") val readyToWork: Boolean = false,
+    )
+
     data class StageLockResult(
         @SerializedName("document_id") val documentId: String,
         @SerializedName("stage") val stage: String,

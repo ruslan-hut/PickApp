@@ -304,6 +304,15 @@ fun DocumentDetailScreen(
         )
     }
 
+    uiState.parkDialog?.let { dialog ->
+        ParkDialog(
+            state = dialog,
+            isProcessing = uiState.isProcessingAction,
+            onConfirm = { reasonId, note -> viewModel.parkDocument(reasonId, note) },
+            onDismiss = { viewModel.dismissParkDialog() }
+        )
+    }
+
     // Parcel weight dialog — shown while a parcel scan is waiting for its weight.
     // Blocks further scans until the worker either confirms or cancels.
     uiState.pendingWeightBox?.let { pending ->
@@ -519,6 +528,8 @@ fun DocumentDetailScreen(
         bottomBar = {
             val g = guided
             when {
+                // A park / resume is under way: nothing to tap twice.
+                !uiState.showActionBar -> Unit
                 // Guided mode: the task's step panel takes the bar's place.
                 g != null -> GuidedStepPanel(
                     state = g,
@@ -538,6 +549,21 @@ fun DocumentDetailScreen(
                 uiState.canStartGuided -> GuidedStartBar(
                     labelRes = uiState.guidedButtonLabelRes,
                     onStartGuided = { viewModel.startGuidedTask() }
+                )
+                // Parked between Collect and Pack: why, and "Resume" when it is ours.
+                uiState.isParked -> uiState.document?.let { doc ->
+                    ParkedBar(
+                        document = doc,
+                        canResume = uiState.canResume,
+                        isProcessing = uiState.isProcessingAction,
+                        onResume = { viewModel.resumeParkedDocument() }
+                    )
+                }
+                // A collected document back at PACK: the server may offer "Park".
+                uiState.canTakeIntoWork && uiState.canPark -> TakeIntoWorkOrParkBar(
+                    isProcessing = uiState.isProcessingAction,
+                    onTakeIntoWork = { viewModel.takeIntoWork() },
+                    onPark = { viewModel.openParkDialog() }
                 )
                 // Only show "Take into Work" button for LOADED documents
                 uiState.canTakeIntoWork -> TakeIntoWorkBar(

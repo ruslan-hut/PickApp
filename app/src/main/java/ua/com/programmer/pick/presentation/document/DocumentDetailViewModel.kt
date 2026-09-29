@@ -36,7 +36,9 @@ import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.data.local.database.dao.BoxDao
 import ua.com.programmer.pick.data.local.database.dao.DocumentBoxDao
 import ua.com.programmer.pick.domain.model.AvailableDocumentType
+import ua.com.programmer.pick.data.remote.api.DeviceApiException
 import ua.com.programmer.pick.domain.model.Box
+import ua.com.programmer.pick.domain.model.Document
 import ua.com.programmer.pick.domain.model.DocumentLine
 import ua.com.programmer.pick.domain.model.LineBatch
 import ua.com.programmer.pick.domain.model.DocumentState
@@ -44,6 +46,7 @@ import ua.com.programmer.pick.domain.model.ProductImage
 import ua.com.programmer.pick.domain.model.ProductLookupHit
 import ua.com.programmer.pick.domain.model.ScannedBatch
 import ua.com.programmer.pick.domain.repository.DocumentRepository
+import ua.com.programmer.pick.domain.repository.ParkingRepository
 import ua.com.programmer.pick.domain.repository.ProductRepository
 import ua.com.programmer.pick.domain.repository.GuidedTaskRepository
 import ua.com.programmer.pick.core.util.NetworkMonitor
@@ -72,6 +75,7 @@ class DocumentDetailViewModel @Inject constructor(
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     private val guidedTaskRepository: GuidedTaskRepository,
     private val networkMonitor: NetworkMonitor,
+    private val parkingRepository: ParkingRepository,
 ) : ViewModel() {
 
     companion object {
@@ -91,6 +95,7 @@ class DocumentDetailViewModel @Inject constructor(
 
     private var currentDocumentId: String? = null
     private var boxesSubscriptionJob: kotlinx.coroutines.Job? = null
+    private var parkingFlagsJob: kotlinx.coroutines.Job? = null
 
     init {
         // Subscribe to barcode scans once when ViewModel is created
@@ -231,6 +236,8 @@ class DocumentDetailViewModel @Inject constructor(
                 // Resubscribe to the document_boxes flow. The DAO query sorts
                 // parcels first (ORDER BY is_parcel DESC) so the UI can render
                 // the list directly without a client-side sort pass.
+                observeParkingFlags(documentId)
+
                 boxesSubscriptionJob?.cancel()
                 boxesSubscriptionJob = documentBoxDao.getBoxesByDocumentId(documentId)
                     .onEach { entities ->
@@ -1345,6 +1352,142 @@ class DocumentDetailViewModel @Inject constructor(
             }
         }
     }
+
+    // --- Parking (PACK ⇄ PARKED, between Collect and Pack) ---
+
+    /**
+     * The screen reads the document once on open, but the park / resume
+     * actions are server-decided and can land a moment later (the list refresh
+     * that follows a pause writes can_park after the worker already tapped the
+     * document). Follow just those server-owned fields from the cache; the
+     * rest of the header stays the snapshot the edit session works on.
+     */
+    private fun observeParkingFlags(documentId: String) {
+        parkingFlagsJob?.cancel()
+        parkingFlagsJob = documentRepository.observeDocument(documentId)
+            .onEach { fresh ->
+                if (fresh == null) return@onEach
+                _uiState.update { state ->
+                    val current = state.document ?: return@update state
+                    if (current.id != fresh.id || current.state != fresh.state) return@update state
+                    state.copy(
+                        document = current.copy(
+                            canPark = fresh.canPark,
+                            canResume = fresh.canResume,
+                            parkingReason = fresh.parkingReason,
+                            parkingNote = fresh.parkingNote,
+                            parkedAt = fresh.parkedAt,
+                        )
+                    )
+                }
+            }
+            .launchIn(viewModelScope)
+    }
+
+    /** Opens the reason picker; the catalog is fetched fresh each time. */
+    fun openParkDialog() {
+        if (_uiState.value.isProcessingAction || _uiState.value.parkingInFlight) return
+        _uiState.update { it.copy(parkDialog = ParkDialogState(isLoading = true), parkingInFlight = true) }
+        viewModelScope.launch {
+            parkingRepository.reasons().fold(
+                onSuccess = { reasons ->
+                    _uiState.update { it.copy(parkDialog = it.parkDialog?.copy(isLoading = false, reasons = reasons)) }
+                },
+                onFailure = { e ->
+                    AppLog.w("DocumentDetailViewModel", "park reasons failed: ${e.message}")
+                    _uiState.update { it.copy(parkDialog = it.parkDialog?.copy(isLoading = false, loadFailed = true)) }
+                },
+            )
+        }
+    }
+
+    fun dismissParkDialog() {
+        if (_uiState.value.isProcessingAction) return
+        _uiState.update { it.copy(parkDialog = null, parkingInFlight = false) }
+    }
+
+    /**
+     * Sets the collected document aside (PACK → PARKED). The worker's queue
+     * moves on to the next document; this one waits in "Parked" until the
+     * worker resumes it.
+     */
+    fun parkDocument(reasonId: String, note: String) {
+        val document = _uiState.value.document ?: return
+        runParkingAction(
+            call = { parkingRepository.park(document.remoteId(), reasonId, note) },
+            done = ToastMessage.DOCUMENT_PARKED,
+        )
+    }
+
+    /**
+     * Brings a parked document back to where it was parked (PACK, or a paused
+     * PACKING). When the server says the worker is free, it is taken straight
+     * into work through the regular [takeIntoWork] lock (a refused lock leaves
+     * the "Take into work" button); otherwise the document waits its turn in
+     * the queue and the worker goes back to the list.
+     */
+    fun resumeParkedDocument() {
+        val document = _uiState.value.document ?: return
+        if (_uiState.value.isProcessingAction) return
+        _uiState.update { it.copy(isProcessingAction = true, parkingInFlight = true) }
+        viewModelScope.launch {
+            parkingRepository.resume(document.remoteId()).fold(
+                onSuccess = { outcome ->
+                    val state = DocumentState.fromString(outcome.state)
+                    documentRepository.applyResumedDocument(document.id, state, outcome.version)
+                    if (outcome.readyToWork) {
+                        _uiState.update {
+                            it.copy(
+                                document = document.copy(
+                                    state = state, version = outcome.version,
+                                    canPark = false, canResume = false,
+                                    parkingReason = null, parkingNote = null, parkedAt = null,
+                                ),
+                                isProcessingAction = false,
+                                parkingInFlight = false,
+                            )
+                        }
+                        // Its own toast (taken into work, or why not) follows.
+                        takeIntoWork()
+                    } else {
+                        _uiState.update { it.copy(isProcessingAction = false) }
+                        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(ToastMessage.DOCUMENT_RESUMED_QUEUED))
+                        _uiEvents.emit(DocumentDetailUiEvent.NavigateBack)
+                    }
+                },
+                onFailure = { e -> onParkingFailure(e) },
+            )
+        }
+    }
+
+    private fun runParkingAction(call: suspend () -> kotlin.Result<Unit>, done: ToastMessage) {
+        if (_uiState.value.isProcessingAction) return
+        _uiState.update { it.copy(isProcessingAction = true, parkingInFlight = true) }
+        viewModelScope.launch {
+            call().fold(
+                onSuccess = {
+                    // parkingInFlight stays set: the bar stays hidden until we leave.
+                    _uiState.update { it.copy(isProcessingAction = false, parkDialog = null) }
+                    // The list screen refreshes on resume and brings the new state in.
+                    _uiEvents.emit(DocumentDetailUiEvent.ShowToast(done))
+                    _uiEvents.emit(DocumentDetailUiEvent.NavigateBack)
+                },
+                onFailure = { e -> onParkingFailure(e) },
+            )
+        }
+    }
+
+    /** Refused: close the dialog and give the buttons back. */
+    private suspend fun onParkingFailure(e: Throwable) {
+        AppLog.w("DocumentDetailViewModel", "parking action failed: ${e.message}")
+        _uiState.update { it.copy(isProcessingAction = false, parkDialog = null, parkingInFlight = false) }
+        val code = (e as? DeviceApiException)?.code
+        _uiEvents.emit(DocumentDetailUiEvent.ShowToast(
+            if (code == "WORKER_BUSY") ToastMessage.RESUME_WORKER_BUSY else ToastMessage.ERROR_PARKING
+        ))
+    }
+
+    private fun Document.remoteId(): String = externalId?.takeIf { it.isNotBlank() } ?: id
 
     /**
      * Ask the server to release (unlock) the document so the user can navigate back.

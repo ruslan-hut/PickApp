@@ -26,7 +26,13 @@ data class Document(
     val isDirty: Boolean = false,
     // "guided" when this Collect-stage document is worked as a WMS task.
     // Server-computed on every list load; absent = classic screen.
-    val collectMode: String? = null
+    val collectMode: String? = null,
+    // Parking: server-decided actions, and while PARKED, why and since when.
+    val canPark: Boolean = false,
+    val canResume: Boolean = false,
+    val parkingReason: String? = null,
+    val parkingNote: String? = null,
+    val parkedAt: Long? = null
 ) {
     val isGuidedCollect: Boolean get() = collectMode == AvailableDocumentType.GUIDED_MODE
 }

@@ -382,4 +382,20 @@
     <string name="printer_test_gap_detect">Calibrate gap</string>
     <string name="printer_test_log">Log</string>
     <string name="printer_test_clear_log">Clear</string>
+
+    <!-- Parking (PACK ⇄ PARKED, between Collect and Pack) -->
+    <string name="document_state_parked">Parked</string>
+    <string name="park_document">Park</string>
+    <string name="resume_parked">Resume</string>
+    <string name="parked_reason">Parked: %1$s</string>
+    <string name="parked_since">Since %1$s</string>
+    <string name="park_dialog_title">Park the document</string>
+    <string name="park_dialog_message">Set this order aside. Pick the reason — you will bring it back from the list later.</string>
+    <string name="park_note_hint">Note (optional)</string>
+    <string name="park_reasons_failed">Could not load the reasons. Check the connection and try again.</string>
+    <string name="park_reasons_empty">No park reasons are set up for your warehouse.</string>
+    <string name="document_parked">Document parked</string>
+    <string name="document_resumed_queued">Resumed — it comes back to you after your current document</string>
+    <string name="resume_worker_busy">Finish your current document first, then resume this one</string>
+    <string name="error_parking">The server refused the action — refresh the list</string>
 </resources>

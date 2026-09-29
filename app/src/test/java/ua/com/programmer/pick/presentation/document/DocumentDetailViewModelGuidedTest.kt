@@ -84,6 +84,7 @@ class DocumentDetailViewModelGuidedTest {
             ioDispatcher = mainDispatcher,
             guidedTaskRepository = tasks,
             networkMonitor = mockk(relaxed = true) { every { isOnline } returns flowOf(true) },
+            parkingRepository = mockk(relaxed = true),
         )
     }
 

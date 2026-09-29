@@ -86,6 +86,7 @@ class DocumentDetailViewModelResolveScannedProductTest {
             ioDispatcher = mainDispatcher,
             guidedTaskRepository = mockk(relaxed = true),
             networkMonitor = mockk(relaxed = true),
+            parkingRepository = mockk(relaxed = true),
         )
     }
 

@@ -89,5 +89,22 @@ data class DocumentEntity(
     val version: Int,
 
     @ColumnInfo(name = "is_dirty")
-    val isDirty: Boolean = false
+    val isDirty: Boolean = false,
+
+    // Parking (server-owned, refilled on every document sync): the park /
+    // resume actions the server offers this worker, and while PARKED, why.
+    @ColumnInfo(name = "can_park", defaultValue = "0")
+    val canPark: Boolean = false,
+
+    @ColumnInfo(name = "can_resume", defaultValue = "0")
+    val canResume: Boolean = false,
+
+    @ColumnInfo(name = "parking_reason")
+    val parkingReason: String? = null,
+
+    @ColumnInfo(name = "parking_note")
+    val parkingNote: String? = null,
+
+    @ColumnInfo(name = "parked_at")
+    val parkedAt: Long? = null
 )

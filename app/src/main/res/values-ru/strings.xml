@@ -363,4 +363,20 @@
     <string name="printer_test_gap_detect">Калибровка зазора</string>
     <string name="printer_test_log">Журнал</string>
     <string name="printer_test_clear_log">Очистить</string>
+
+    <!-- Parking (PACK ⇄ PARKED, between Collect and Pack) -->
+    <string name="document_state_parked">Отложен</string>
+    <string name="park_document">Отложить</string>
+    <string name="resume_parked">Вернуть в работу</string>
+    <string name="parked_reason">Отложен: %1$s</string>
+    <string name="parked_since">С %1$s</string>
+    <string name="park_dialog_title">Отложить документ</string>
+    <string name="park_dialog_message">Отложите заказ. Выберите причину — потом вернёте его из списка.</string>
+    <string name="park_note_hint">Комментарий (необязательно)</string>
+    <string name="park_reasons_failed">Не удалось загрузить причины. Проверьте связь и попробуйте ещё раз.</string>
+    <string name="park_reasons_empty">Для вашего склада не настроены причины откладывания.</string>
+    <string name="document_parked">Документ отложен</string>
+    <string name="document_resumed_queued">Возвращён — документ придёт к вам после текущего</string>
+    <string name="resume_worker_busy">Сначала завершите текущий документ, потом верните этот</string>
+    <string name="error_parking">Сервер отклонил действие — обновите список</string>
 </resources>

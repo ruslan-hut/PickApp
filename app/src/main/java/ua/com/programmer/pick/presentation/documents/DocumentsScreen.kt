@@ -36,6 +36,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import ua.com.programmer.pick.R
+import ua.com.programmer.pick.domain.model.DocumentState
 import ua.com.programmer.pick.presentation.common.EmptyState
 import ua.com.programmer.pick.presentation.common.PickAppBar
 import ua.com.programmer.pick.presentation.common.SearchBar
@@ -67,6 +68,8 @@ fun DocumentsScreen(
                         doc.clientName?.contains(searchQuery, ignoreCase = true) == true
             }
         }
+            // Parked documents wait below the work at hand.
+            .sortedBy { it.state == DocumentState.PARKED }
     }
 
     Scaffold(

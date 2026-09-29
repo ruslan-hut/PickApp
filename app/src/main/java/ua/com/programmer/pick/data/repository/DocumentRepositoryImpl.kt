@@ -77,6 +77,16 @@ class DocumentRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun applyResumedDocument(documentId: String, state: DocumentState, version: Int): Result<Unit> =
+        withContext(ioDispatcher) {
+            try {
+                documentDao.applyResumed(documentId, state.name, version, System.currentTimeMillis())
+                Result.Success(Unit)
+            } catch (e: Exception) {
+                Result.Error(e, e.message ?: "Failed to apply resumed document")
+            }
+        }
+
     override suspend fun saveDocument(document: Document): Result<Unit> = withContext(ioDispatcher) {
         try {
             documentDao.insertDocument(document.toEntity())

@@ -88,6 +88,20 @@ interface DeviceApi {
         @Body request: DeviceDto.UpdateRequest,
     ): Response<ApiEnvelope<DeviceDto.DocumentUpdateResult>>
 
+    // --- Parking (PACK ⇄ PARKED, between Collect and Pack) ---
+
+    @GET("device/park-reasons")
+    suspend fun parkReasons(): Response<ApiEnvelope<DeviceDto.ParkReasonsResult>>
+
+    @POST("device/documents/{id}/park")
+    suspend fun parkDocument(
+        @Path("id") documentId: String,
+        @Body request: DeviceDto.ParkRequest,
+    ): Response<ApiEnvelope<DeviceDto.ParkResult>>
+
+    @POST("device/documents/{id}/resume")
+    suspend fun resumeDocument(@Path("id") documentId: String): Response<ApiEnvelope<DeviceDto.ParkResult>>
+
     // --- Boxes ---
 
     @POST("device/documents/{id}/boxes")

@@ -51,7 +51,7 @@ import ua.com.programmer.pick.data.local.database.entity.WarehouseLocationEntity
         DocumentBoxEntity::class,
         DebugJournalEntity::class
     ],
-    version = 20, // Version 20: document_lines.batches (batch-label scans)
+    version = 21, // Version 21: documents parking columns (PARKED state)
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -315,6 +315,17 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_19_20 = object : Migration(19, 20) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE document_lines ADD COLUMN batches TEXT DEFAULT NULL")
+            }
+        }
+
+        // Parking: server-owned columns, refilled on the next document sync.
+        val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE documents ADD COLUMN can_park INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE documents ADD COLUMN can_resume INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE documents ADD COLUMN parking_reason TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE documents ADD COLUMN parking_note TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE documents ADD COLUMN parked_at INTEGER DEFAULT NULL")
             }
         }
 

@@ -7,12 +7,20 @@ import ua.com.programmer.pick.domain.model.Document
 import ua.com.programmer.pick.domain.model.DocumentBox
 import ua.com.programmer.pick.domain.model.DocumentLine
 import ua.com.programmer.pick.domain.model.DocumentState
+import ua.com.programmer.pick.domain.model.ParkReason
 import ua.com.programmer.pick.domain.model.ProductImage
 
 // DocumentDetailTab distinguishes the two content areas shown by the screen.
 // PRODUCTS is the legacy list of DocumentLines. BOXES is new for the PACK stage
 // (and remains visible afterwards for read-only inspection of the packed result).
 enum class DocumentDetailTab { PRODUCTS, BOXES }
+
+/** The park-reason picker; null in [DocumentDetailUiState.parkDialog] = closed. */
+data class ParkDialogState(
+    val isLoading: Boolean = false,
+    val loadFailed: Boolean = false,
+    val reasons: List<ParkReason> = emptyList(),
+)
 
 data class DocumentDetailUiState(
     val document: Document? = null,
@@ -69,7 +77,13 @@ data class DocumentDetailUiState(
     // Text typed into the document's search field. Blank = no search. A
     // display filter only: lines keep their edit rules, and a scan that
     // selects a line the search hides clears it (see the screen).
-    val searchQuery: String = ""
+    val searchQuery: String = "",
+    val parkDialog: ParkDialogState? = null,
+    // A park / resume is under way: set when the worker taps "Park" (or
+    // "Resume"), cleared only by cancelling the dialog or by a server refusal.
+    // After success it stays set until the screen closes, so the action bar
+    // cannot be tapped a second time while the toast is showing.
+    val parkingInFlight: Boolean = false
 ) {
     // Per CLAUDE.md "Server-Driven Architecture": the app does not make
     // authorization decisions locally. The server already filters the sync
@@ -97,7 +111,22 @@ data class DocumentDetailUiState(
      * user is told why.
      */
     val canTakeIntoWork: Boolean
-        get() = document != null && !hasStageLock && !isGuidedCollect
+        get() = document != null && !hasStageLock && !isGuidedCollect && !isParked
+
+    /** Set aside between Collect and Pack: no stage to lock until it is resumed. */
+    val isParked: Boolean
+        get() = document?.state == DocumentState.PARKED
+
+    // Server-decided (can_park / can_resume on the document), shown verbatim.
+    val canPark: Boolean
+        get() = document?.canPark == true && !hasStageLock
+
+    val canResume: Boolean
+        get() = isParked && document?.canResume == true
+
+    /** The action bar is hidden while a park / resume is under way. */
+    val showActionBar: Boolean
+        get() = !parkingInFlight
 
     /**
      * The warehouse works this Collect-stage document as a guided task. The

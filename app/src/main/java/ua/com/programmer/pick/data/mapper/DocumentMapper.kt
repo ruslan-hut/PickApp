@@ -40,7 +40,12 @@ class DocumentMapper @Inject constructor() {
             deliveredAt = dto.deliveredAt,
             lastModified = dto.lastModified,
             version = dto.version,
-            isDirty = false
+            isDirty = false,
+            canPark = dto.canPark,
+            canResume = dto.canResume,
+            parkingReason = dto.parking?.reason,
+            parkingNote = dto.parking?.note,
+            parkedAt = dto.parking?.parkedAt
         )
     }
 
@@ -99,7 +104,12 @@ fun DocumentEntity.toDomain(): Document {
         lastModified = lastModified,
         version = version,
         isDirty = isDirty,
-        collectMode = collectMode
+        collectMode = collectMode,
+        canPark = canPark,
+        canResume = canResume,
+        parkingReason = parkingReason,
+        parkingNote = parkingNote,
+        parkedAt = parkedAt
     )
 }
 
@@ -128,7 +138,12 @@ fun Document.toEntity(): DocumentEntity {
         lastModified = lastModified,
         version = version,
         isDirty = isDirty,
-        collectMode = collectMode
+        collectMode = collectMode,
+        canPark = canPark,
+        canResume = canResume,
+        parkingReason = parkingReason,
+        parkingNote = parkingNote,
+        parkedAt = parkedAt
     )
 }
 

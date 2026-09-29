@@ -11,6 +11,7 @@ enum class DocumentState {
     DELIVERING,
     DELIVERED,
     REVIEW,
+    PARKED,
     SENT,
     ERROR;
 
@@ -26,6 +27,7 @@ enum class DocumentState {
             "DELIVERING" -> DELIVERING
             "DELIVERED" -> DELIVERED
             "REVIEW" -> REVIEW
+            "PARKED" -> PARKED
             "SENT" -> SENT
             "ERROR" -> ERROR
             else -> LOADED
@@ -35,6 +37,9 @@ enum class DocumentState {
          * Returns the stage name for a given state, or null if the state has no
          * stage. REVIEW is a parked, non-stage state — the server never returns
          * a REVIEW document to a worker, so the app only needs to recognize it.
+         * PARKED is the worker's own stop between Collect and Pack: the server
+         * sends it (with can_resume) only because this app declares the
+         * "parking" feature, and the document goes back to PACK on resume.
          */
         fun stageOf(state: DocumentState): String? = when (state) {
             LOADED, COLLECTING, COLLECTED -> "collect"

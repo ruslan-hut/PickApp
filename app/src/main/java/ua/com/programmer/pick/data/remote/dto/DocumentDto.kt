@@ -2,6 +2,13 @@ package ua.com.programmer.pick.data.remote.dto
 
 import com.google.gson.annotations.SerializedName
 
+/** Why and since when a document is PARKED (set aside between Collect and Pack). */
+data class DocumentParkingDto(
+    @SerializedName("reason") val reason: String,
+    @SerializedName("note") val note: String? = null,
+    @SerializedName("parked_at") val parkedAt: Long,
+)
+
 /**
  * DTO for document header received from server
  */
@@ -99,6 +106,18 @@ data class DocumentDto(
      */
     @SerializedName("release_requested")
     val releaseRequested: Boolean = false,
+
+    // Server-decided park / resume actions (sent because the app declares the
+    // "parking" feature). The app shows the buttons verbatim, never derives them.
+    @SerializedName("can_park")
+    val canPark: Boolean = false,
+
+    @SerializedName("can_resume")
+    val canResume: Boolean = false,
+
+    // Present while the document is PARKED: why and since when.
+    @SerializedName("parking")
+    val parking: DocumentParkingDto? = null,
 
     @SerializedName("lines")
     val lines: List<DocumentLineDto>? = null,

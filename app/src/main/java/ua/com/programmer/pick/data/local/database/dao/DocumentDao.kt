@@ -76,6 +76,18 @@ interface DocumentDao {
     @Query("UPDATE documents SET state = :state, last_modified = :lastModified WHERE id = :documentId")
     suspend fun updateDocumentStateFromServer(documentId: String, state: String, lastModified: Long)
 
+    /**
+     * A parked document the server just resumed: its new state/version, and
+     * the parking columns cleared. A targeted UPDATE — an entity REPLACE would
+     * cascade-delete the document's lines and boxes.
+     */
+    @Query(
+        "UPDATE documents SET state = :state, version = :version, can_park = 0, can_resume = 0, " +
+            "parking_reason = NULL, parking_note = NULL, parked_at = NULL, last_modified = :lastModified " +
+            "WHERE id = :documentId"
+    )
+    suspend fun applyResumed(documentId: String, state: String, version: Int, lastModified: Long)
+
     @Query("UPDATE documents SET assigned_user_id = :userId, taken_at = :takenAt, state = :state, is_dirty = 1, last_modified = :lastModified WHERE id = :documentId")
     suspend fun takeDocumentIntoWork(documentId: String, userId: String, takenAt: Long, state: String, lastModified: Long)
 

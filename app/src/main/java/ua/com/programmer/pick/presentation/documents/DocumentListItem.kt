@@ -122,6 +122,17 @@ fun DocumentListItem(
                 )
             }
 
+            // Parked: why it is set aside (the worker resumes it from its screen)
+            if (document.state == DocumentState.PARKED && !document.parkingReason.isNullOrBlank()) {
+                Text(
+                    text = stringResource(R.string.parked_reason, document.parkingReason),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF6D28D9),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
             // Warehouse name
             if (!document.warehouseName.isNullOrBlank()) {
                 Text(
@@ -249,6 +260,11 @@ private fun DocumentStateBadge(
         DocumentState.REVIEW -> Triple(
             R.string.document_state_review,
             Color(0xFFF57F17),
+            white
+        )
+        DocumentState.PARKED -> Triple(
+            R.string.document_state_parked,
+            Color(0xFF6D28D9),
             white
         )
         DocumentState.SENT -> Triple(

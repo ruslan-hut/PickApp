@@ -29,6 +29,9 @@ interface DocumentRepository {
 
     suspend fun updateDocumentState(documentId: String, state: DocumentState): Result<Unit>
 
+    /** Mirrors a server-confirmed resume of a parked document into the cache. */
+    suspend fun applyResumedDocument(documentId: String, state: DocumentState, version: Int): Result<Unit>
+
     suspend fun saveDocument(document: Document): Result<Unit>
 
     suspend fun saveDocuments(documents: List<Document>): Result<Unit>

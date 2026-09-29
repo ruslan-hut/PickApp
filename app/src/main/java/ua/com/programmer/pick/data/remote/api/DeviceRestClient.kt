@@ -128,6 +128,15 @@ class DeviceRestClient @Inject constructor(
 
     // --- Boxes ---
 
+    suspend fun parkReasons(): Result<DeviceDto.ParkReasonsResult> =
+        envelopeCall { deviceApi.parkReasons() }
+
+    suspend fun parkDocument(documentId: String, reasonId: String, note: String?): Result<DeviceDto.ParkResult> =
+        envelopeCall { deviceApi.parkDocument(documentId, DeviceDto.ParkRequest(reasonId, note)) }
+
+    suspend fun resumeDocument(documentId: String): Result<DeviceDto.ParkResult> =
+        envelopeCall { deviceApi.resumeDocument(documentId) }
+
     suspend fun boxAdd(documentId: String, barcode: String, weight: Int): Result<DeviceDto.BoxAddResult> =
         envelopeCall { deviceApi.boxAdd(documentId, DeviceDto.BoxAddRequest(barcode, weight)) }
 
