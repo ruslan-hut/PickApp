@@ -73,12 +73,16 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -90,7 +94,10 @@ import ua.com.programmer.pick.presentation.common.ClientLanguageChip
 import ua.com.programmer.pick.presentation.common.EmptyState
 import ua.com.programmer.pick.presentation.common.PickAppBar
 import ua.com.programmer.pick.presentation.common.PickElevatedCard
-import ua.com.programmer.pick.presentation.common.SectionHeader
+import ua.com.programmer.pick.presentation.common.SearchBar
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
 import ua.com.programmer.pick.ui.theme.CardShape
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -369,16 +376,61 @@ fun DocumentDetailScreen(
         )
     }
 
+    // In-document search. The field is open while searchOpen; closing it
+    // clears the query. Registered after the other back handlers so back
+    // closes the search first.
+    var searchOpen by remember { mutableStateOf(false) }
+    val closeSearch = {
+        searchOpen = false
+        viewModel.setSearchQuery("")
+    }
+    BackHandler(enabled = searchOpen) { closeSearch() }
+    // Search covers the products list only, not the boxes tab.
+    val showSearchAction = uiState.document != null && uiState.lines.isNotEmpty() &&
+        !(uiState.showBoxesTab && uiState.activeTab == DocumentDetailTab.BOXES)
+    // While the search field is shown the header card is left out of the list
+    // and the pinned progress bar stands in for it, as when it scrolls away:
+    // the room goes to the results.
+    val searchVisible = searchOpen && showSearchAction
+    // Items above the first line: DocumentHeaderCard, left out while
+    // searching. Read at call time — the search may close meanwhile.
+    val linesListOffset = { if (searchOpen && showSearchAction) 0 else 1 }
+    // New results start from the top of the list.
+    LaunchedEffect(uiState.searchQuery) {
+        if (uiState.searchQuery.isNotBlank()) listState.scrollToItem(0)
+    }
+
+    // A line the screen must bring into view (scan selection, first
+    // unacknowledged line). If the search hides it, the search is dropped:
+    // the worker acted on that line and has to see it. The scroll waits for
+    // the list to contain the line again.
+    // The sequence number makes a repeat request for the same line scroll again.
+    var revealRequest by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    val revealLine = { lineId: String ->
+        if (uiState.searchQuery.isNotBlank() && uiState.visibleLines.none { it.id == lineId }) {
+            closeSearch()
+        }
+        revealRequest = lineId to (revealRequest?.second ?: 0) + 1
+    }
+    LaunchedEffect(revealRequest) {
+        val lineId = revealRequest?.first ?: return@LaunchedEffect
+        // Waits out the search being cleared; once it is blank, a line still
+        // missing is hidden by the unchecked filter and there is nothing to do.
+        val lineIndex = snapshotFlow {
+            uiState.visibleLines.indexOfFirst { it.id == lineId } to uiState.searchQuery.isBlank()
+        }.first { (index, searchCleared) -> index >= 0 || searchCleared }.first
+        if (lineIndex >= 0) {
+            listState.animateScrollToItem(lineIndex + linesListOffset())
+        }
+    }
+
     // Blocking "unacknowledged lines" dialog — surfaced by the VM when the
     // collector tries to finish with any line still marked not-done. Scrolls
     // the list to the first offender so the fix is one tap away.
     if (uiState.firstUncheckedLineId != null) {
         val firstId = uiState.firstUncheckedLineId
         LaunchedEffect(firstId) {
-            val idx = uiState.visibleLines.indexOfFirst { it.id == firstId }
-            if (idx >= 0) {
-                listState.animateScrollToItem(idx + 2)
-            }
+            if (firstId != null) revealLine(firstId)
         }
         UncheckedLinesDialog(
             count = uiState.uncheckedLineCount,
@@ -389,12 +441,7 @@ fun DocumentDetailScreen(
     // Auto-scroll to selected line when barcode is scanned
     LaunchedEffect(uiState.selectedLineId) {
         val selectedId = uiState.selectedLineId ?: return@LaunchedEffect
-        val lineIndex = uiState.visibleLines.indexOfFirst { it.id == selectedId }
-        if (lineIndex >= 0) {
-            // Account for header items: DocumentHeaderCard (0) + SectionHeader (1)
-            val scrollIndex = lineIndex + 2
-            listState.animateScrollToItem(scrollIndex)
-        }
+        revealLine(selectedId)
     }
 
     // Show pinned progress bar when header card scrolls out of view
@@ -416,6 +463,16 @@ fun DocumentDetailScreen(
                     else -> onNavigateBack
                 },
                 actions = {
+                    if (showSearchAction) {
+                        IconButton(onClick = { if (searchOpen) closeSearch() else searchOpen = true }) {
+                            Icon(
+                                imageVector = if (searchOpen) Icons.Default.Close else Icons.Default.Search,
+                                contentDescription = stringResource(
+                                    if (searchOpen) R.string.close_search_cd else R.string.search_lines_cd
+                                )
+                            )
+                        }
+                    }
                     if (uiState.canEdit) {
                         if (uiState.isProcessingAction) {
                             CircularProgressIndicator(
@@ -463,6 +520,7 @@ fun DocumentDetailScreen(
                 // Guided mode: the task's step panel takes the bar's place.
                 g != null -> GuidedStepPanel(
                     state = g,
+                    targetUnit = viewModel.guidedTargetUnit(),
                     onAction = { action ->
                         when (action.code) {
                             // Carries a typed address: the dialog collects it.
@@ -492,10 +550,27 @@ fun DocumentDetailScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Pinned progress bar — appears when header card scrolls out of view
+            if (searchVisible) {
+                val searchFocus = remember { FocusRequester() }
+                val keyboard = LocalSoftwareKeyboardController.current
+                SearchBar(
+                    query = uiState.searchQuery,
+                    onQueryChange = viewModel::setSearchQuery,
+                    placeholder = stringResource(R.string.search_lines_hint),
+                    modifier = Modifier.focusRequester(searchFocus)
+                )
+                // Focus alone does not raise the keyboard on every device.
+                LaunchedEffect(Unit) {
+                    searchFocus.requestFocus()
+                    keyboard?.show()
+                }
+            }
+
+            // Pinned progress bar — appears when header card scrolls out of
+            // view, and for as long as the search field replaces it
             if (uiState.document != null) {
                 AnimatedVisibility(
-                    visible = isHeaderScrolledAway,
+                    visible = isHeaderScrolledAway || searchVisible,
                     enter = expandVertically(),
                     exit = shrinkVertically()
                 ) {
@@ -584,7 +659,7 @@ fun DocumentDetailScreen(
                                         modifier = Modifier.fillMaxSize(),
                                         contentPadding = PaddingValues(vertical = 8.dp)
                                     ) {
-                                        item {
+                                        if (!searchVisible) item {
                                             DocumentHeaderCard(
                                                 clientName = uiState.document?.clientName ?: "",
                                                 clientLanguage = uiState.document?.clientLanguage,
@@ -602,17 +677,17 @@ fun DocumentDetailScreen(
                                             )
                                         }
 
-                                        item {
-                                            SectionHeader(
-                                                title = stringResource(R.string.document_lines),
-                                                modifier = Modifier.padding(top = 8.dp)
-                                            )
-                                        }
-
                                         if (uiState.lines.isEmpty()) {
                                             item {
                                                 EmptyState(
                                                     message = stringResource(R.string.no_lines_description),
+                                                    icon = R.drawable.outline_inventory_2_24
+                                                )
+                                            }
+                                        } else if (uiState.isSearchEmpty) {
+                                            item {
+                                                EmptyState(
+                                                    message = stringResource(R.string.search_lines_empty),
                                                     icon = R.drawable.outline_inventory_2_24
                                                 )
                                             }
@@ -689,10 +764,12 @@ private fun PinnedProgressBar(
     } else 0f
 
     val isComplete = linesCompleted >= linesTotal
+    // No backdrop of its own: it reads as part of the screen. Only the
+    // unchecked filter tints it, so the narrowed list is never missed.
     val containerColor = if (filterActive) {
         MaterialTheme.colorScheme.tertiaryContainer
     } else {
-        MaterialTheme.colorScheme.surfaceContainer
+        Color.Transparent
     }
     val onContainerColor = if (filterActive) {
         MaterialTheme.colorScheme.onTertiaryContainer
@@ -704,8 +781,7 @@ private fun PinnedProgressBar(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onToggleFilter),
-        color = containerColor,
-        shadowElevation = 2.dp
+        color = containerColor
     ) {
         Column(
             modifier = Modifier

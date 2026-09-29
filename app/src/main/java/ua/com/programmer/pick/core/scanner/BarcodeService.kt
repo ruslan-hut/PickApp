@@ -126,6 +126,11 @@ class BarcodeService @Inject constructor(
 
         diagnostics.recordKeyEvent(event)
 
+        // Typed on the on-screen keyboard, never a scan. Some keyboards (the
+        // AOSP one among them) send digits as key events rather than text;
+        // buffering them would swallow every number typed into a text field.
+        if (event.flags and KeyEvent.FLAG_SOFT_KEYBOARD != 0) return false
+
         if (event.action == KeyEvent.ACTION_DOWN) {
             val isTerminator = scannerSettings.isTerminator(event.keyCode)
 

@@ -6,6 +6,11 @@
     <string name="app_logo_description">Логотип додатку</string>
     <string name="search_label">Пошук</string>
     <string name="clear_search_cd">Очистити пошук</string>
+    <string name="search_lines_cd">Пошук у рядках</string>
+    <string name="guided_more_actions_cd">Інші дії</string>
+    <string name="close_search_cd">Закрити пошук</string>
+    <string name="search_lines_hint">Назва, код, комірка</string>
+    <string name="search_lines_empty">Немає рядків, що відповідають пошуку</string>
     <string name="ok">OK</string>
     <string name="cancel">Скасувати</string>
     <string name="plus">+</string>

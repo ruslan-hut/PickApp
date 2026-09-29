@@ -883,6 +883,11 @@ class DocumentDetailViewModel @Inject constructor(
         _uiState.update { it.copy(showOnlyUnchecked = !it.showOnlyUnchecked) }
     }
 
+    /** Set the in-document search text. Blank shows every line again. */
+    fun setSearchQuery(query: String) {
+        _uiState.update { it.copy(searchQuery = query) }
+    }
+
     /** Clear the unchecked-lines warning after the blocking dialog is dismissed. */
     fun dismissUncheckedWarning() {
         _uiState.update { it.copy(firstUncheckedLineId = null, uncheckedLineCount = 0) }
@@ -1032,13 +1037,21 @@ class DocumentDetailViewModel @Inject constructor(
         _guidedState.value = null
     }
 
+    /** The document line a step points at: by line_key, else by line_number. */
+    private fun documentLineFor(line: TaskStepLine): DocumentLine? {
+        val lines = _uiState.value.lines
+        return line.lineKey?.let { key -> lines.firstOrNull { it.lineKey == key } }
+            ?: lines.firstOrNull { it.lineNumber == line.lineNumber }
+    }
+
+    /** Unit of the current step's document line, for the panel's target line. */
+    fun guidedTargetUnit(): String? =
+        _guidedState.value?.step?.line?.let { documentLineFor(it) }?.unit
+
     /** Marks and scrolls to the line the current step is about. */
     private fun focusGuidedLine(line: TaskStepLine?) {
         line ?: return
-        val lines = _uiState.value.lines
-        val target = line.lineKey?.let { key -> lines.firstOrNull { it.lineKey == key } }
-            ?: lines.firstOrNull { it.lineNumber == line.lineNumber }
-            ?: return
+        val target = documentLineFor(line) ?: return
         if (_uiState.value.selectedLineId != target.id) {
             _uiState.update { it.copy(selectedLineId = target.id) }
         }

@@ -6,6 +6,11 @@
     <string name="app_logo_description">App logo</string>
     <string name="search_label">Search</string>
     <string name="clear_search_cd">Clear search</string>
+    <string name="search_lines_cd">Search lines</string>
+    <string name="guided_more_actions_cd">More actions</string>
+    <string name="close_search_cd">Close search</string>
+    <string name="search_lines_hint">Name, code, cell</string>
+    <string name="search_lines_empty">No lines match the search</string>
     <string name="ok">OK</string>
     <string name="cancel">Cancel</string>
     <string name="plus">+</string>

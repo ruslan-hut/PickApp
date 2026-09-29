@@ -334,6 +334,13 @@ object DeviceDto {
         @SerializedName("adjustable") val adjustable: Boolean = false,
         /** The document line a document-bound step is about. */
         @SerializedName("line") val line: TaskStepLine? = null,
+        /** The step's destination as data: cell and quantity. */
+        @SerializedName("target") val target: TaskStepTarget? = null,
+    )
+
+    data class TaskStepTarget(
+        @SerializedName("cell") val cell: String? = null,
+        @SerializedName("qty") val qty: Long? = null,
     )
 
     data class TaskStepLine(

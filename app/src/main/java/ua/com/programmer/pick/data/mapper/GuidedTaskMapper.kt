@@ -11,6 +11,7 @@ import ua.com.programmer.pick.domain.model.TaskRow
 import ua.com.programmer.pick.domain.model.TaskState
 import ua.com.programmer.pick.domain.model.TaskStep
 import ua.com.programmer.pick.domain.model.TaskStepLine
+import ua.com.programmer.pick.domain.model.TaskStepTarget
 
 /**
  * Wire → domain for the guided-task envelope. Nothing is interpreted: unknown
@@ -60,6 +61,9 @@ private fun DeviceDto.TaskStep.toDomain(): TaskStep = TaskStep(
     line = line?.let {
         TaskStepLine(lineKey = it.lineKey?.takeIf { k -> k.isNotBlank() }, lineNumber = it.lineNumber, adjustable = it.adjustable)
     },
+    target = target?.let {
+        TaskStepTarget(cell = it.cell?.takeIf { c -> c.isNotBlank() }, qty = it.qty)
+    }?.takeIf { it.cell != null || it.qty != null },
 )
 
 private fun DeviceDto.TaskMessage.toDomain(): TaskMessage? =

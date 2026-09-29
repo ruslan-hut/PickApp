@@ -65,7 +65,11 @@ data class DocumentDetailUiState(
     // Toggled by tapping the pinned progress bar. When true, the products
     // list hides lines already marked as completed so the worker can focus
     // on the remaining items. Reset to false on every document load.
-    val showOnlyUnchecked: Boolean = false
+    val showOnlyUnchecked: Boolean = false,
+    // Text typed into the document's search field. Blank = no search. A
+    // display filter only: lines keep their edit rules, and a scan that
+    // selects a line the search hides clears it (see the screen).
+    val searchQuery: String = ""
 ) {
     // Per CLAUDE.md "Server-Driven Architecture": the app does not make
     // authorization decisions locally. The server already filters the sync
@@ -178,8 +182,33 @@ data class DocumentDetailUiState(
 
     /**
      * Lines actually rendered in the list. When the unchecked filter is on
-     * we drop already-completed rows; otherwise the full list is shown.
+     * we drop already-completed rows; the search then narrows what is left.
      */
     val visibleLines: List<DocumentLine>
-        get() = if (showOnlyUnchecked) lines.filter { !it.isCompleted } else lines
+        get() {
+            val unchecked = if (showOnlyUnchecked) lines.filter { !it.isCompleted } else lines
+            val tokens = searchTokens(searchQuery)
+            return if (tokens.isEmpty()) unchecked else unchecked.filter { it.matchesSearch(tokens) }
+        }
+
+    /** True when a search is typed and nothing it would show survived it. */
+    val isSearchEmpty: Boolean
+        get() = searchTokens(searchQuery).isNotEmpty() && lines.isNotEmpty() && visibleLines.isEmpty()
+}
+
+private fun searchTokens(query: String): List<String> =
+    query.lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
+
+/**
+ * Every token must appear somewhere in the line's searchable text, in any
+ * order: "30 мл", "мл 30" and "гель 30" all find "Смарт Гель 02, 30 мл". A
+ * token is also tried against the text with spaces removed, so "30мл" finds
+ * "30 мл".
+ */
+private fun DocumentLine.matchesSearch(tokens: List<String>): Boolean {
+    val text = listOfNotNull(productName, productCode, markCode, batchNumber, locationPath, notes)
+        .joinToString(" ")
+        .lowercase()
+    val compact = text.filterNot { it.isWhitespace() }
+    return tokens.all { it in text || it in compact }
 }

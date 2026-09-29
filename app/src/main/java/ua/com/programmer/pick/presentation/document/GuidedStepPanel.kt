@@ -1,10 +1,9 @@
 package ua.com.programmer.pick.presentation.document
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -14,11 +13,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -28,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.domain.model.TaskActionButton
 import ua.com.programmer.pick.domain.model.TaskExpect
+import ua.com.programmer.pick.domain.model.TaskStepTarget
 import ua.com.programmer.pick.presentation.common.OfflineBanner
 import ua.com.programmer.pick.presentation.task.GuidedTaskSession
 import ua.com.programmer.pick.presentation.task.TaskMessageBanner
@@ -43,15 +52,18 @@ import ua.com.programmer.pick.presentation.task.TaskUiState
  *    how many to take, where to put away) and the one-shot message. A step
  *    about no line with nothing to press shows no title at all — on a
  *    receipt "scan a product" is what the document screen already says;
- *  - the step's secondary actions as compact buttons. The main action is the
- *    swipe right on the marked line, as on the classic screen, and is shown as
- *    a button only when the step is about no single line (review, final);
- *    `cancel` lives on Back (pause and leave), never here.
+ *  - the step's secondary actions in a menu that a tap on the title row
+ *    opens, so the panel stays one row tall over the list. The main action
+ *    is the swipe right on the marked line, as on the classic screen, and is
+ *    shown as a button only when the step is about no single line (review,
+ *    final); `cancel` lives on Back (pause and leave), never here.
+ *
+ * When the step sends its destination as data (`target`), the title row is
+ * composed from it — "AA-1-1 → 4 шт" — instead of the server's sentence.
  *
  * The step's hint and rows are not repeated: the hint restates the title and
  * the rows are a text copy of the list.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun GuidedStepPanel(
     state: TaskUiState,
@@ -59,6 +71,9 @@ fun GuidedStepPanel(
     onQtyEntry: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    // Unit of the step's document line, for the line composed from the
+    // step's target ("AA-1-1 → 4 шт").
+    targetUnit: String? = null,
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -96,39 +111,74 @@ fun GuidedStepPanel(
             // A step about no line with nothing to press ("scan a product" on
             // a receipt) needs no title: the document itself is the prompt.
             val showTitle = onLine || state.isFinished || shown.isNotEmpty() || needsQty
-            if (showTitle) {
-                step.title?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
-                    )
+            // The panel stays one line tall: the secondary actions open as a
+            // menu on a tap anywhere on the title row.
+            var menuOpen by remember { mutableStateOf(false) }
+            val hasMenu = secondary.isNotEmpty()
+            // A step that names its destination as data reads as one short
+            // line; the server's sentence is the fallback.
+            val title = (step.target?.let { composeTargetLine(it, targetUnit) } ?: step.title)
+                ?.takeIf { showTitle }
+            if (title != null || hasMenu) {
+                Box {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(if (hasMenu) Modifier.clickable { menuOpen = true } else Modifier)
+                            .heightIn(min = 48.dp)
+                            .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                    ) {
+                        Text(
+                            text = title.orEmpty(),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (hasMenu) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = stringResource(R.string.guided_more_actions_cd),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 8.dp),
+                            )
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = menuOpen && hasMenu,
+                        onDismissRequest = { menuOpen = false },
+                    ) {
+                        secondary.forEach { action ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = action.label,
+                                        color = if (action.isDanger) MaterialTheme.colorScheme.error
+                                        else MaterialTheme.colorScheme.onSurface,
+                                    )
+                                },
+                                enabled = state.canAct,
+                                onClick = {
+                                    menuOpen = false
+                                    onAction(action)
+                                },
+                            )
+                        }
+                    }
                 }
             }
 
-            if (secondary.isNotEmpty() || needsQty) {
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    if (needsQty) {
-                        CompactButton(
-                            label = state.qtyInput.ifEmpty { stringResource(R.string.task_enter_quantity) },
-                            enabled = state.canAct,
-                            onClick = onQtyEntry,
-                        )
-                    }
-                    secondary.forEach { action ->
-                        CompactButton(label = action.label, enabled = state.canAct, onClick = { onAction(action) })
-                    }
+            if (needsQty) {
+                Box(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) {
+                    CompactButton(
+                        label = state.qtyInput.ifEmpty { stringResource(R.string.task_enter_quantity) },
+                        enabled = state.canAct,
+                        onClick = onQtyEntry,
+                    )
                 }
-            } else {
-                Box(modifier = Modifier.padding(bottom = 12.dp))
             }
 
             main.forEach { action ->
@@ -157,4 +207,13 @@ private fun CompactButton(label: String, enabled: Boolean, onClick: () -> Unit) 
     ) {
         Text(text = label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
+}
+
+/**
+ * "AA-1-1 → 4 шт" from a step's target: the cell, then the quantity with the
+ * document line's unit. Either half may be missing; null when both are.
+ */
+internal fun composeTargetLine(target: TaskStepTarget, unit: String?): String? {
+    val qty = target.qty?.let { q -> listOfNotNull(q.toString(), unit?.takeIf { it.isNotBlank() }).joinToString(" ") }
+    return listOfNotNull(target.cell, qty).joinToString(" → ").takeIf { it.isNotEmpty() }
 }

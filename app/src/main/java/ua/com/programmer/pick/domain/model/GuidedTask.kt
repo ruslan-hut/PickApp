@@ -45,7 +45,10 @@ data class TaskStep(
     val adjustable: Boolean = false,
     /** The document line a document-bound step is about; the document screen
      *  marks and scrolls to it. Matched by [TaskStepLine.lineKey] first. */
-    val line: TaskStepLine? = null
+    val line: TaskStepLine? = null,
+    /** The step's destination as data, for a short line composed on the
+     *  device where the title does not fit. Null when the server sends none. */
+    val target: TaskStepTarget? = null
 )
 
 data class TaskStepLine(
@@ -54,6 +57,12 @@ data class TaskStepLine(
     /** The step takes `set_quantity` for this line: +/− and a typed quantity
      *  on the line card (unless the device is scan-only). */
     val adjustable: Boolean = false
+)
+
+/** A cell's display code and how many units the step is about there. */
+data class TaskStepTarget(
+    val cell: String? = null,
+    val qty: Long? = null
 )
 
 data class TaskRow(
