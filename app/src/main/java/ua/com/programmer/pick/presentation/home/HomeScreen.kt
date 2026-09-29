@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.domain.model.AvailableDocumentType
@@ -182,7 +183,9 @@ fun HomeScreen(
                 taskToCancel = null
                 onCancelTask(task)
             },
-            onDismiss = { taskToCancel = null }
+            onDismiss = { taskToCancel = null },
+            // "Cancel" on a dialog about cancelling reads both ways.
+            dismissText = stringResource(R.string.no),
         )
     }
 }
@@ -223,12 +226,15 @@ private fun OpenTaskRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(8.dp))
+            // Half-width keys on a 320 dp screen: the default 24 dp side
+            // padding broke "Продолжить" in two.
+            val keyPadding = PaddingValues(horizontal = 8.dp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onContinue, modifier = Modifier.weight(1f)) {
-                    Text(text = stringResource(R.string.task_continue))
+                Button(onClick = onContinue, contentPadding = keyPadding, modifier = Modifier.weight(1f)) {
+                    Text(text = stringResource(R.string.task_continue), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) {
-                    Text(text = stringResource(R.string.cancel))
+                OutlinedButton(onClick = onCancel, contentPadding = keyPadding, modifier = Modifier.weight(1f)) {
+                    Text(text = stringResource(R.string.cancel), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }

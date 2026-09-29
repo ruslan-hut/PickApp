@@ -287,6 +287,9 @@
     <string name="task_manual_entry">Ввести вручную</string>
     <string name="task_scan_prompt">Отсканируйте код</string>
     <string name="task_scan_cell_prompt">Отсканируйте этикетку ячейки</string>
+    <string name="task_scan_product_prompt">Отсканируйте товар</string>
+    <string name="task_scan_batch_prompt">Отсканируйте этикетку партии</string>
+    <string name="guided_more_actions_cd">Другие действия</string>
     <string name="task_scan_document_prompt">Отсканируйте или введите документ</string>
     <string name="task_offline_hint">Нет связи — управляемым задачам нужен сервер</string>
     <string name="task_retrying">Действие не дошло до сервера</string>
@@ -339,4 +342,25 @@
     <string name="guided_leave_message">Работа будет приостановлена: посчитанное сохранится, документ можно продолжить позже.</string>
     <string name="guided_leave_confirm">Приостановить и выйти</string>
     <string name="guided_leave_stay">Остаться</string>
+
+    <!-- Printer test -->
+    <string name="printer_test">Тест принтера</string>
+    <string name="printer_test_description">Проверка связи с сетевым принтером этикеток и печати битмапа</string>
+    <string name="printer_test_connection">Принтер</string>
+    <string name="printer_test_host">IP-адрес</string>
+    <string name="printer_test_port">Порт</string>
+    <string name="printer_test_width">Ширина, мм</string>
+    <string name="printer_test_height">Высота, мм</string>
+    <string name="printer_test_gap">Зазор, мм</string>
+    <string name="printer_test_density">Плотность</string>
+    <string name="printer_test_black_is_zero">Битмап: бит 0 = чёрный</string>
+    <string name="printer_test_black_is_zero_hint">Стандарт TSPL. Выключите, если битмап печатается инвертированным</string>
+    <string name="printer_test_actions">Тесты</string>
+    <string name="printer_test_status">Проверить связь</string>
+    <string name="printer_test_text">Текстовая этикетка</string>
+    <string name="printer_test_bitmap">Битмап-этикетка</string>
+    <string name="printer_test_self_test">Самотест принтера</string>
+    <string name="printer_test_gap_detect">Калибровка зазора</string>
+    <string name="printer_test_log">Журнал</string>
+    <string name="printer_test_clear_log">Очистить</string>
 </resources>

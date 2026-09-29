@@ -34,6 +34,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import ua.com.programmer.pick.R
+import ua.com.programmer.pick.presentation.task.scanPromptRes
+import ua.com.programmer.pick.presentation.task.rememberTaskDimens
 import ua.com.programmer.pick.domain.model.TaskActionButton
 import ua.com.programmer.pick.domain.model.TaskExpect
 import ua.com.programmer.pick.domain.model.TaskStepTarget
@@ -117,8 +119,13 @@ fun GuidedStepPanel(
             val hasMenu = secondary.isNotEmpty()
             // A step that names its destination as data reads as one short
             // line; the server's sentence is the fallback.
-            val title = (step.target?.let { composeTargetLine(it, targetUnit) } ?: step.title)
-                ?.takeIf { showTitle }
+            val targetLine = step.target?.let { composeTargetLine(it, targetUnit) }
+            val title = (targetLine ?: step.title)?.takeIf { showTitle }
+            // The composed line says where and how many, not what to scan —
+            // the server's sentence did; say it under the line.
+            val scanPrompt = scanPromptRes(state.expect)
+                ?.takeIf { targetLine != null && title != null && !state.isFinished }
+            val dimens = rememberTaskDimens()
             if (title != null || hasMenu) {
                 Box {
                     Row(
@@ -129,15 +136,25 @@ fun GuidedStepPanel(
                             .heightIn(min = 48.dp)
                             .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
                     ) {
-                        Text(
-                            text = title.orEmpty(),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
+                        // The one instruction on the screen: as large as the
+                        // step title on the task screen.
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = title.orEmpty(),
+                                style = dimens.titleStyle,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (scanPrompt != null) {
+                                Text(
+                                    text = stringResource(scanPrompt),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
                         if (hasMenu) {
                             Icon(
                                 imageVector = Icons.Default.MoreVert,

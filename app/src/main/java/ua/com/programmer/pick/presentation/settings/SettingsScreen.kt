@@ -54,6 +54,7 @@ import ua.com.programmer.pick.ui.theme.ButtonShape
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onScannerSettingsClick: () -> Unit = {},
+    onPrinterTestClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -219,6 +220,13 @@ fun SettingsScreen(
                             }
                         }
                     }
+                )
+
+                SettingsItem(
+                    icon = R.drawable.outline_settings_24,
+                    title = stringResource(R.string.printer_test),
+                    subtitle = stringResource(R.string.printer_test_description),
+                    onClick = onPrinterTestClick
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))

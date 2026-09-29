@@ -47,6 +47,7 @@ import ua.com.programmer.pick.presentation.profile.ProfileScreen
 import ua.com.programmer.pick.presentation.courier.CourierScreen
 import ua.com.programmer.pick.presentation.settings.ScannerSettingsScreen
 import ua.com.programmer.pick.presentation.settings.ScannerTestScreen
+import ua.com.programmer.pick.presentation.settings.PrinterTestScreen
 import ua.com.programmer.pick.presentation.settings.SettingsScreen
 import ua.com.programmer.pick.presentation.splash.SplashScreen
 import ua.com.programmer.pick.presentation.splash.SplashViewModel
@@ -287,7 +288,16 @@ fun PickNavGraph(
                     onNavigateBack = { navController.popBackStack() },
                     onScannerSettingsClick = {
                         navController.navigate(Screen.ScannerSettings.route)
+                    },
+                    onPrinterTestClick = {
+                        navController.navigate(Screen.PrinterTest.route)
                     }
+                )
+            }
+
+            composable(route = Screen.PrinterTest.route) {
+                PrinterTestScreen(
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
 

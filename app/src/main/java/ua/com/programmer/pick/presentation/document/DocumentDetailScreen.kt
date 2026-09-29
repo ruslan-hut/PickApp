@@ -274,6 +274,8 @@ fun DocumentDetailScreen(
                     viewModel.guidedAction(action.code)
                 },
                 onDismiss = { guidedConfirmAction = null },
+                // "Cancel" on a dialog about cancelling reads both ways.
+                dismissText = stringResource(R.string.no),
             )
         }
     }

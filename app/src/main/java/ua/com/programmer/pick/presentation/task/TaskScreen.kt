@@ -1,6 +1,7 @@
 package ua.com.programmer.pick.presentation.task
 
 import android.widget.Toast
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -10,8 +11,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -43,7 +50,10 @@ import ua.com.programmer.pick.presentation.common.PickAppBar
 /**
  * One screen for every guided task. It renders `title / hint / lock_info /
  * rows / actions / expect` and sends one action back — no per-flow code, no
- * branch on the step id.
+ * branch on the step id. Laid out like the document screen: the task type in
+ * the top bar (cancel in its menu), the step as a header card, the rows as
+ * line cards, the keys docked at the bottom with the primary one under the
+ * thumb.
  *
  * Back leaves the screen; the task stays open on the server and reappears
  * under *Unfinished tasks* on Home. Only the server's `cancel` action closes it.
@@ -111,36 +121,72 @@ fun TaskScreen(
         }
     }
 
+    val dimens = rememberTaskDimens()
+    val typeLabels by viewModel.typeLabels.collectAsState()
+    val typeLabel = uiState.task?.type?.let { typeLabels[it] ?: it }
+    // `cancel` goes to the top bar's menu; the rest dock at the bottom.
+    val cancelAction = uiState.actions.firstOrNull { it.code == TaskViewModel.ACTION_CANCEL }
+    val primaryAction = uiState.actions.firstOrNull { it.isPrimary }
+    val secondaryActions = uiState.actions.filter { it != cancelAction && it != primaryAction }
+    val onAction: (TaskActionButton) -> Unit = { action ->
+        when {
+            // `manual_cell` carries the typed address, so the server's button
+            // opens the dialog instead of posting an empty value.
+            action.code == TaskViewModel.ACTION_MANUAL_CELL -> manualEntryFor = TaskExpect.CELL
+            action.needsConfirmation() -> confirmAction = action
+            else -> viewModel.onAction(action.code)
+        }
+    }
+    var menuOpen by remember { mutableStateOf(false) }
+
     Scaffold(
         modifier = modifier,
         topBar = {
             PickAppBar(
-                title = uiState.step?.title ?: stringResource(R.string.task_title),
+                title = typeLabel ?: stringResource(R.string.task_title),
                 onNavigateBack = {
                     viewModel.onLeaveScreen()
                     onNavigateBack()
                 },
+                actions = {
+                    if (cancelAction != null && !uiState.isFinished) {
+                        Box {
+                            IconButton(onClick = { menuOpen = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = stringResource(R.string.guided_more_actions_cd),
+                                )
+                            }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(cancelAction.label, color = MaterialTheme.colorScheme.error) },
+                                    enabled = uiState.canAct,
+                                    onClick = {
+                                        menuOpen = false
+                                        onAction(cancelAction)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                },
             )
         },
         bottomBar = {
-            if (uiState.actions.isNotEmpty()) {
-                TaskActionsBar(
-                    actions = uiState.actions,
-                    // The final screen's single `done` needs no connection.
-                    enabled = uiState.canAct || uiState.isFinished,
-                    isSending = uiState.isSending,
-                    onAction = { action ->
-                        when {
-                            // `manual_cell` carries the typed address, so the
-                            // server's button opens the dialog instead of
-                            // posting an empty value.
-                            action.code == TaskViewModel.ACTION_MANUAL_CELL -> manualEntryFor = TaskExpect.CELL
-                            action.needsConfirmation() -> confirmAction = action
-                            else -> viewModel.onAction(action.code)
-                        }
-                    },
-                )
-            }
+            TaskBottomBar(
+                primary = primaryAction,
+                secondary = secondaryActions,
+                showQtyField = uiState.expect == TaskExpect.QTY && !uiState.isFinished,
+                qtyInput = uiState.qtyInput,
+                // The final screen's single `done` needs no connection.
+                enabled = uiState.canAct || uiState.isFinished,
+                isSending = uiState.isSending,
+                dimens = dimens,
+                onQtyEntry = { qtyDialogOpen = true },
+                onAction = onAction,
+                manualEntryLabel = uiState.manualEntryLabel().takeIf { !uiState.isFinished },
+                onManualEntry = { manualEntryFor = uiState.expect },
+            )
         },
     ) { paddingValues ->
         Column(
@@ -167,32 +213,21 @@ fun TaskScreen(
 
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().weight(1f),
-                contentPadding = PaddingValues(vertical = 8.dp),
+                contentPadding = PaddingValues(bottom = 8.dp),
             ) {
-                uiState.step?.hint?.let { hint ->
+                uiState.step?.let { step ->
                     item {
-                        Text(
-                            text = hint,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        TaskStepCard(
+                            title = step.title ?: typeLabel.orEmpty(),
+                            target = step.target,
+                            hint = step.hint,
+                            lockInfo = step.lockInfo,
+                            expect = if (uiState.isFinished) TaskExpect.NONE else uiState.expect,
+                            dimens = dimens,
                         )
                     }
                 }
-                uiState.step?.lockInfo?.let { item { TaskLockInfo(text = it) } }
-
-                items(uiState.step?.rows.orEmpty()) { row -> TaskRowItem(row = row) }
-            }
-
-            if (!uiState.isFinished) {
-                TaskInputPanel(
-                    expect = uiState.expect,
-                    qtyInput = uiState.qtyInput,
-                    enabled = uiState.canAct,
-                    manualEntryLabel = uiState.manualEntryLabel(),
-                    onQtyEntry = { qtyDialogOpen = true },
-                    onManualEntry = { manualEntryFor = uiState.expect },
-                )
+                items(uiState.step?.rows.orEmpty()) { row -> TaskRowItem(row = row, dimens = dimens) }
             }
         }
     }
@@ -209,6 +244,8 @@ fun TaskScreen(
                 viewModel.onAction(action.code)
             },
             onDismiss = { confirmAction = null },
+            // "Cancel" on a dialog about cancelling reads both ways.
+            dismissText = stringResource(R.string.no),
         )
     }
 

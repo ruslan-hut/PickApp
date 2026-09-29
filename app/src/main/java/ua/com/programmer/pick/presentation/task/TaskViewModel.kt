@@ -4,12 +4,19 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ua.com.programmer.pick.core.scanner.BarcodeService
 import ua.com.programmer.pick.core.util.NetworkMonitor
 import ua.com.programmer.pick.data.debug.DebugJournal
+import ua.com.programmer.pick.data.local.preferences.AppPreferences
+import ua.com.programmer.pick.data.remote.transport.AvailableDocumentTypeDto
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.domain.repository.DocumentRepository
 import ua.com.programmer.pick.domain.repository.GuidedTaskRepository
@@ -32,6 +39,8 @@ class TaskViewModel @Inject constructor(
     networkMonitor: NetworkMonitor,
     syncOrchestrator: SyncOrchestrator,
     debugJournal: DebugJournal,
+    appPreferences: AppPreferences,
+    gson: Gson,
 ) : ViewModel() {
 
     companion object {
@@ -61,6 +70,17 @@ class TaskViewModel @Inject constructor(
 
     val uiState: StateFlow<TaskUiState> = session.uiState
     val events: SharedFlow<TaskUiEvent> = session.events
+
+    /** Task type code → its catalog name ("Розміщення"), for the top bar. */
+    val typeLabels: StateFlow<Map<String, String>> = appPreferences.availableDocumentTypes
+        .map { json ->
+            runCatching {
+                val listType = object : TypeToken<List<AvailableDocumentTypeDto>>() {}.type
+                gson.fromJson<List<AvailableDocumentTypeDto>>(json ?: return@map emptyMap(), listType)
+                    .associate { it.code to it.description }
+            }.getOrDefault(emptyMap())
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
     init {
         viewModelScope.launch {

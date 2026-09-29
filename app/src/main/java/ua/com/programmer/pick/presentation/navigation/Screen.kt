@@ -17,6 +17,7 @@ sealed class Screen(val route: String) {
     data object Settings : Screen("settings")
     data object ScannerSettings : Screen("scanner_settings")
     data object ScannerTest : Screen("scanner_test")
+    data object PrinterTest : Screen("printer_test")
     data object Profile : Screen("profile")
     data object ScanLogin : Screen("scan_login")
     data object DebugJournal : Screen("debug_journal")

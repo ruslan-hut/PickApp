@@ -307,6 +307,8 @@
     <string name="task_manual_entry">Ввести вручну</string>
     <string name="task_scan_prompt">Скануйте код</string>
     <string name="task_scan_cell_prompt">Скануйте етикетку комірки</string>
+    <string name="task_scan_product_prompt">Скануйте товар</string>
+    <string name="task_scan_batch_prompt">Скануйте етикетку партії</string>
     <string name="task_scan_document_prompt">Скануйте або введіть документ</string>
     <string name="task_offline_hint">Немає зв\'язку — керовані задачі потребують сервера</string>
     <string name="task_retrying">Дія не дійшла до сервера</string>
@@ -359,4 +361,25 @@
     <string name="guided_leave_message">Роботу буде призупинено: пораховане збережеться, документ можна продовжити пізніше.</string>
     <string name="guided_leave_confirm">Призупинити й вийти</string>
     <string name="guided_leave_stay">Залишитись</string>
+
+    <!-- Printer test -->
+    <string name="printer_test">Тест принтера</string>
+    <string name="printer_test_description">Перевірка зв\'язку з мережевим принтером етикеток і друку бітмапу</string>
+    <string name="printer_test_connection">Принтер</string>
+    <string name="printer_test_host">IP-адреса</string>
+    <string name="printer_test_port">Порт</string>
+    <string name="printer_test_width">Ширина, мм</string>
+    <string name="printer_test_height">Висота, мм</string>
+    <string name="printer_test_gap">Зазор, мм</string>
+    <string name="printer_test_density">Щільність</string>
+    <string name="printer_test_black_is_zero">Бітмап: біт 0 = чорний</string>
+    <string name="printer_test_black_is_zero_hint">Стандарт TSPL. Вимкніть, якщо бітмап друкується інвертованим</string>
+    <string name="printer_test_actions">Тести</string>
+    <string name="printer_test_status">Перевірити зв\'язок</string>
+    <string name="printer_test_text">Текстова етикетка</string>
+    <string name="printer_test_bitmap">Бітмап-етикетка</string>
+    <string name="printer_test_self_test">Самотест принтера</string>
+    <string name="printer_test_gap_detect">Калібрування зазору</string>
+    <string name="printer_test_log">Журнал</string>
+    <string name="printer_test_clear_log">Очистити</string>
 </resources>

@@ -307,6 +307,8 @@
     <string name="task_manual_entry">Enter manually</string>
     <string name="task_scan_prompt">Scan the code</string>
     <string name="task_scan_cell_prompt">Scan the shelf label</string>
+    <string name="task_scan_product_prompt">Scan the product</string>
+    <string name="task_scan_batch_prompt">Scan the batch label</string>
     <string name="task_scan_document_prompt">Scan or enter the document</string>
     <string name="task_offline_hint">No connection — guided tasks need the server</string>
     <string name="task_retrying">The action did not reach the server</string>
@@ -359,4 +361,25 @@
     <string name="guided_leave_message">The work will be paused: what is counted is kept, and you can continue the document later.</string>
     <string name="guided_leave_confirm">Pause and leave</string>
     <string name="guided_leave_stay">Stay</string>
+
+    <!-- Printer test -->
+    <string name="printer_test">Printer test</string>
+    <string name="printer_test_description">Check the link to a network label printer and bitmap output</string>
+    <string name="printer_test_connection">Printer</string>
+    <string name="printer_test_host">IP address</string>
+    <string name="printer_test_port">Port</string>
+    <string name="printer_test_width">Width, mm</string>
+    <string name="printer_test_height">Height, mm</string>
+    <string name="printer_test_gap">Gap, mm</string>
+    <string name="printer_test_density">Density</string>
+    <string name="printer_test_black_is_zero">Bitmap: 0 bit = black</string>
+    <string name="printer_test_black_is_zero_hint">TSPL default. Switch off if the bitmap label prints inverted</string>
+    <string name="printer_test_actions">Tests</string>
+    <string name="printer_test_status">Check connection</string>
+    <string name="printer_test_text">Text label</string>
+    <string name="printer_test_bitmap">Bitmap label</string>
+    <string name="printer_test_self_test">Printer self-test</string>
+    <string name="printer_test_gap_detect">Calibrate gap</string>
+    <string name="printer_test_log">Log</string>
+    <string name="printer_test_clear_log">Clear</string>
 </resources>

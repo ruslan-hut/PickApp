@@ -1,6 +1,7 @@
 package ua.com.programmer.pick.presentation.task
 
 import androidx.lifecycle.SavedStateHandle
+import com.google.gson.Gson
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -10,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -29,6 +31,7 @@ import ua.com.programmer.pick.core.scanner.BarcodeService
 import ua.com.programmer.pick.core.scanner.ScannedBarcode
 import ua.com.programmer.pick.core.util.NetworkMonitor
 import ua.com.programmer.pick.data.debug.DebugJournal
+import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.domain.model.GuidedTask
 import ua.com.programmer.pick.domain.model.TaskActionButton
@@ -396,6 +399,10 @@ class TaskViewModelTest {
             networkMonitor = networkMonitor,
             syncOrchestrator = mockk<SyncOrchestrator>(relaxed = true),
             debugJournal = mockk<DebugJournal>(relaxed = true),
+            appPreferences = mockk<AppPreferences>(relaxed = true) {
+                every { availableDocumentTypes } returns flowOf(null)
+            },
+            gson = Gson(),
         )
     }
 
