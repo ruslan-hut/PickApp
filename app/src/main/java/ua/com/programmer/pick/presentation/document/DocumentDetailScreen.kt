@@ -543,6 +543,7 @@ fun DocumentDetailScreen(
                         }
                     },
                     onQtyEntry = { guidedQtyOpen = true },
+                    onPickBatch = viewModel::guidedPickBatch,
                     onRetry = viewModel::guidedRetry,
                 )
                 // A guided document is started in place, never locked from here.

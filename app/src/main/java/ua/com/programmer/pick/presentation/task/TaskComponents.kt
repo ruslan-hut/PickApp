@@ -3,6 +3,7 @@ package ua.com.programmer.pick.presentation.task
 import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -223,12 +224,15 @@ fun TaskRowItem(
     row: TaskRow,
     dimens: TaskDimens,
     modifier: Modifier = Modifier,
+    // Set for a selectable row (row.value != null) when the worker can act.
+    onClick: (() -> Unit)? = null,
 ) {
     val highlight = row.highlight
     OutlinedCard(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = dimens.gutter, vertical = 4.dp),
+            .padding(horizontal = dimens.gutter, vertical = 4.dp)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         shape = CardShape,
         colors = CardDefaults.outlinedCardColors(
             containerColor = if (highlight) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,

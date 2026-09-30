@@ -380,6 +380,8 @@ object DeviceDto {
         @SerializedName("planned") val planned: Long? = null,
         @SerializedName("actual") val actual: Long? = null,
         @SerializedName("highlight") val highlight: Boolean = false,
+        /** Set on a selectable row (a batch external_id): sent back as `pick_batch`. */
+        @SerializedName("value") val value: String? = null,
     )
 
     data class TaskAction(

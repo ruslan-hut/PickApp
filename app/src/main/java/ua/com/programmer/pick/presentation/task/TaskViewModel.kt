@@ -94,6 +94,7 @@ class TaskViewModel @Inject constructor(
     fun onQtyInputChange(value: String) = session.onQtyInputChange(value)
     fun confirmQuantity() = session.confirmQuantity()
     fun submitManualCell(value: String) = session.submitManualCell(value)
+    fun pickBatch(value: String) = session.pickBatch(value)
     fun submitManualValue(value: String) = session.submitManualValue(value)
     fun onAction(code: String) = session.onAction(code)
     fun retryPending() = session.retryPending()

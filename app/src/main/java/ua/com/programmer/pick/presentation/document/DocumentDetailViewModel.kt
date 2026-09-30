@@ -1146,6 +1146,7 @@ class DocumentDetailViewModel @Inject constructor(
         session.confirmQuantity()
     }
     fun guidedManualCell(value: String) { guidedSession?.submitManualCell(value) }
+    fun guidedPickBatch(value: String) { guidedSession?.pickBatch(value) }
     fun guidedRetry() { guidedSession?.retryPending() }
     fun guidedDismissMessage() { guidedSession?.dismissMessage() }
     suspend fun guidedHeartbeat() { guidedSession?.heartbeat() }

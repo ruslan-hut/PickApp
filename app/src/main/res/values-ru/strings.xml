@@ -281,6 +281,7 @@
     <string name="task_cancel_title">Отменить задачу</string>
     <string name="task_cancel_message">Задача будет закрыта, блокировки сняты. Ничего не сохранится.</string>
     <string name="task_no_stock_confirm">Записать весь ожидаемый остаток как отсутствующий в этой ячейке?</string>
+    <string name="task_pick_batch">Выбрать партию</string>
     <string name="task_enter_quantity">Количество</string>
     <string name="task_enter_cell">Ввести адрес</string>
     <string name="task_enter_document">Ввести номер документа</string>

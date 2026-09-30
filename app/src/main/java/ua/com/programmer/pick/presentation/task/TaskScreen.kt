@@ -227,7 +227,14 @@ fun TaskScreen(
                         )
                     }
                 }
-                items(uiState.step?.rows.orEmpty()) { row -> TaskRowItem(row = row, dimens = dimens) }
+                items(uiState.step?.rows.orEmpty()) { row ->
+                    val pickValue = row.value?.takeIf { uiState.canAct && !uiState.isFinished }
+                    TaskRowItem(
+                        row = row,
+                        dimens = dimens,
+                        onClick = pickValue?.let { v -> { viewModel.pickBatch(v) } },
+                    )
+                }
             }
         }
     }

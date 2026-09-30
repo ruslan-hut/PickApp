@@ -301,6 +301,7 @@
     <string name="task_cancel_title">Скасувати задачу</string>
     <string name="task_cancel_message">Задачу буде закрито, блокування знято. Нічого не збережеться.</string>
     <string name="task_no_stock_confirm">Записати весь очікуваний залишок як відсутній на цій комірці?</string>
+    <string name="task_pick_batch">Обрати партію</string>
     <string name="task_enter_quantity">Кількість</string>
     <string name="task_enter_cell">Ввести адресу</string>
     <string name="task_enter_document">Ввести номер документа</string>

@@ -70,7 +70,9 @@ data class TaskRow(
     val planned: Long? = null,
     val actual: Long? = null,
     /** Server marks rows that still need attention. */
-    val highlight: Boolean = false
+    val highlight: Boolean = false,
+    /** Non-null = the worker may choose this row (a batch): sent as `pick_batch`. */
+    val value: String? = null
 )
 
 data class TaskActionButton(

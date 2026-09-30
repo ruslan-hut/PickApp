@@ -45,7 +45,7 @@ private fun DeviceDto.TaskStep.toDomain(): TaskStep = TaskStep(
     expect = TaskExpect.fromWire(expect),
     rows = rows?.mapNotNull { row ->
         row.text?.takeIf { it.isNotBlank() }?.let {
-            TaskRow(text = it, planned = row.planned, actual = row.actual, highlight = row.highlight)
+            TaskRow(text = it, planned = row.planned, actual = row.actual, highlight = row.highlight, value = row.value?.takeIf { v -> v.isNotBlank() })
         }
     }.orEmpty(),
     // An action without a label cannot be rendered as a button; the server

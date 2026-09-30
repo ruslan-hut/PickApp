@@ -11,7 +11,11 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
@@ -73,6 +77,8 @@ fun GuidedStepPanel(
     onQtyEntry: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    // A batch chosen from the list instead of scanning its label.
+    onPickBatch: (String) -> Unit = {},
     // Unit of the step's document line, for the line composed from the
     // step's target ("AA-1-1 → 4 шт").
     targetUnit: String? = null,
@@ -194,6 +200,44 @@ fun GuidedStepPanel(
                         label = state.qtyInput.ifEmpty { stringResource(R.string.task_enter_quantity) },
                         enabled = state.canAct,
                         onClick = onQtyEntry,
+                    )
+                }
+            }
+
+            val pickable = step.rows.filter { it.value != null }
+            if (pickable.isNotEmpty() && !state.isFinished) {
+                var pickOpen by remember { mutableStateOf(false) }
+                Box(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) {
+                    CompactButton(
+                        label = stringResource(R.string.task_pick_batch),
+                        enabled = state.canAct,
+                        onClick = { pickOpen = true },
+                    )
+                }
+                if (pickOpen) {
+                    AlertDialog(
+                        onDismissRequest = { pickOpen = false },
+                        title = { Text(stringResource(R.string.task_pick_batch)) },
+                        text = {
+                            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                                pickable.forEach { row ->
+                                    Text(
+                                        text = row.text,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                pickOpen = false
+                                                row.value?.let(onPickBatch)
+                                            }
+                                            .heightIn(min = 48.dp)
+                                            .padding(vertical = 12.dp),
+                                    )
+                                }
+                            }
+                        },
+                        confirmButton = {},
+                        dismissButton = { TextButton(onClick = { pickOpen = false }) { Text(stringResource(android.R.string.cancel)) } },
                     )
                 }
             }

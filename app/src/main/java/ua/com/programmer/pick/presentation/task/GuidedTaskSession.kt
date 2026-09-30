@@ -59,6 +59,7 @@ class GuidedTaskSession(
         const val ACTION_DONE = "done"
         const val ACTION_NO_STOCK = "no_stock"
         const val ACTION_MANUAL_CELL = "manual_cell"
+        const val ACTION_PICK_BATCH = "pick_batch"
         const val ACTION_SET_QUANTITY = "set_quantity"
 
         private const val TAG = "GuidedTaskSession"
@@ -167,6 +168,12 @@ class GuidedTaskSession(
         val trimmed = value.trim()
         if (trimmed.isEmpty()) return
         send(action = ACTION_MANUAL_CELL, value = trimmed)
+    }
+
+    /** A batch chosen from the step's selectable rows instead of scanning its label. */
+    fun pickBatch(value: String) {
+        if (value.isBlank()) return
+        send(action = ACTION_PICK_BATCH, value = value)
     }
 
     /** A document number typed on the receiving picker; the server matches it like a scan. */

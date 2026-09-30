@@ -301,6 +301,7 @@
     <string name="task_cancel_title">Cancel task</string>
     <string name="task_cancel_message">The task will be closed and its locks released. Nothing will be saved.</string>
     <string name="task_no_stock_confirm">Record the whole expected balance as missing on this shelf?</string>
+    <string name="task_pick_batch">Choose a batch</string>
     <string name="task_enter_quantity">Quantity</string>
     <string name="task_enter_cell">Enter address</string>
     <string name="task_enter_document">Enter document number</string>
