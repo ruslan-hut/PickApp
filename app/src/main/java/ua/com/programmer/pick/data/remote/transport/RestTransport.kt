@@ -168,12 +168,12 @@ class RestTransport @Inject constructor(
             )
 
             is SyncMessage.StageUnlock -> client.stageUnlock(message.documentId, message.stage).fold(
-                { stageLockResult(it) },
+                { stageLockResult(it, release = true) },
                 { stageLockFailure(message.documentId, message.stage, it) },
             )
 
             is SyncMessage.StagePause -> client.stagePause(message.documentId, message.stage).fold(
-                { stageLockResult(it) },
+                { stageLockResult(it, release = true) },
                 { stageLockFailure(message.documentId, message.stage, it) },
             )
 
@@ -414,8 +414,11 @@ class RestTransport @Inject constructor(
 
     // --- Mapping helpers ---
 
-    private fun stageLockResult(r: DeviceDto.StageLockResult): SyncMessage.StageLockResult =
-        SyncMessage.StageLockResult(newId(), now(), r.documentId, r.stage, r.success, r.lockedBy, r.error)
+    private fun stageLockResult(r: DeviceDto.StageLockResult, release: Boolean = false): SyncMessage.StageLockResult =
+        SyncMessage.StageLockResult(
+            newId(), now(), r.documentId, r.stage, r.success, r.lockedBy, r.error,
+            release = release, state = r.state, version = r.version, canPark = r.canPark,
+        )
 
     private fun stageLockFailure(documentId: String, stage: String, e: Throwable): SyncMessage.StageLockResult =
         SyncMessage.StageLockResult(newId(), now(), documentId, stage, false, null, e.message)

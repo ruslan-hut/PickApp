@@ -1764,6 +1764,36 @@ class SyncOrchestrator @Inject constructor(
         AppLog.d(TAG, "Stage lock result: ${message.documentId}, stage: ${message.stage}, success: ${message.success}")
 
         val roomId = toRoomDocumentId(message.documentId)
+        if (message.release) {
+            // The answer to our own unlock / pause. The lock is gone whatever
+            // the outcome — re-claiming it here (as a lock result would) made
+            // the sync guard drop the server's post-release payload and let the
+            // next queued write trigger a silent re-lock that took the document
+            // back. Only the pause carries a snapshot to apply.
+            heldStageLocks.remove(roomId)
+            val snapshotState = message.state
+            val snapshotVersion = message.version
+            if (message.success && snapshotState != null && snapshotVersion != null) {
+                documentDao.applyPaused(
+                    roomId, snapshotState, snapshotVersion.toInt(),
+                    message.canPark == true, System.currentTimeMillis()
+                )
+            }
+            debugJournal.log(
+                eventType = ua.com.programmer.pick.data.debug.DebugEventType.STAGE_RELEASE_RESULT,
+                message = "success=${message.success} state=$snapshotState can_park=${message.canPark}",
+                documentId = roomId,
+                stage = message.stage,
+                payload = mapOf(
+                    "success" to message.success,
+                    "state" to snapshotState,
+                    "version" to snapshotVersion,
+                    "can_park" to message.canPark,
+                    "error" to message.error
+                )
+            )
+            return
+        }
         if (message.success) {
             documentDao.updateDocumentStateFromServer(roomId, stageInProcessState(message.stage), System.currentTimeMillis())
             heldStageLocks.add(roomId)
@@ -2266,7 +2296,10 @@ class SyncOrchestrator @Inject constructor(
                         "state" to existing.state,
                         "server_version" to dto.version,
                         "local_version" to existing.version,
-                        "server_line_count" to (dto.lines?.size ?: 0)
+                        "server_line_count" to (dto.lines?.size ?: 0),
+                        "server_state" to dto.state,
+                        "can_park" to dto.canPark,
+                        "can_resume" to dto.canResume
                     )
                 )
                 return@forEach
@@ -2391,7 +2424,9 @@ class SyncOrchestrator @Inject constructor(
                         "total_actual_after" to totalAfter,
                         "local_line_count_before" to localLineCountBefore,
                         "server_line_count" to (dto.lines?.size ?: 0),
-                        "preserved_dirty_lines" to preservedDirty
+                        "preserved_dirty_lines" to preservedDirty,
+                        "can_park" to dto.canPark,
+                        "can_resume" to dto.canResume
                     )
                 )
             }

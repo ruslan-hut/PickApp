@@ -27,6 +27,16 @@ object DebugEventType {
     const val STAGE_LOCK_RESULT = "STAGE_LOCK_RESULT"
     const val STAGE_UNLOCK_SENT = "STAGE_UNLOCK_SENT"
     const val STAGE_PAUSE_SENT = "STAGE_PAUSE_SENT"
+    // Answer to a pause / unlock: the lock was released (never re-claimed) and,
+    // for a pause, the server's post-pause state / version / can_park.
+    const val STAGE_RELEASE_RESULT = "STAGE_RELEASE_RESULT"
+    // Parking. PARK_FLAGS_CHANGED records what the screen was told (can_park /
+    // can_resume) and what it held (lock, take-into-work) each time it changes.
+    const val PARK_FLAGS_CHANGED = "PARK_FLAGS_CHANGED"
+    const val PARK_SENT = "PARK_SENT"
+    const val PARK_RESULT = "PARK_RESULT"
+    const val RESUME_SENT = "RESUME_SENT"
+    const val RESUME_RESULT = "RESUME_RESULT"
     const val STAGE_COMPLETE_SENT = "STAGE_COMPLETE_SENT"
     const val STAGE_COMPLETE_RESULT = "STAGE_COMPLETE_RESULT"
     const val DOC_DELETED_LOCAL = "DOC_DELETED_LOCAL"

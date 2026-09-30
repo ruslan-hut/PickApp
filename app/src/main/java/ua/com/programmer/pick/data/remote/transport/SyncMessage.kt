@@ -402,7 +402,14 @@ sealed class SyncMessage {
         val stage: String,
         val success: Boolean,
         val lockedBy: String? = null,
-        val error: String? = null
+        val error: String? = null,
+        // True for the answer to an unlock / pause: the device let go of the
+        // lock, so the result must never be read as a lock being taken.
+        val release: Boolean = false,
+        // Pause answer only: post-pause snapshot (see DeviceDto.StageLockResult).
+        val state: String? = null,
+        val version: Long? = null,
+        val canPark: Boolean? = null
     ) : SyncMessage() {
         override val type = MessageType.STAGE_LOCK_RESULT
     }

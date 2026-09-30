@@ -180,6 +180,11 @@ object DeviceDto {
         @SerializedName("success") val success: Boolean,
         @SerializedName("locked_by") val lockedBy: String? = null,
         @SerializedName("error") val error: String? = null,
+        // Pause response only: the post-pause document snapshot. `state`
+        // present means `can_park` is authoritative (absent = not offered).
+        @SerializedName("state") val state: String? = null,
+        @SerializedName("version") val version: Long? = null,
+        @SerializedName("can_park") val canPark: Boolean? = null,
     )
 
     data class StageCompleteResult(

@@ -77,6 +77,17 @@ interface DocumentDao {
     suspend fun updateDocumentStateFromServer(documentId: String, state: String, lastModified: Long)
 
     /**
+     * The post-pause snapshot the server returned: state, version and whether
+     * "Park" is offered, so the button shows without waiting for the next poll.
+     * A targeted UPDATE — an entity REPLACE would cascade-delete lines/boxes.
+     */
+    @Query(
+        "UPDATE documents SET state = :state, version = :version, can_park = :canPark, " +
+            "last_modified = :lastModified WHERE id = :documentId"
+    )
+    suspend fun applyPaused(documentId: String, state: String, version: Int, canPark: Boolean, lastModified: Long)
+
+    /**
      * A parked document the server just resumed: its new state/version, and
      * the parking columns cleared. A targeted UPDATE — an entity REPLACE would
      * cascade-delete the document's lines and boxes.

@@ -1371,6 +1371,21 @@ class DocumentDetailViewModel @Inject constructor(
                 _uiState.update { state ->
                     val current = state.document ?: return@update state
                     if (current.id != fresh.id || current.state != fresh.state) return@update state
+                    if (current.canPark != fresh.canPark || current.canResume != fresh.canResume) {
+                        debugJournal.log(
+                            eventType = DebugEventType.PARK_FLAGS_CHANGED,
+                            message = "can_park=${fresh.canPark} can_resume=${fresh.canResume}",
+                            documentId = documentId,
+                            payload = mapOf(
+                                "state" to fresh.state.name,
+                                "can_park_before" to current.canPark,
+                                "can_park" to fresh.canPark,
+                                "can_resume" to fresh.canResume,
+                                "has_stage_lock" to state.hasStageLock,
+                                "can_take_into_work" to state.canTakeIntoWork,
+                            )
+                        )
+                    }
                     state.copy(
                         document = current.copy(
                             canPark = fresh.canPark,
@@ -1414,9 +1429,19 @@ class DocumentDetailViewModel @Inject constructor(
      */
     fun parkDocument(reasonId: String, note: String) {
         val document = _uiState.value.document ?: return
+        debugJournal.log(
+            eventType = DebugEventType.PARK_SENT,
+            message = "park sent",
+            documentId = document.id,
+            payload = mapOf(
+                "state" to document.state.name, "reason_id" to reasonId,
+                "has_note" to note.isNotBlank(), "can_park" to document.canPark,
+            )
+        )
         runParkingAction(
             call = { parkingRepository.park(document.remoteId(), reasonId, note) },
             done = ToastMessage.DOCUMENT_PARKED,
+            documentId = document.id,
         )
     }
 
@@ -1431,9 +1456,22 @@ class DocumentDetailViewModel @Inject constructor(
         val document = _uiState.value.document ?: return
         if (_uiState.value.isProcessingAction) return
         _uiState.update { it.copy(isProcessingAction = true, parkingInFlight = true) }
+        debugJournal.log(
+            eventType = DebugEventType.RESUME_SENT,
+            message = "resume sent",
+            documentId = document.id,
+            payload = mapOf("state" to document.state.name, "can_resume" to document.canResume)
+        )
         viewModelScope.launch {
             parkingRepository.resume(document.remoteId()).fold(
                 onSuccess = { outcome ->
+                    debugJournal.log(
+                        eventType = DebugEventType.RESUME_RESULT,
+                        message = "success=true state=${outcome.state} ready=${outcome.readyToWork}",
+                        documentId = document.id,
+                        payload = mapOf("success" to true, "state" to outcome.state,
+                            "version" to outcome.version, "ready_to_work" to outcome.readyToWork)
+                    )
                     val state = DocumentState.fromString(outcome.state)
                     documentRepository.applyResumedDocument(document.id, state, outcome.version)
                     if (outcome.readyToWork) {
@@ -1456,31 +1494,44 @@ class DocumentDetailViewModel @Inject constructor(
                         _uiEvents.emit(DocumentDetailUiEvent.NavigateBack)
                     }
                 },
-                onFailure = { e -> onParkingFailure(e) },
+                onFailure = { e -> onParkingFailure(e, document.id, DebugEventType.RESUME_RESULT) },
             )
         }
     }
 
-    private fun runParkingAction(call: suspend () -> kotlin.Result<Unit>, done: ToastMessage) {
+    private fun runParkingAction(call: suspend () -> kotlin.Result<Unit>, done: ToastMessage, documentId: String? = null) {
         if (_uiState.value.isProcessingAction) return
         _uiState.update { it.copy(isProcessingAction = true, parkingInFlight = true) }
         viewModelScope.launch {
             call().fold(
                 onSuccess = {
+                    debugJournal.log(
+                        eventType = DebugEventType.PARK_RESULT,
+                        message = "success=true",
+                        documentId = documentId,
+                        payload = mapOf("success" to true)
+                    )
                     // parkingInFlight stays set: the bar stays hidden until we leave.
                     _uiState.update { it.copy(isProcessingAction = false, parkDialog = null) }
                     // The list screen refreshes on resume and brings the new state in.
                     _uiEvents.emit(DocumentDetailUiEvent.ShowToast(done))
                     _uiEvents.emit(DocumentDetailUiEvent.NavigateBack)
                 },
-                onFailure = { e -> onParkingFailure(e) },
+                onFailure = { e -> onParkingFailure(e, documentId, DebugEventType.PARK_RESULT) },
             )
         }
     }
 
     /** Refused: close the dialog and give the buttons back. */
-    private suspend fun onParkingFailure(e: Throwable) {
+    private suspend fun onParkingFailure(e: Throwable, documentId: String? = null, eventType: String = DebugEventType.PARK_RESULT) {
         AppLog.w("DocumentDetailViewModel", "parking action failed: ${e.message}")
+        debugJournal.log(
+            eventType = eventType,
+            message = "success=false",
+            documentId = documentId,
+            severity = ua.com.programmer.pick.data.debug.DebugJournal.SEVERITY_WARN,
+            payload = mapOf("success" to false, "code" to (e as? DeviceApiException)?.code, "error" to e.message)
+        )
         _uiState.update { it.copy(isProcessingAction = false, parkDialog = null, parkingInFlight = false) }
         val code = (e as? DeviceApiException)?.code
         _uiEvents.emit(DocumentDetailUiEvent.ShowToast(
