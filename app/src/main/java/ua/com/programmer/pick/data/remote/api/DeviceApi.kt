@@ -5,6 +5,7 @@ import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.PATCH
+import retrofit2.http.PUT
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -135,6 +136,26 @@ interface DeviceApi {
 
     @POST("device/documents/{id}/shipment/track")
     suspend fun shipmentTrack(@Path("id") documentId: String): Response<ApiEnvelope<DeviceDto.ShipmentTrackResult>>
+
+    // --- Label printing ---
+
+    @GET("device/printers")
+    suspend fun printers(): Response<ApiEnvelope<DeviceDto.PrintersResult>>
+
+    @PUT("device/printer")
+    suspend fun selectPrinter(@Body request: DeviceDto.SelectPrinterRequest): Response<ApiEnvelope<DeviceDto.SelectPrinterResult>>
+
+    @POST("device/documents/{id}/shipment/print-job")
+    suspend fun shipmentPrintJob(
+        @Path("id") documentId: String,
+        @Body request: DeviceDto.PrintJobRequest,
+    ): Response<ApiEnvelope<DeviceDto.PrintJobResult>>
+
+    @POST("device/documents/{id}/shipment/printed")
+    suspend fun shipmentPrinted(
+        @Path("id") documentId: String,
+        @Body request: DeviceDto.PrintedRequest,
+    ): Response<ApiEnvelope<Any>>
 
     @POST("device/documents/{id}/lines/{lineNumber}/photo-url")
     suspend fun linePhotoUploadUrl(

@@ -41,4 +41,9 @@ data class DocumentBoxDto(
 
     @SerializedName("delivered_at")
     val deliveredAt: Long? = null,
+
+    // Carrier seat this parcel box carries (1..N); its label is marking page
+    // [seat]. Absent (0) on packages. Server-assigned.
+    @SerializedName("seat")
+    val seat: Int = 0,
 )

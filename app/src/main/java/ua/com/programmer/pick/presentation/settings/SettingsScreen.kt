@@ -33,6 +33,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -44,6 +46,8 @@ import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import ua.com.programmer.pick.R
+import ua.com.programmer.pick.presentation.printer.PrinterPickerDialog
+import ua.com.programmer.pick.presentation.printer.PrinterPickerViewModel
 import ua.com.programmer.pick.presentation.common.LoadingButton
 import ua.com.programmer.pick.presentation.common.PickAppBar
 import ua.com.programmer.pick.presentation.common.SectionHeader
@@ -59,6 +63,17 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    val printerViewModel: PrinterPickerViewModel = hiltViewModel()
+    val printerState by printerViewModel.uiState.collectAsState()
+    var showPrinterPicker by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { printerViewModel.load() }
+    if (showPrinterPicker) {
+        PrinterPickerDialog(
+            onClose = { showPrinterPicker = false; printerViewModel.load() },
+            viewModel = printerViewModel,
+        )
+    }
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
 
     val context = LocalContext.current
@@ -190,6 +205,17 @@ fun SettingsScreen(
                     title = stringResource(R.string.scanner_settings),
                     subtitle = stringResource(R.string.scanner_settings_description),
                     onClick = onScannerSettingsClick
+                )
+
+                // The label printer this terminal prints carrier labels on —
+                // picked from the warehouse's printers, stored on the server.
+                val pickedPrinter = printerState.printers.firstOrNull { it.id == printerState.selectedId }
+                SettingsItem(
+                    icon = R.drawable.outline_print_24,
+                    title = stringResource(R.string.label_printer),
+                    subtitle = pickedPrinter?.let { "${it.name} · ${it.address}" }
+                        ?: stringResource(R.string.label_printer_none),
+                    onClick = { showPrinterPicker = true }
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))

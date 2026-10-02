@@ -1,5 +1,6 @@
 package ua.com.programmer.pick.presentation.document
 
+import ua.com.programmer.pick.R
 import ua.com.programmer.pick.core.util.AppLog
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -46,7 +47,10 @@ import ua.com.programmer.pick.domain.model.ProductImage
 import ua.com.programmer.pick.domain.model.ProductLookupHit
 import ua.com.programmer.pick.domain.model.ScannedBatch
 import ua.com.programmer.pick.domain.repository.DocumentRepository
+import ua.com.programmer.pick.domain.repository.LabelPrintRepository
 import ua.com.programmer.pick.domain.repository.ParkingRepository
+import ua.com.programmer.pick.domain.repository.PrinterNotSelectedException
+import ua.com.programmer.pick.domain.repository.PrinterUnreachableException
 import ua.com.programmer.pick.domain.repository.ProductRepository
 import ua.com.programmer.pick.domain.repository.GuidedTaskRepository
 import ua.com.programmer.pick.core.util.NetworkMonitor
@@ -76,6 +80,7 @@ class DocumentDetailViewModel @Inject constructor(
     private val guidedTaskRepository: GuidedTaskRepository,
     private val networkMonitor: NetworkMonitor,
     private val parkingRepository: ParkingRepository,
+    private val labelPrintRepository: LabelPrintRepository,
 ) : ViewModel() {
 
     companion object {
@@ -1354,6 +1359,53 @@ class DocumentDetailViewModel @Inject constructor(
         }
     }
 
+    // --- Carrier label printing (packing stage, by button) ---
+
+    // The print waiting for a printer pick (0 = every seat, n = seat n).
+    private var printAfterPick: Int? = null
+
+    /**
+     * Prints the waybill marking: [seat] (1-based, the box's carrier seat) or
+     * every seat when null. Offered only when the server says so
+     * (Document.canPrintLabel); online-only, nothing is queued.
+     */
+    fun printLabel(seat: Int?) {
+        val doc = _uiState.value.document ?: return
+        if (_uiState.value.labelPrintInFlight != null) return
+        val key = seat ?: 0
+        _uiState.update { it.copy(labelPrintInFlight = key) }
+        viewModelScope.launch {
+            val result = labelPrintRepository.printLabel(doc.externalId ?: doc.id, seat?.let { listOf(it) })
+            _uiState.update { it.copy(labelPrintInFlight = null) }
+            result.fold(
+                onSuccess = { out ->
+                    val seats = if (seat == null) "1–${out.seatCount}" else seat.toString()
+                    _uiEvents.emit(DocumentDetailUiEvent.ShowText(R.string.label_printed_fmt, listOf(seats, out.printer.name)))
+                },
+                onFailure = { e ->
+                    when (e) {
+                        is PrinterNotSelectedException -> {
+                            printAfterPick = key
+                            _uiState.update { it.copy(printerPickerOpen = true) }
+                        }
+                        is PrinterUnreachableException ->
+                            _uiEvents.emit(DocumentDetailUiEvent.ShowText(R.string.label_printer_unreachable_fmt, listOf(e.printer.name, e.printer.address)))
+                        else ->
+                            _uiEvents.emit(DocumentDetailUiEvent.ShowText(R.string.label_print_failed_fmt, listOf(e.message.orEmpty())))
+                    }
+                },
+            )
+        }
+    }
+
+    /** The picker closed: with a printer picked, the waiting print goes out. */
+    fun onPrinterPickerClosed(picked: Boolean) {
+        _uiState.update { it.copy(printerPickerOpen = false) }
+        val pending = printAfterPick
+        printAfterPick = null
+        if (picked && pending != null) printLabel(pending.takeIf { it > 0 })
+    }
+
     // --- Parking (PACK ⇄ PARKED, between Collect and Pack) ---
 
     /**
@@ -1393,6 +1445,10 @@ class DocumentDetailViewModel @Inject constructor(
                             parkingReason = fresh.parkingReason,
                             parkingNote = fresh.parkingNote,
                             parkedAt = fresh.parkedAt,
+                            // Same for the label printing verdict: it follows
+                            // the server's next poll after "Take into work".
+                            trackingNumber = fresh.trackingNumber,
+                            canPrintLabel = fresh.canPrintLabel,
                         )
                     )
                 }

@@ -290,6 +290,52 @@ object DeviceDto {
         @SerializedName("error") val error: String? = null,
     )
 
+    // --- Label printing (server-rendered printer jobs) ---
+
+    data class PrinterDto(
+        @SerializedName("id") val id: String,
+        @SerializedName("name") val name: String,
+        @SerializedName("host") val host: String,
+        @SerializedName("port") val port: Int,
+        @SerializedName("label_width_mm") val labelWidthMm: Double = 0.0,
+        @SerializedName("label_height_mm") val labelHeightMm: Double = 0.0,
+    )
+
+    data class PrintersResult(
+        @SerializedName("printers") val printers: List<PrinterDto> = emptyList(),
+        @SerializedName("selected_id") val selectedId: String? = null,
+    )
+
+    data class SelectPrinterRequest(
+        @SerializedName("printer_id") val printerId: String,
+    )
+
+    data class SelectPrinterResult(
+        @SerializedName("printer") val printer: PrinterDto? = null,
+    )
+
+    data class PrintJobRequest(
+        @SerializedName("seats") val seats: List<Int>? = null,
+    )
+
+    /** [data] is base64 of the bytes to write, as-is, to printer.host:printer.port. */
+    data class PrintJobResult(
+        @SerializedName("document_id") val documentId: String,
+        @SerializedName("tracking_number") val trackingNumber: String? = null,
+        @SerializedName("language") val language: String? = null,
+        @SerializedName("seat_count") val seatCount: Int = 0,
+        @SerializedName("seats") val seats: List<Int> = emptyList(),
+        @SerializedName("data") val data: String,
+        @SerializedName("printer") val printer: PrinterDto,
+    )
+
+    data class PrintedRequest(
+        @SerializedName("seats") val seats: List<Int>? = null,
+        @SerializedName("ok") val ok: Boolean,
+        @SerializedName("error") val error: String? = null,
+        @SerializedName("printer_id") val printerId: String? = null,
+    )
+
     data class LinePhotoUploadUrlResult(
         @SerializedName("success") val success: Boolean,
         @SerializedName("document_id") val documentId: String,

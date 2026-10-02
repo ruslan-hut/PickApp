@@ -115,6 +115,14 @@ data class DocumentDto(
     @SerializedName("can_resume")
     val canResume: Boolean = false,
 
+    // Carrier waybill (TTN) and the server's verdict on offering "print the
+    // label" to this worker (packing stage). Shown verbatim, never derived.
+    @SerializedName("tracking_number")
+    val trackingNumber: String? = null,
+
+    @SerializedName("can_print_label")
+    val canPrintLabel: Boolean = false,
+
     // Present while the document is PARKED: why and since when.
     @SerializedName("parking")
     val parking: DocumentParkingDto? = null,

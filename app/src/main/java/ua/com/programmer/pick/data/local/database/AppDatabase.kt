@@ -51,7 +51,7 @@ import ua.com.programmer.pick.data.local.database.entity.WarehouseLocationEntity
         DocumentBoxEntity::class,
         DebugJournalEntity::class
     ],
-    version = 21, // Version 21: documents parking columns (PARKED state)
+    version = 22, // Version 22: carrier label printing (tracking number, can_print_label, box seat)
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -326,6 +326,15 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE documents ADD COLUMN parking_reason TEXT DEFAULT NULL")
                 db.execSQL("ALTER TABLE documents ADD COLUMN parking_note TEXT DEFAULT NULL")
                 db.execSQL("ALTER TABLE documents ADD COLUMN parked_at INTEGER DEFAULT NULL")
+            }
+        }
+
+        // Label printing: server-owned columns, refilled on the next document sync.
+        val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE documents ADD COLUMN tracking_number TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE documents ADD COLUMN can_print_label INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE document_boxes ADD COLUMN seat INTEGER NOT NULL DEFAULT 0")
             }
         }
 

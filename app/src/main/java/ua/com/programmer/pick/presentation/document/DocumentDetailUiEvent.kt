@@ -29,6 +29,9 @@ sealed class DocumentDetailUiEvent {
      * what was lost.
      */
     data class LockLost(val droppedLineCount: Int, val droppedActualSum: Double) : DocumentDetailUiEvent()
+
+    /** A formatted notice (label printing outcomes carry the printer and seats). */
+    data class ShowText(@StringRes val resId: Int, val args: List<Any> = emptyList()) : DocumentDetailUiEvent()
 }
 
 enum class ToastMessage(@StringRes val resId: Int) {

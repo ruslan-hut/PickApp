@@ -19,4 +19,6 @@ data class DocumentBox(
     val pickedUpAt: Long? = null,
     val deliveredBy: String? = null,
     val deliveredAt: Long? = null,
+    // Carrier seat of a parcel box (1..N), 0 for a package.
+    val seat: Int = 0,
 )

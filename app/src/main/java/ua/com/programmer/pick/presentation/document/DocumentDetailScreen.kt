@@ -44,6 +44,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -90,6 +91,7 @@ import kotlinx.coroutines.delay
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.domain.model.Box as DomainBox
 import ua.com.programmer.pick.domain.model.DocumentBox
+import ua.com.programmer.pick.presentation.printer.PrinterPickerDialog
 import ua.com.programmer.pick.presentation.common.ClientLanguageChip
 import ua.com.programmer.pick.presentation.common.EmptyState
 import ua.com.programmer.pick.presentation.common.PickAppBar
@@ -165,6 +167,9 @@ fun DocumentDetailScreen(
                         event.serverText ?: hostContext.getString(event.messageType.resId),
                         Toast.LENGTH_LONG,
                     ).show()
+                }
+                is DocumentDetailUiEvent.ShowText -> {
+                    snackbarHostState.showSnackbar(resources.getString(event.resId, *event.args.toTypedArray()))
                 }
                 is DocumentDetailUiEvent.GuidedVibrate -> {
                     hostView.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
@@ -315,6 +320,10 @@ fun DocumentDetailScreen(
 
     // Parcel weight dialog — shown while a parcel scan is waiting for its weight.
     // Blocks further scans until the worker either confirms or cancels.
+    if (uiState.printerPickerOpen) {
+        PrinterPickerDialog(onClose = { picked -> viewModel.onPrinterPickerClosed(picked) })
+    }
+
     uiState.pendingWeightBox?.let { pending ->
         ParcelWeightDialog(
             box = pending,
@@ -678,7 +687,13 @@ fun DocumentDetailScreen(
                                         documentBoxes = uiState.documentBoxes,
                                         boxNamesById = uiState.boxNamesById,
                                         canRemove = uiState.isPackStage,
-                                        onRemove = { boxNumber -> viewModel.removeBox(boxNumber) }
+                                        onRemove = { boxNumber -> viewModel.removeBox(boxNumber) },
+                                        labelPrint = LabelPrintState(
+                                            enabled = uiState.document?.canPrintLabel == true,
+                                            trackingNumber = uiState.document?.trackingNumber,
+                                            inFlight = uiState.labelPrintInFlight,
+                                        ),
+                                        onPrintLabel = { seat -> viewModel.printLabel(seat) }
                                     )
                                 }
 
@@ -1200,6 +1215,8 @@ private fun BoxesTab(
     boxNamesById: Map<String, String>,
     canRemove: Boolean,
     onRemove: (Int) -> Unit,
+    labelPrint: LabelPrintState,
+    onPrintLabel: (seat: Int?) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val parcelCount = documentBoxes.count { it.isParcel }
@@ -1210,12 +1227,40 @@ private fun BoxesTab(
             modifier = Modifier.fillMaxWidth(),
             color = MaterialTheme.colorScheme.surfaceContainer
         ) {
-            Text(
-                text = stringResource(R.string.pack_summary_fmt, parcelCount, packageCount),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
+            Row(
+                modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(vertical = 4.dp)) {
+                    Text(
+                        text = stringResource(R.string.pack_summary_fmt, parcelCount, packageCount),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (labelPrint.enabled && !labelPrint.trackingNumber.isNullOrBlank()) {
+                        Text(
+                            text = stringResource(R.string.label_waybill_fmt, labelPrint.trackingNumber),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                if (labelPrint.enabled) {
+                    // Every seat at once — the per-box buttons print one seat.
+                    OutlinedButton(
+                        onClick = { onPrintLabel(null) },
+                        enabled = labelPrint.inFlight == null
+                    ) {
+                        if (labelPrint.inFlight == 0) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(painter = painterResource(R.drawable.outline_print_24), contentDescription = null, modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.label_print_all))
+                    }
+                }
+            }
         }
 
         if (documentBoxes.isEmpty()) {
@@ -1299,13 +1344,13 @@ private fun BoxesTab(
                             }
                         ) {
                             Box(modifier = Modifier.alpha(rowAlpha)) {
-                                DocumentBoxRow(box = box, name = name)
+                                DocumentBoxRow(box = box, name = name, labelPrint = labelPrint, onPrintLabel = onPrintLabel)
                             }
                         }
                     }
                 } else {
                     Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                        DocumentBoxRow(box = box, name = name)
+                        DocumentBoxRow(box = box, name = name, labelPrint = labelPrint, onPrintLabel = onPrintLabel)
                     }
                 }
             }
@@ -1314,8 +1359,22 @@ private fun BoxesTab(
     }
 }
 
+/** What the boxes tab needs to offer carrier label printing (server-decided). */
+private data class LabelPrintState(
+    val enabled: Boolean,
+    val trackingNumber: String?,
+    // 0 = every seat printing, n = seat n printing, null = idle.
+    val inFlight: Int?,
+)
+
 @Composable
-private fun DocumentBoxRow(box: DocumentBox, name: String?, modifier: Modifier = Modifier) {
+private fun DocumentBoxRow(
+    box: DocumentBox,
+    name: String?,
+    labelPrint: LabelPrintState,
+    onPrintLabel: (seat: Int?) -> Unit,
+    modifier: Modifier = Modifier
+) {
     val accentColor = if (box.isParcel) {
         MaterialTheme.colorScheme.primary
     } else {
@@ -1371,7 +1430,11 @@ private fun DocumentBoxRow(box: DocumentBox, name: String?, modifier: Modifier =
                 }
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = box.status,
+                    text = if (box.seat > 0) {
+                        stringResource(R.string.label_seat_fmt, box.seat) + " · " + box.status
+                    } else {
+                        box.status
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1381,6 +1444,22 @@ private fun DocumentBoxRow(box: DocumentBox, name: String?, modifier: Modifier =
                     text = stringResource(R.string.box_weight_fmt, box.weight),
                     style = MaterialTheme.typography.titleMedium
                 )
+            }
+            if (labelPrint.enabled && box.seat > 0) {
+                // This box's own label: each seat's marking has its own barcode.
+                IconButton(
+                    onClick = { onPrintLabel(box.seat) },
+                    enabled = labelPrint.inFlight == null
+                ) {
+                    if (labelPrint.inFlight == box.seat) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(
+                            painter = painterResource(R.drawable.outline_print_24),
+                            contentDescription = stringResource(R.string.label_print_seat, box.seat)
+                        )
+                    }
+                }
             }
         }
     }

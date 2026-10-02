@@ -163,6 +163,19 @@ class DeviceRestClient @Inject constructor(
     suspend fun shipmentTrack(documentId: String): Result<DeviceDto.ShipmentTrackResult> =
         envelopeCall { deviceApi.shipmentTrack(documentId) }
 
+    suspend fun printers(): Result<DeviceDto.PrintersResult> =
+        envelopeCall { deviceApi.printers() }
+
+    /** Picks the terminal's label printer; an empty id clears the pick. */
+    suspend fun selectPrinter(printerId: String): Result<DeviceDto.SelectPrinterResult> =
+        envelopeCall { deviceApi.selectPrinter(DeviceDto.SelectPrinterRequest(printerId)) }
+
+    suspend fun shipmentPrintJob(documentId: String, seats: List<Int>?): Result<DeviceDto.PrintJobResult> =
+        envelopeCall { deviceApi.shipmentPrintJob(documentId, DeviceDto.PrintJobRequest(seats)) }
+
+    suspend fun shipmentPrinted(documentId: String, report: DeviceDto.PrintedRequest): Result<Any> =
+        envelopeCall { deviceApi.shipmentPrinted(documentId, report) }
+
     suspend fun linePhotoUploadUrl(documentId: String, lineNumber: Int): Result<DeviceDto.LinePhotoUploadUrlResult> =
         envelopeCall { deviceApi.linePhotoUploadUrl(documentId, lineNumber) }
 

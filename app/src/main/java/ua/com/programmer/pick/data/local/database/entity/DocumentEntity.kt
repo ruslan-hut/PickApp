@@ -106,5 +106,12 @@ data class DocumentEntity(
     val parkingNote: String? = null,
 
     @ColumnInfo(name = "parked_at")
-    val parkedAt: Long? = null
+    val parkedAt: Long? = null,
+
+    // Carrier label printing (server-owned, refilled on every document sync).
+    @ColumnInfo(name = "tracking_number")
+    val trackingNumber: String? = null,
+
+    @ColumnInfo(name = "can_print_label", defaultValue = "0")
+    val canPrintLabel: Boolean = false
 )

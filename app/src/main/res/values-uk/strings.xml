@@ -399,4 +399,17 @@
     <string name="document_resumed_queued">Повернуто — документ прийде до вас після поточного</string>
     <string name="resume_worker_busy">Спершу завершіть поточний документ, потім поверніть цей</string>
     <string name="error_parking">Сервер відхилив дію — оновіть список</string>
+    <!-- Друк маркування ТТН -->
+    <string name="label_print_all">Друк ТТН</string>
+    <string name="label_print_seat">Друк етикетки місця %1$d</string>
+    <string name="label_seat_fmt">Місце %1$d</string>
+    <string name="label_waybill_fmt">ТТН %1$s</string>
+    <string name="label_printed_fmt">Етикетку надруковано: місце %1$s на %2$s</string>
+    <string name="label_printer_unreachable_fmt">Принтер %1$s (%2$s) не відповідає — перевірте, що він увімкнений і в мережі</string>
+    <string name="label_print_failed_fmt">Етикетку не надруковано: %1$s</string>
+    <string name="label_printer">Принтер етикеток</string>
+    <string name="label_printer_none">Не обрано</string>
+    <string name="label_printer_pick_title">Принтер етикеток</string>
+    <string name="label_printer_pick_confirm">Обрати</string>
+    <string name="label_printer_none_configured">Для вашого складу не налаштовано жодного принтера. Попросіть адміністратора додати його у веб-інтерфейсі (Інструменти → Принтери).</string>
 </resources>

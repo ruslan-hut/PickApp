@@ -83,7 +83,13 @@ data class DocumentDetailUiState(
     // "Resume"), cleared only by cancelling the dialog or by a server refusal.
     // After success it stays set until the screen closes, so the action bar
     // cannot be tapped a second time while the toast is showing.
-    val parkingInFlight: Boolean = false
+    val parkingInFlight: Boolean = false,
+    // Carrier label printing (server says when: Document.canPrintLabel). The
+    // print in flight — 0 = every seat, n = seat n — disables the print
+    // buttons; the printer picker opens when the server has no printer for
+    // this terminal and the print resumes once one is picked.
+    val labelPrintInFlight: Int? = null,
+    val printerPickerOpen: Boolean = false
 ) {
     // Per CLAUDE.md "Server-Driven Architecture": the app does not make
     // authorization decisions locally. The server already filters the sync

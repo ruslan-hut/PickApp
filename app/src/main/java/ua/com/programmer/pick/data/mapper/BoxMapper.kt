@@ -50,6 +50,7 @@ fun DocumentBoxDto.toEntity(documentId: String): DocumentBoxEntity {
         pickedUpAt = pickedUpAt,
         deliveredBy = deliveredBy,
         deliveredAt = deliveredAt,
+        seat = seat,
     )
 }
 
@@ -68,6 +69,7 @@ fun DocumentBoxEntity.toDomain(): DocumentBox {
         pickedUpAt = pickedUpAt,
         deliveredBy = deliveredBy,
         deliveredAt = deliveredAt,
+        seat = seat,
     )
 }
 

@@ -85,6 +85,7 @@ class DocumentDetailViewModelGuidedTest {
             guidedTaskRepository = tasks,
             networkMonitor = mockk(relaxed = true) { every { isOnline } returns flowOf(true) },
             parkingRepository = mockk(relaxed = true),
+            labelPrintRepository = mockk(relaxed = true),
         )
     }
 

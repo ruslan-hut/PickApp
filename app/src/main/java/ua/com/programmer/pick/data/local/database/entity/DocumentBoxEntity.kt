@@ -68,4 +68,7 @@ data class DocumentBoxEntity(
 
     @ColumnInfo(name = "delivered_at")
     val deliveredAt: Long? = null,
+
+    @ColumnInfo(name = "seat", defaultValue = "0")
+    val seat: Int = 0,
 )

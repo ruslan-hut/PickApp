@@ -87,6 +87,7 @@ class DocumentDetailViewModelResolveScannedProductTest {
             guidedTaskRepository = mockk(relaxed = true),
             networkMonitor = mockk(relaxed = true),
             parkingRepository = mockk(relaxed = true),
+            labelPrintRepository = mockk(relaxed = true),
         )
     }
 

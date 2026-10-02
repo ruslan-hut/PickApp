@@ -399,4 +399,17 @@
     <string name="document_resumed_queued">Resumed — it comes back to you after your current document</string>
     <string name="resume_worker_busy">Finish your current document first, then resume this one</string>
     <string name="error_parking">The server refused the action — refresh the list</string>
+    <!-- Carrier label (TTN marking) printing -->
+    <string name="label_print_all">Print TTN</string>
+    <string name="label_print_seat">Print label of seat %1$d</string>
+    <string name="label_seat_fmt">Seat %1$d</string>
+    <string name="label_waybill_fmt">TTN %1$s</string>
+    <string name="label_printed_fmt">Label printed: seat %1$s on %2$s</string>
+    <string name="label_printer_unreachable_fmt">Printer %1$s (%2$s) is not responding — check that it is on and on the network</string>
+    <string name="label_print_failed_fmt">Label not printed: %1$s</string>
+    <string name="label_printer">Label printer</string>
+    <string name="label_printer_none">Not selected</string>
+    <string name="label_printer_pick_title">Label printer</string>
+    <string name="label_printer_pick_confirm">Select</string>
+    <string name="label_printer_none_configured">No printers are set up for your warehouse. Ask the administrator to add one in the web interface (Tools → Printers).</string>
 </resources>

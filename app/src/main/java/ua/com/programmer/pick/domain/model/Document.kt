@@ -32,7 +32,10 @@ data class Document(
     val canResume: Boolean = false,
     val parkingReason: String? = null,
     val parkingNote: String? = null,
-    val parkedAt: Long? = null
+    val parkedAt: Long? = null,
+    // Carrier waybill and the server-decided "print label" action.
+    val trackingNumber: String? = null,
+    val canPrintLabel: Boolean = false
 ) {
     val isGuidedCollect: Boolean get() = collectMode == AvailableDocumentType.GUIDED_MODE
 }

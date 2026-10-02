@@ -7,6 +7,7 @@ import dagger.hilt.components.SingletonComponent
 import ua.com.programmer.pick.data.repository.BoxRepositoryImpl
 import ua.com.programmer.pick.data.repository.ClientRepositoryImpl
 import ua.com.programmer.pick.data.repository.DeviceLinkRepositoryImpl
+import ua.com.programmer.pick.data.repository.LabelPrintRepositoryImpl
 import ua.com.programmer.pick.data.repository.ParkingRepositoryImpl
 import ua.com.programmer.pick.data.repository.DocumentRepositoryImpl
 import ua.com.programmer.pick.data.repository.GuidedTaskRepositoryImpl
@@ -17,6 +18,7 @@ import ua.com.programmer.pick.data.repository.WarehouseRepositoryImpl
 import ua.com.programmer.pick.domain.repository.BoxRepository
 import ua.com.programmer.pick.domain.repository.ClientRepository
 import ua.com.programmer.pick.domain.repository.DeviceLinkRepository
+import ua.com.programmer.pick.domain.repository.LabelPrintRepository
 import ua.com.programmer.pick.domain.repository.ParkingRepository
 import ua.com.programmer.pick.domain.repository.DocumentRepository
 import ua.com.programmer.pick.domain.repository.GuidedTaskRepository
@@ -41,6 +43,12 @@ abstract class RepositoryModule {
     abstract fun bindParkingRepository(
         impl: ParkingRepositoryImpl
     ): ParkingRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindLabelPrintRepository(
+        impl: LabelPrintRepositoryImpl
+    ): LabelPrintRepository
 
     @Binds
     @Singleton
