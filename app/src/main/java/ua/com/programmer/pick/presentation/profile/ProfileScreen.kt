@@ -54,7 +54,6 @@ import ua.com.programmer.pick.presentation.common.SectionHeader
 fun ProfileScreen(
     onNavigateBack: () -> Unit,
     onSettingsClick: () -> Unit = {},
-    onScannerSettingsClick: () -> Unit = {},
     onDebugJournalClick: () -> Unit = {},
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
@@ -257,39 +256,6 @@ fun ProfileScreen(
                                 )
                                 Text(
                                     text = stringResource(R.string.settings_description),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-
-                    PickElevatedCard(
-                        onClick = onScannerSettingsClick,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                        elevation = 1.dp
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = ImageVector.vectorResource(R.drawable.baseline_qr_code_scanner_24),
-                                contentDescription = null,
-                                modifier = Modifier.size(24.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = stringResource(R.string.scanner_settings),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = stringResource(R.string.scanner_settings_description),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

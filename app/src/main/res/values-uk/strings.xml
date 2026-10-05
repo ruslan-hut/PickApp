@@ -214,7 +214,7 @@
 
     <!-- Scanner Test -->
     <string name="scanner_test">Тест сканера</string>
-    <string name="scanner_open_test">Відкрити тест сканера</string>
+    <string name="scanner_test_description">Перевірка того, що надсилає апаратний сканер: клавіші, таймінги та розпізнаний штрих-код</string>
     <string name="scanner_test_barcode">Останній штрих-код</string>
     <string name="scanner_test_waiting">Очікування сканування…</string>
     <string name="scanner_test_buffer">Буфер</string>

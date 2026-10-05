@@ -48,7 +48,6 @@ import ua.com.programmer.pick.ui.theme.ButtonShape
 @Composable
 fun ScannerSettingsScreen(
     onNavigateBack: () -> Unit,
-    onNavigateToTest: () -> Unit,
     viewModel: ScannerSettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.settingsState.collectAsState()
@@ -195,29 +194,6 @@ fun ScannerSettingsScreen(
                     shape = ButtonShape
                 ) {
                     Text(stringResource(R.string.save_settings))
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
-            // Test Scanner
-            SectionHeader(
-                title = stringResource(R.string.scanner_test),
-                icon = R.drawable.outline_info_24
-            )
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onNavigateToTest,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = ButtonShape
-                ) {
-                    Text(stringResource(R.string.scanner_open_test))
                 }
             }
 

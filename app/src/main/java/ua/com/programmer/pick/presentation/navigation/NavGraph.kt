@@ -291,6 +291,9 @@ fun PickNavGraph(
                     },
                     onPrinterTestClick = {
                         navController.navigate(Screen.PrinterTest.route)
+                    },
+                    onScannerTestClick = {
+                        navController.navigate(Screen.ScannerTest.route)
                     }
                 )
             }
@@ -303,10 +306,7 @@ fun PickNavGraph(
 
             composable(route = Screen.ScannerSettings.route) {
                 ScannerSettingsScreen(
-                    onNavigateBack = { navController.popBackStack() },
-                    onNavigateToTest = {
-                        navController.navigate(Screen.ScannerTest.route)
-                    }
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
 
@@ -321,9 +321,6 @@ fun PickNavGraph(
                     onNavigateBack = { navController.popBackStack() },
                     onSettingsClick = {
                         navController.navigate(Screen.Settings.route)
-                    },
-                    onScannerSettingsClick = {
-                        navController.navigate(Screen.ScannerSettings.route)
                     },
                     onDebugJournalClick = {
                         navController.navigate(Screen.DebugJournal.route)

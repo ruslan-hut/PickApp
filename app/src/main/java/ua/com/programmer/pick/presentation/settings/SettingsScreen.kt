@@ -59,6 +59,7 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onScannerSettingsClick: () -> Unit = {},
     onPrinterTestClick: () -> Unit = {},
+    onScannerTestClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -253,6 +254,13 @@ fun SettingsScreen(
                     title = stringResource(R.string.printer_test),
                     subtitle = stringResource(R.string.printer_test_description),
                     onClick = onPrinterTestClick
+                )
+
+                SettingsItem(
+                    icon = R.drawable.baseline_qr_code_scanner_24,
+                    title = stringResource(R.string.scanner_test),
+                    subtitle = stringResource(R.string.scanner_test_description),
+                    onClick = onScannerTestClick
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))

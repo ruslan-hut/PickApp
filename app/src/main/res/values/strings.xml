@@ -214,7 +214,7 @@
 
     <!-- Scanner Test -->
     <string name="scanner_test">Scanner Test</string>
-    <string name="scanner_open_test">Open Scanner Test</string>
+    <string name="scanner_test_description">Check what the hardware scanner sends: raw keys, timing and the parsed barcode</string>
     <string name="scanner_test_barcode">Last Barcode</string>
     <string name="scanner_test_waiting">Waiting for scan…</string>
     <string name="scanner_test_buffer">Buffer</string>
