@@ -122,6 +122,9 @@ object DeviceDto {
     data class SyncRequest(
         @SerializedName("entity_types") val entityTypes: List<String>,
         @SerializedName("applied_cursors") val appliedCursors: Map<String, String>? = null,
+        // The type selected on the home screen. The server returns no documents
+        // without it, so the delta never carries a queue head of another type.
+        @SerializedName("document_type") val documentType: String? = null,
     )
 
     data class SyncResponse(

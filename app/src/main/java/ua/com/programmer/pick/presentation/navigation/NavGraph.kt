@@ -210,13 +210,14 @@ fun PickNavGraph(
                             navController.navigate(Screen.Task.byType(docType.code))
                             return@HomeScreen
                         }
-                        viewModel.setSelectedDocumentType(docType.code)
-                        navController.navigate(Screen.Documents.route) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
+                        viewModel.setSelectedDocumentType(docType.code) {
+                            navController.navigate(Screen.Documents.route) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
                             }
-                            launchSingleTop = true
-                            restoreState = true
                         }
                     },
                     onCourierClick = {
@@ -259,6 +260,12 @@ fun PickNavGraph(
                     onNavigateBack = null,
                     onNavigate = { target ->
                         navController.navigate(target)
+                    },
+                    onSelectDocumentType = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Home.route) { inclusive = true }
+                            launchSingleTop = true
+                        }
                     }
                 )
             }

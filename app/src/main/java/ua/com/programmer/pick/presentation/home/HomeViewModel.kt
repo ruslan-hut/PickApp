@@ -193,10 +193,15 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun setSelectedDocumentType(code: String) {
+    /**
+     * [onSaved] runs once the type is persisted: the documents screen reads it
+     * on arrival and sends the worker back here when it finds none.
+     */
+    fun setSelectedDocumentType(code: String, onSaved: () -> Unit) {
         viewModelScope.launch {
             _uiState.update { it.copy(selectedDocumentTypeCode = code) }
             appPreferences.setSelectedDocumentType(code)
+            onSaved()
         }
     }
 }

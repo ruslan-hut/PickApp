@@ -17,6 +17,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,10 +48,15 @@ fun DocumentsScreen(
     modifier: Modifier = Modifier,
     viewModel: DocumentsViewModel = hiltViewModel(),
     onNavigateBack: (() -> Unit)? = null,
-    onNavigate: (String) -> Unit
+    onNavigate: (String) -> Unit,
+    onSelectDocumentType: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
+
+    LaunchedEffect(Unit) {
+        viewModel.selectDocumentType.collect { onSelectDocumentType() }
+    }
 
     LifecycleResumeEffect(Unit) {
         viewModel.onRefresh()
@@ -76,7 +82,7 @@ fun DocumentsScreen(
         modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             PickAppBar(
-                title = stringResource(R.string.documents),
+                title = uiState.selectedTypeTitle ?: stringResource(R.string.documents),
                 onNavigateBack = onNavigateBack,
                 scrollBehavior = scrollBehavior,
                 actions = {

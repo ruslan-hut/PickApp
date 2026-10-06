@@ -96,8 +96,9 @@ class DeviceRestClient @Inject constructor(
         entityTypes: List<String>,
         appliedCursors: Map<String, String>? = null,
         full: Boolean = false,
+        documentType: String? = null,
     ): Result<DeviceDto.SyncResponse> = envelopeCall {
-        deviceApi.sync(DeviceDto.SyncRequest(entityTypes, appliedCursors), if (full) 1 else null)
+        deviceApi.sync(DeviceDto.SyncRequest(entityTypes, appliedCursors, documentType), if (full) 1 else null)
     }
 
     suspend fun listDocuments(documentType: String? = null): Result<DeviceDto.SyncResponse> =

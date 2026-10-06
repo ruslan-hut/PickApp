@@ -25,6 +25,10 @@ data class DocumentsUiState(
      * where the warehouse runs the WMS module — the type code is the ERP's own
      * (1C: "ПриходнаяНакладная") and never interpreted here.
      */
+    /** The selected type's name for the title bar; null when it is not known. */
+    val selectedTypeTitle: String?
+        get() = selectedDocumentType?.let { documentTypeConfigs[it]?.description }
+
     val canJoinReceiving: Boolean
         get() = selectedDocumentType?.let { documentTypeConfigs[it]?.isGuidedReceiving } == true
 }

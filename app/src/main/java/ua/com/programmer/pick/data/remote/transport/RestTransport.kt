@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import ua.com.programmer.pick.core.di.IoDispatcher
@@ -348,9 +349,11 @@ class RestTransport @Inject constructor(
     private suspend fun runSync(entityTypes: List<String>, cursors: Map<String, String>?, full: Boolean) {
         var applied = cursors
         var isFull = full
-        AppLog.i(TAG, "DOC_TRACE delta sync start full=$full cursors=$cursors")
+        // Every request carries the selected type — whichever caller asked.
+        val documentType = appPreferences.selectedDocumentType.first()
+        AppLog.i(TAG, "DOC_TRACE delta sync start full=$full type=$documentType cursors=$cursors")
         while (true) {
-            val resp = client.sync(entityTypes, applied, isFull).getOrElse {
+            val resp = client.sync(entityTypes, applied, isFull, documentType).getOrElse {
                 AppLog.e(TAG, "DOC_TRACE delta sync HTTP FAILED: ${it.message}")
                 return
             }
@@ -369,7 +372,8 @@ class RestTransport @Inject constructor(
         }
     }
 
-    private suspend fun runListRefresh(documentType: String?) {
+    private suspend fun runListRefresh(requestedType: String?) {
+        val documentType = requestedType ?: appPreferences.selectedDocumentType.first()
         val resp = client.listDocuments(documentType).getOrElse {
             AppLog.e(TAG, "DOC_TRACE listRefresh HTTP FAILED (type=$documentType): ${it.message}")
             return
