@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import ua.com.programmer.pick.core.util.AppLog
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.remote.transport.AvailableDocumentTypeDto
 import ua.com.programmer.pick.domain.model.AvailableDocumentType
@@ -33,8 +34,11 @@ class DocumentTypeConfigProvider @Inject constructor(
     private fun parse(json: String?): Map<String, AvailableDocumentType> {
         if (json.isNullOrEmpty()) return emptyMap()
         val dtos: List<AvailableDocumentTypeDto> = try {
-            gson.fromJson(json, listType) ?: return emptyMap()
-        } catch (_: Exception) {
+            // The explicit type argument matters: with `?: return` Kotlin would
+            // infer Nothing, and the cast of the parsed list to Void throws.
+            gson.fromJson<List<AvailableDocumentTypeDto>>(json, listType) ?: return emptyMap()
+        } catch (e: Exception) {
+            AppLog.e("DocumentTypeConfig", "DOC_TRACE available_document_types parse failed: $e")
             return emptyMap()
         }
         return dtos.associate {

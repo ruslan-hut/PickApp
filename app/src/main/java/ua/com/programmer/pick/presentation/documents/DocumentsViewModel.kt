@@ -63,7 +63,9 @@ class DocumentsViewModel @Inject constructor(
             .onEach { (code, configs) ->
                 _uiState.update { it.copy(selectedDocumentType = code, documentTypeConfigs = configs) }
                 // A guided type starts a task, never a list.
-                if (code == null || configs[code]?.isGuided != false) {
+                val noUsableType = code == null || configs[code]?.isGuided != false
+                if (noUsableType) {
+                    AppLog.i("DocumentsViewModel", "DOC_TRACE no usable type=$code known=${configs.keys}, back to type selection")
                     _selectDocumentType.trySend(Unit)
                 }
             }
