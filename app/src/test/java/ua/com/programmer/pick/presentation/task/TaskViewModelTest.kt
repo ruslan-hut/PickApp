@@ -373,6 +373,53 @@ class TaskViewModelTest {
         return events.filterIsInstance<TaskUiEvent.ShowToast>().firstOrNull()?.messageType
     }
 
+    @Test
+    fun `a step with refresh_sec is re-requested on the heartbeat`() = runTest {
+        // Shared receiving: another terminal's put-away reaches this one by
+        // the re-request, both in the step and in the cached document.
+        val warning = ua.com.programmer.pick.domain.model.TaskMessage("warning", "already received")
+        coEvery { repository.start(null, "ERP-DOC-1") } returns
+            success(step().copy(refreshSec = 1), documentId = "ERP-DOC-1", message = warning)
+        val updates = listOf(
+            TaskLineUpdate(lineKey = "K1", lineNumber = 1, actualQuantity = 5.0, isCompleted = true),
+        )
+        coEvery { repository.get("t1") } returns
+            success(step().copy(refreshSec = 1, title = "refreshed"), documentId = "ERP-DOC-1", lineUpdates = updates)
+        val vm = build(documentId = "ERP-DOC-1")
+
+        vm.heartbeat()
+
+        coVerify(exactly = 1) { repository.get("t1") }
+        coVerify(exactly = 1) { documentRepository.applyServerLineUpdates("ERP-DOC-1", updates) }
+        assertEquals("refreshed", vm.uiState.value.step?.title)
+        // A refresh answers no action: the worker's last message stays.
+        assertEquals(warning, vm.uiState.value.message)
+    }
+
+    @Test
+    fun `a step without refresh_sec is not re-requested`() = runTest {
+        coEvery { repository.start(any(), any()) } returns success(step())
+        val vm = build(type = "CELL_RECOUNT")
+
+        vm.heartbeat()
+
+        coVerify(exactly = 0) { repository.get(any()) }
+    }
+
+    @Test
+    fun `no refresh while an action is in flight`() = runTest {
+        coEvery { repository.start(any(), any()) } returns success(step(expect = TaskExpect.PRODUCT).copy(refreshSec = 1))
+        coEvery { repository.act(any(), any(), any(), any(), any(), any()) } coAnswers {
+            kotlinx.coroutines.awaitCancellation()
+        }
+        val vm = build(type = "CELL_RECOUNT")
+        scans.emit(scan("SCAN"))
+
+        vm.heartbeat()
+
+        coVerify(exactly = 0) { repository.get(any()) }
+    }
+
     private fun build(
         taskId: String? = null,
         type: String? = null,

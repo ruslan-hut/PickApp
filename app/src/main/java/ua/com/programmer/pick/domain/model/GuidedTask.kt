@@ -48,7 +48,10 @@ data class TaskStep(
     val line: TaskStepLine? = null,
     /** The step's destination as data, for a short line composed on the
      *  device where the title does not fit. Null when the server sends none. */
-    val target: TaskStepTarget? = null
+    val target: TaskStepTarget? = null,
+    /** Other terminals work the same document: re-request the task this
+     *  often (seconds) while idle on the step. 0 = never. */
+    val refreshSec: Int = 0
 )
 
 data class TaskStepLine(

@@ -1,5 +1,6 @@
 package ua.com.programmer.pick.presentation.task
 
+import android.os.SystemClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -37,6 +38,10 @@ import java.util.UUID
  * While the host screen is resumed it calls [heartbeat] on the orchestrator's
  * 8 s cadence, which extends the server-side cell / line locks and keeps the
  * cached document fresh.
+ *
+ * Refresh: a step with `refresh_sec` (shared receiving — other terminals work
+ * the same document) is re-requested from that heartbeat while the worker is
+ * idle on it, so the step and the cached lines show the others' progress.
  */
 class GuidedTaskSession(
     private val scope: CoroutineScope,
@@ -82,6 +87,12 @@ class GuidedTaskSession(
     /** The action a *Retry* would repeat, kept whole so the id is reused. */
     private var pendingAction: PendingAction? = null
 
+    /** Bumped per dispatched action: a refresh answering after one is stale. */
+    private var dispatchSeq = 0L
+
+    /** When the step was last answered (elapsedRealtime), for `refresh_sec`. */
+    private var lastAnsweredAt = 0L
+
     init {
         scope.launch {
             isOnline.collect { online -> _uiState.update { it.copy(isOnline = online) } }
@@ -116,6 +127,30 @@ class GuidedTaskSession(
         } catch (e: Exception) {
             AppLog.w(TAG, "heartbeat sync failed: ${e.message}")
         }
+        refreshIfDue()
+    }
+
+    /**
+     * Re-requests the task when the step asks for it (`refresh_sec`) and the
+     * worker is idle: nothing in flight, no retry offered. At most once per
+     * heartbeat; due half a heartbeat early so a period close to the
+     * heartbeat's is not stretched to two of them. Best-effort — a failed
+     * refresh changes nothing on screen.
+     */
+    private suspend fun refreshIfDue() {
+        val state = _uiState.value
+        val task = state.task ?: return
+        val periodMs = (state.step?.refreshSec ?: 0) * 1000L
+        if (periodMs <= 0 || task.isFinished || state.isSending || state.retryOperationId != null) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastAnsweredAt + HEARTBEAT_INTERVAL_MS / 2 < periodMs) return
+        val seq = dispatchSeq
+        val result = guidedTaskRepository.get(task.id)
+        // An action sent meanwhile owns the screen: its answer is newer.
+        if (seq != dispatchSeq || _uiState.value.isSending || result !is TaskCallResult.Success) return
+        lastAnsweredAt = SystemClock.elapsedRealtime()
+        applyLineUpdates(result.task)
+        render(result.task, keepMessage = true)
     }
 
     /** Back / screen closed: the task stays open on the server (only `cancel` closes it). */
@@ -260,6 +295,7 @@ class GuidedTaskSession(
 
     private fun dispatch(pending: PendingAction) {
         pendingAction = pending
+        dispatchSeq++
         scope.launch {
             _uiState.update { it.copy(isSending = true, retryOperationId = null) }
             val result = guidedTaskRepository.act(
@@ -285,6 +321,7 @@ class GuidedTaskSession(
         when (result) {
             is TaskCallResult.Success -> {
                 pendingAction = null
+                lastAnsweredAt = SystemClock.elapsedRealtime()
                 applyLineUpdates(result.task)
                 render(result.task)
                 // A refusal the worker must notice without looking up from the
@@ -338,14 +375,15 @@ class GuidedTaskSession(
         _linesChanged.emit(documentId)
     }
 
-    private fun render(task: GuidedTask) {
+    /** [keepMessage]: a refresh answers no action, so it has no message of its own. */
+    private fun render(task: GuidedTask, keepMessage: Boolean = false) {
         _uiState.update {
             it.copy(
                 task = task,
                 step = task.step,
                 // `replayed` is not surfaced: the worker asked once and the
                 // answer is the same one, so it is not news.
-                message = task.message,
+                message = if (keepMessage) it.message else task.message,
                 // A new step always starts from an empty quantity field.
                 qtyInput = if (task.step?.id != it.step?.id) "" else it.qtyInput,
                 errorCode = null,

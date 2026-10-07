@@ -415,6 +415,8 @@ object DeviceDto {
         @SerializedName("line") val line: TaskStepLine? = null,
         /** The step's destination as data: cell and quantity. */
         @SerializedName("target") val target: TaskStepTarget? = null,
+        /** Re-request the task this often (seconds) while idle on the step. */
+        @SerializedName("refresh_sec") val refreshSec: Int = 0,
     )
 
     data class TaskStepTarget(

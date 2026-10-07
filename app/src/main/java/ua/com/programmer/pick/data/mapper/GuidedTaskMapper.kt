@@ -64,6 +64,7 @@ private fun DeviceDto.TaskStep.toDomain(): TaskStep = TaskStep(
     target = target?.let {
         TaskStepTarget(cell = it.cell?.takeIf { c -> c.isNotBlank() }, qty = it.qty)
     }?.takeIf { it.cell != null || it.qty != null },
+    refreshSec = refreshSec.coerceAtLeast(0),
 )
 
 private fun DeviceDto.TaskMessage.toDomain(): TaskMessage? =
