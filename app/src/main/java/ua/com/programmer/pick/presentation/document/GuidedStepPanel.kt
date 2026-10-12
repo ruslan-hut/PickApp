@@ -162,33 +162,37 @@ fun GuidedStepPanel(
                             }
                         }
                         if (hasMenu) {
-                            Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = stringResource(R.string.guided_more_actions_cd),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 8.dp),
-                            )
-                        }
-                    }
-                    DropdownMenu(
-                        expanded = menuOpen && hasMenu,
-                        onDismissRequest = { menuOpen = false },
-                    ) {
-                        secondary.forEach { action ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        text = action.label,
-                                        color = if (action.isDanger) MaterialTheme.colorScheme.error
-                                        else MaterialTheme.colorScheme.onSurface,
-                                    )
-                                },
-                                enabled = state.canAct,
-                                onClick = {
-                                    menuOpen = false
-                                    onAction(action)
-                                },
-                            )
+                            // The menu is anchored to the ⋮ it belongs to, so
+                            // it opens at the right edge, under the icon.
+                            Box {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = stringResource(R.string.guided_more_actions_cd),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 8.dp),
+                                )
+                                DropdownMenu(
+                                    expanded = menuOpen,
+                                    onDismissRequest = { menuOpen = false },
+                                ) {
+                                    secondary.forEach { action ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    text = action.label,
+                                                    color = if (action.isDanger) MaterialTheme.colorScheme.error
+                                                    else MaterialTheme.colorScheme.onSurface,
+                                                )
+                                            },
+                                            enabled = state.canAct,
+                                            onClick = {
+                                                menuOpen = false
+                                                onAction(action)
+                                            },
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
