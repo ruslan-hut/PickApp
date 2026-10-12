@@ -10,7 +10,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -29,61 +28,8 @@ class SettingsViewModel @Inject constructor(
     private val syncOrchestrator: SyncOrchestrator
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(SettingsUiState())
+    private val _uiState = MutableStateFlow(SettingsUiState(appVersion = BuildConfig.VERSION_NAME))
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
-
-    init {
-        loadSettings()
-    }
-
-    private fun loadSettings() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
-            try {
-                val serverUrl = appPreferences.serverUrl.first() ?: ""
-                _uiState.update {
-                    it.copy(
-                        serverUrl = serverUrl,
-                        appVersion = BuildConfig.VERSION_NAME,
-                        isLoading = false
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = ERROR_LOADING_SETTINGS
-                    )
-                }
-            }
-        }
-    }
-
-    fun updateServerUrl(url: String) {
-        _uiState.update { it.copy(serverUrl = url) }
-    }
-
-    fun saveSettings() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isSaving = true) }
-            try {
-                appPreferences.setServerUrl(_uiState.value.serverUrl)
-                _uiState.update {
-                    it.copy(
-                        isSaving = false,
-                        successMessage = SUCCESS_SETTINGS_SAVED
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isSaving = false,
-                        errorMessage = ERROR_SAVING_SETTINGS
-                    )
-                }
-            }
-        }
-    }
 
     fun clearCache() {
         viewModelScope.launch {
@@ -165,12 +111,9 @@ class SettingsViewModel @Inject constructor(
     }
 
     companion object {
-        const val ERROR_LOADING_SETTINGS = "ERROR_LOADING_SETTINGS"
-        const val ERROR_SAVING_SETTINGS = "ERROR_SAVING_SETTINGS"
         const val ERROR_CLEARING_CACHE = "ERROR_CLEARING_CACHE"
         const val ERROR_SYNC_FAILED = "ERROR_SYNC_FAILED"
         const val ERROR_EXPORTING_LOGS = "ERROR_EXPORTING_LOGS"
-        const val SUCCESS_SETTINGS_SAVED = "SUCCESS_SETTINGS_SAVED"
         const val SUCCESS_CACHE_CLEARED = "SUCCESS_CACHE_CLEARED"
         const val SUCCESS_SYNC_STARTED = "SUCCESS_SYNC_STARTED"
     }

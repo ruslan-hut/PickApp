@@ -19,8 +19,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -48,10 +46,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.presentation.printer.PrinterPickerDialog
 import ua.com.programmer.pick.presentation.printer.PrinterPickerViewModel
-import ua.com.programmer.pick.presentation.common.LoadingButton
 import ua.com.programmer.pick.presentation.common.PickAppBar
 import ua.com.programmer.pick.presentation.common.SectionHeader
-import ua.com.programmer.pick.ui.theme.ButtonShape
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,8 +80,6 @@ fun SettingsScreen(
     // Handle error messages
     val errorMessage = uiState.errorMessage
     val errorText = when (errorMessage) {
-        SettingsViewModel.ERROR_LOADING_SETTINGS -> stringResource(R.string.error_loading_settings)
-        SettingsViewModel.ERROR_SAVING_SETTINGS -> stringResource(R.string.error_saving_settings)
         SettingsViewModel.ERROR_CLEARING_CACHE -> stringResource(R.string.error_clearing_cache)
         SettingsViewModel.ERROR_SYNC_FAILED -> stringResource(R.string.error_sync_failed)
         SettingsViewModel.ERROR_EXPORTING_LOGS -> stringResource(R.string.error_exporting_logs)
@@ -102,7 +96,6 @@ fun SettingsScreen(
     // Handle success messages
     val successMessage = uiState.successMessage
     val successText = when (successMessage) {
-        SettingsViewModel.SUCCESS_SETTINGS_SAVED -> stringResource(R.string.settings_saved)
         SettingsViewModel.SUCCESS_CACHE_CLEARED -> stringResource(R.string.cache_cleared)
         SettingsViewModel.SUCCESS_SYNC_STARTED -> stringResource(R.string.sync_started)
         else -> null
@@ -140,43 +133,6 @@ fun SettingsScreen(
                     .padding(paddingValues)
                     .verticalScroll(rememberScrollState())
             ) {
-                // Server Settings Section
-                SectionHeader(
-                    title = stringResource(R.string.server_settings),
-                    icon = R.drawable.baseline_link_24
-                )
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                ) {
-                    OutlinedTextField(
-                        value = uiState.serverUrl,
-                        onValueChange = viewModel::updateServerUrl,
-                        label = { Text(stringResource(R.string.server_url)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = ButtonShape,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                        )
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    LoadingButton(
-                        text = stringResource(R.string.save_settings),
-                        onClick = viewModel::saveSettings,
-                        isLoading = uiState.isSaving,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
                 // Sync Section
                 SectionHeader(
                     title = stringResource(R.string.sync_settings),

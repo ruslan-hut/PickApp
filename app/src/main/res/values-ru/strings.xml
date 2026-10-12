@@ -136,8 +136,6 @@
     <string name="profile">Профиль</string>
 
     <!-- Settings -->
-    <string name="server_settings">Настройки сервера</string>
-    <string name="server_url">URL сервера</string>
     <string name="save_settings">Сохранить настройки</string>
     <string name="sync_settings">Синхронизация</string>
     <string name="force_sync">Принудительная синхронизация</string>
@@ -152,11 +150,8 @@
     <string name="error_exporting_logs">Нет логов для экспорта</string>
     <string name="app_info">О приложении</string>
     <string name="app_version_fmt">Версия: %1$s</string>
-    <string name="error_loading_settings">Ошибка загрузки настроек</string>
-    <string name="error_saving_settings">Ошибка сохранения настроек</string>
     <string name="error_clearing_cache">Ошибка очистки кэша</string>
     <string name="error_sync_failed">Ошибка синхронизации</string>
-    <string name="settings_saved">Настройки сохранены</string>
     <string name="cache_cleared">Кэш очищен</string>
     <string name="sync_started">Синхронизация начата</string>
 

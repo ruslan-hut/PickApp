@@ -17,11 +17,22 @@ plugins {
     alias(libs.plugins.secrets.gradle.plugin)
 }
 
+// A debug build against a local backend:
+//   ./gradlew installDebug -PlocalServer=http://10.0.2.2:8080
+// (10.0.2.2 is the host machine as seen from the emulator; a device on the LAN
+// takes the machine's address). Only the debug build changes: it talks to the
+// given server instead of BACK_BASE_URL, may use plain HTTP, installs next to
+// the real app (applicationId ….local, version "-local") and runs without
+// Firebase, whose config knows only the real application id. Without the
+// property every build is exactly as before.
+val localServer: String? = providers.gradleProperty("localServer").orNull
+    ?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }
+
 // Firebase activates only when the per-project config is present, so the
 // build stays green on checkouts without it. Drop google-services.json
 // (Firebase console → Project settings → your Android app) into app/ to
 // enable Crashlytics; runtime calls are guarded and no-op without it.
-if (file("google-services.json").exists()) {
+if (file("google-services.json").exists() && localServer == null) {
     apply(plugin = libs.plugins.google.services.get().pluginId)
     apply(plugin = libs.plugins.firebase.crashlytics.get().pluginId)
 }
@@ -38,9 +49,17 @@ android {
         versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["usesCleartextTraffic"] = "false"
     }
 
     buildTypes {
+        debug {
+            if (localServer != null) {
+                applicationIdSuffix = ".local"
+                versionNameSuffix = "-local"
+                manifestPlaceholders["usesCleartextTraffic"] = "true"
+            }
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -92,8 +111,22 @@ tasks.register("incrementVersion") {
     }
 }
 
+// A -PlocalServer build is never shipped: it keeps the version as it is.
 tasks.matching { it.name.startsWith("assemble") || it.name.startsWith("bundle") }.configureEach {
-    dependsOn("incrementVersion")
+    if (localServer == null) dependsOn("incrementVersion")
+}
+
+// The server of a -PlocalServer debug build. Registered after the secrets
+// plugin, so this value replaces the BACK_BASE_URL it read from local.properties.
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        localServer?.let { url ->
+            variant.buildConfigFields?.put(
+                "BACK_BASE_URL",
+                com.android.build.api.variant.BuildConfigField("String", "\"$url\"", "-PlocalServer"),
+            )
+        }
+    }
 }
 
 dependencies {

@@ -93,6 +93,10 @@ To build the application, execute these commands in your terminal at the project
 
 # Build Release APK
 ./gradlew :app:assembleRelease
+
+# Debug build against a local backend (emulator → host machine), installed next
+# to the real app as ua.com.programmer.pick.local
+./gradlew :app:installDebug -PlocalServer=http://10.0.2.2:8080
 ```
 
 ### Running Tests

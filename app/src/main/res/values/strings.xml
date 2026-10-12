@@ -156,8 +156,6 @@
     <string name="profile">Profile</string>
 
     <!-- Settings -->
-    <string name="server_settings">Server Settings</string>
-    <string name="server_url">Server URL</string>
     <string name="save_settings">Save Settings</string>
     <string name="sync_settings">Synchronization</string>
     <string name="force_sync">Force Sync</string>
@@ -172,11 +170,8 @@
     <string name="error_exporting_logs">No logs to export</string>
     <string name="app_info">App Info</string>
     <string name="app_version_fmt">Version: %1$s</string>
-    <string name="error_loading_settings">Error loading settings</string>
-    <string name="error_saving_settings">Error saving settings</string>
     <string name="error_clearing_cache">Error clearing cache</string>
     <string name="error_sync_failed">Sync failed</string>
-    <string name="settings_saved">Settings saved</string>
     <string name="cache_cleared">Cache cleared</string>
     <string name="sync_started">Sync started</string>
 

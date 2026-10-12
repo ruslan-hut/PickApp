@@ -33,7 +33,6 @@ class AppPreferences @Inject constructor(
         private val AUTH_TOKEN = stringPreferencesKey("auth_token")
         private val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
         private val CURRENT_USER_ID = stringPreferencesKey("current_user_id")
-        private val SERVER_URL = stringPreferencesKey("server_url")
         private val OFFLINE_HASH = stringPreferencesKey("offline_hash")
         private val DEVICE_ID = stringPreferencesKey("device_id")
         // TODO(legacy): remove after all clients migrate to server-driven document types
@@ -106,10 +105,6 @@ class AppPreferences @Inject constructor(
 
     val currentUserId: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[CURRENT_USER_ID]
-    }
-
-    val serverUrl: Flow<String?> = context.dataStore.data.map { preferences ->
-        preferences[SERVER_URL]
     }
 
     val deviceId: Flow<String> = context.dataStore.data.map { preferences ->
@@ -212,12 +207,6 @@ class AppPreferences @Inject constructor(
             } else {
                 preferences.remove(OFFLINE_HASH)
             }
-        }
-    }
-
-    suspend fun setServerUrl(url: String) {
-        context.dataStore.edit { preferences ->
-            preferences[SERVER_URL] = url
         }
     }
 

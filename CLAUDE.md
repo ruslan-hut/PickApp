@@ -16,9 +16,17 @@ PickApp is an offline-first Android warehouse management app for handheld termin
 ./gradlew test                   # Run unit tests
 ./gradlew connectedAndroidTest   # Run instrumented tests
 ./gradlew clean                  # Clean build artifacts
+./gradlew installDebug -PlocalServer=http://10.0.2.2:8080   # Debug build against a local backend
 ```
 
 Single-module project — all code lives in `:app`.
+
+`-PlocalServer=<url>` changes only the debug build: it talks to `<url>` instead
+of `BACK_BASE_URL`, may use plain HTTP, installs next to the real app
+(`ua.com.programmer.pick.local`, version `…-local`), runs without Firebase and
+does not bump `version.properties`. `10.0.2.2` is the host machine from the
+emulator; a device on the LAN takes the machine's address. The app has no
+runtime server setting — the server is fixed per build.
 
 ## Tech Stack
 
@@ -173,5 +181,5 @@ The app is a **thin display layer**. All business logic and data filtering lives
 - Commit messages follow conventional commits: `type(scope): description`
 - UI strings go in `res/values/strings.xml` (Ukrainian localization in `values-uk/`)
 - Room migrations: bump version in `AppDatabase`, schema exports to `app/schemas/`
-- Backend base URL: configured via secrets gradle plugin (`local.properties`)
+- Backend base URL: configured via secrets gradle plugin (`local.properties`); a debug build can point elsewhere with `-PlocalServer=<url>` (see Build Commands)
 - Backend server project: `~/projects/pick` (Go, REST)

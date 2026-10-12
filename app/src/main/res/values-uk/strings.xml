@@ -156,8 +156,6 @@
     <string name="profile">Профіль</string>
 
     <!-- Settings -->
-    <string name="server_settings">Налаштування сервера</string>
-    <string name="server_url">URL сервера</string>
     <string name="save_settings">Зберегти налаштування</string>
     <string name="sync_settings">Синхронізація</string>
     <string name="force_sync">Примусова синхронізація</string>
@@ -172,11 +170,8 @@
     <string name="error_exporting_logs">Немає логів для експорту</string>
     <string name="app_info">Про додаток</string>
     <string name="app_version_fmt">Версія: %1$s</string>
-    <string name="error_loading_settings">Помилка завантаження налаштувань</string>
-    <string name="error_saving_settings">Помилка збереження налаштувань</string>
     <string name="error_clearing_cache">Помилка очищення кешу</string>
     <string name="error_sync_failed">Помилка синхронізації</string>
-    <string name="settings_saved">Налаштування збережено</string>
     <string name="cache_cleared">Кеш очищено</string>
     <string name="sync_started">Синхронізацію розпочато</string>
 

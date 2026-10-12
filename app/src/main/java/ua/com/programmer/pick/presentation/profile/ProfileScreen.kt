@@ -224,11 +224,8 @@ fun ProfileScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
-                    // Settings Section
-                    SectionHeader(
-                        title = stringResource(R.string.settings),
-                        icon = R.drawable.baseline_settings_24
-                    )
+                    // Settings: the card names itself, no section header.
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     PickElevatedCard(
                         onClick = onSettingsClick,
