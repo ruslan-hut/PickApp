@@ -93,8 +93,9 @@
     <string name="document_taken_by_other">Документ занят другим пользователем</string>
     <string name="cannot_edit_document">Вы не можете редактировать этот документ</string>
     <string name="release_document">Освободить</string>
-    <string name="save_document_dialog_title">Сохранить документ?</string>
-    <string name="save_document_dialog_message">Сохранить и завершить документ перед выходом?</string>
+    <string name="save_document_dialog_title">Выйти из документа?</string>
+    <string name="save_document_dialog_message">Завершить — работа выполнена. Приостановить — выйти, документ остаётся за вами с прогрессом. Освободить — вернуть в очередь, чтобы продолжил любой.</string>
+    <string name="pause_document">Приостановить</string>
     <string name="cannot_release_document">Невозможно освободить документ: сервер отклонил запрос</string>
     <string name="save_complete_cd">Сохранить и завершить документ</string>
     <string name="pause_document_cd">Приостановить работу</string>

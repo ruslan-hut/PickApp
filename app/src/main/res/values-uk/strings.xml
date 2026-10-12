@@ -109,8 +109,9 @@
     <string name="document_taken_by_other">Документ зайнятий іншим користувачем</string>
     <string name="cannot_edit_document">Ви не можете редагувати цей документ</string>
     <string name="release_document">Звільнити</string>
-    <string name="save_document_dialog_title">Зберегти документ?</string>
-    <string name="save_document_dialog_message">Зберегти та завершити документ перед виходом?</string>
+    <string name="save_document_dialog_title">Вийти з документа?</string>
+    <string name="save_document_dialog_message">Завершити — роботу виконано. Призупинити — вийти, документ лишається за вами з прогресом. Звільнити — повернути в чергу, щоб продовжив будь-хто.</string>
+    <string name="pause_document">Призупинити</string>
     <string name="cannot_release_document">Неможливо звільнити документ: сервер відмовив у запиті</string>
     <string name="save_complete_cd">Зберегти та завершити документ</string>
     <string name="pause_document_cd">Призупинити роботу</string>

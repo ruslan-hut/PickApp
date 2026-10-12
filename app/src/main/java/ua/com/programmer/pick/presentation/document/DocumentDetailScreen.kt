@@ -301,7 +301,11 @@ fun DocumentDetailScreen(
                 showSaveOnBackDialog = false
                 viewModel.saveAndComplete()
             },
-            onDiscard = {
+            onPause = {
+                showSaveOnBackDialog = false
+                viewModel.pauseDocument()
+            },
+            onRelease = {
                 showSaveOnBackDialog = false
                 viewModel.tryReleaseDocument()
             },
@@ -1127,9 +1131,12 @@ private fun TakeIntoWorkBar(
 @Composable
 private fun SaveOnBackDialog(
     onSave: () -> Unit,
-    onDiscard: () -> Unit,
+    onPause: () -> Unit,
+    onRelease: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    // Three explicit ways out. A Yes/No here read "No" as "don't complete,
+    // just leave" while it released the document back to the queue.
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -1140,12 +1147,17 @@ private fun SaveOnBackDialog(
         },
         confirmButton = {
             TextButton(onClick = onSave) {
-                Text(stringResource(R.string.yes))
+                Text(stringResource(R.string.complete_document))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDiscard) {
-                Text(stringResource(R.string.no))
+            Row {
+                TextButton(onClick = onRelease) {
+                    Text(stringResource(R.string.release_document))
+                }
+                TextButton(onClick = onPause) {
+                    Text(stringResource(R.string.pause_document))
+                }
             }
         }
     )
