@@ -16,6 +16,7 @@ import ua.com.programmer.pick.core.util.AppLog
 import ua.com.programmer.pick.core.util.CrashReporter
 import ua.com.programmer.pick.core.util.FileLogger
 import ua.com.programmer.pick.data.debug.AppStartReporter
+import ua.com.programmer.pick.data.notice.NewDocumentNotifier
 import ua.com.programmer.pick.data.remote.transport.SyncTransport
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.data.sync.SyncScheduler
@@ -45,6 +46,9 @@ class PickApplication : Application(), Configuration.Provider {
 
     @Inject
     lateinit var appStartReporter: AppStartReporter
+
+    @Inject
+    lateinit var newDocumentNotifier: NewDocumentNotifier
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -105,6 +109,11 @@ class PickApplication : Application(), Configuration.Provider {
                         AppLog.w("PickApplication", "foreground resync failed: ${e.message}")
                     }
                 }
+                newDocumentNotifier.start()
+            }
+
+            override fun onStop(owner: LifecycleOwner) {
+                newDocumentNotifier.stop()
             }
         })
     }

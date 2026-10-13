@@ -408,4 +408,10 @@
     <string name="label_printer_pick_title">Label printer</string>
     <string name="label_printer_pick_confirm">Select</string>
     <string name="label_printer_none_configured">No printers are set up for your warehouse. Ask the administrator to add one in the web interface (Tools → Printers).</string>
+    <!-- New-document notice banner -->
+    <string name="new_document_title">New document</string>
+    <string name="new_documents_title">New documents: %1$d</string>
+    <string name="new_document_line_channel">№%1$s · %2$s</string>
+    <string name="new_document_line">№%1$s</string>
+    <string name="new_documents_more">and %1$d more</string>
 </resources>

@@ -9,6 +9,8 @@
     <!-- Per-line photo capture (in-app CameraX). Camera is optional so the app
          still installs on terminals without one. -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- New-document notice buzz -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-feature
         android:name="android.hardware.camera.any"
         android:required="false" />

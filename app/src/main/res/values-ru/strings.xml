@@ -389,4 +389,10 @@
     <string name="label_printer_pick_title">Принтер этикеток</string>
     <string name="label_printer_pick_confirm">Выбрать</string>
     <string name="label_printer_none_configured">Для вашего склада не настроено ни одного принтера. Попросите администратора добавить его в веб-интерфейсе (Инструменты → Принтеры).</string>
+    <!-- New-document notice banner -->
+    <string name="new_document_title">Новый документ</string>
+    <string name="new_documents_title">Новые документы: %1$d</string>
+    <string name="new_document_line_channel">№%1$s · %2$s</string>
+    <string name="new_document_line">№%1$s</string>
+    <string name="new_documents_more">и ещё %1$d</string>
 </resources>

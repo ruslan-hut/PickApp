@@ -408,4 +408,10 @@
     <string name="label_printer_pick_title">Принтер етикеток</string>
     <string name="label_printer_pick_confirm">Обрати</string>
     <string name="label_printer_none_configured">Для вашого складу не налаштовано жодного принтера. Попросіть адміністратора додати його у веб-інтерфейсі (Інструменти → Принтери).</string>
+    <!-- New-document notice banner -->
+    <string name="new_document_title">Новий документ</string>
+    <string name="new_documents_title">Нові документи: %1$d</string>
+    <string name="new_document_line_channel">№%1$s · %2$s</string>
+    <string name="new_document_line">№%1$s</string>
+    <string name="new_documents_more">і ще %1$d</string>
 </resources>

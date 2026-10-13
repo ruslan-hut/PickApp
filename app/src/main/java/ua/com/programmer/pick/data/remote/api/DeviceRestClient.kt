@@ -129,6 +129,9 @@ class DeviceRestClient @Inject constructor(
 
     // --- Boxes ---
 
+    suspend fun queueNew(after: String?): Result<DeviceDto.QueueNewResult> =
+        envelopeCall { deviceApi.queueNew(after) }
+
     suspend fun parkReasons(): Result<DeviceDto.ParkReasonsResult> =
         envelopeCall { deviceApi.parkReasons() }
 

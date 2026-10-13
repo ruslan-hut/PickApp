@@ -152,6 +152,20 @@ object DeviceDto {
         @SerializedName("stage") val stage: String,
     )
 
+    // --- New-document notice (GET /device/queue/new) ---
+
+    data class QueueNewDocument(
+        @SerializedName("id") val id: String,
+        @SerializedName("number") val number: String,
+        @SerializedName("sales_channel") val salesChannel: String? = null,
+    )
+
+    data class QueueNewResult(
+        @SerializedName("enabled") val enabled: Boolean = false,
+        @SerializedName("cursor") val cursor: String? = null,
+        @SerializedName("documents") val documents: List<QueueNewDocument> = emptyList(),
+    )
+
     // --- Parking ---
 
     data class ParkReasonDto(

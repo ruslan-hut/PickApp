@@ -54,6 +54,13 @@ interface DeviceApi {
         @Query("document_type") documentType: String? = null,
     ): Response<ApiEnvelope<DeviceDto.SyncResponse>>
 
+    /**
+     * New-document notice poll: documents that entered the worker's queue after
+     * [after] (the previous answer's cursor; null on a session's first poll).
+     */
+    @GET("device/queue/new")
+    suspend fun queueNew(@Query("after") after: String?): Response<ApiEnvelope<DeviceDto.QueueNewResult>>
+
     @GET("device/documents/{id}/products")
     suspend fun documentProducts(@Path("id") documentId: String): Response<ApiEnvelope<DeviceDto.SyncResponse>>
 
