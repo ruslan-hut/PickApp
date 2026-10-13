@@ -1249,7 +1249,7 @@ private fun BoxesTab(
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    if (labelPrint.enabled && !labelPrint.trackingNumber.isNullOrBlank()) {
+                    if (!labelPrint.trackingNumber.isNullOrBlank()) {
                         Text(
                             text = stringResource(R.string.label_waybill_fmt, labelPrint.trackingNumber),
                             style = MaterialTheme.typography.labelMedium,

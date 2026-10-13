@@ -99,6 +99,23 @@ interface DocumentDao {
     )
     suspend fun applyResumed(documentId: String, state: String, version: Int, lastModified: Long)
 
+    /**
+     * The server-decided columns of a payload that is otherwise suppressed
+     * while this device holds the stage lock: the offered actions and the
+     * waybill. Lines, boxes, state and the dirty flag stay untouched.
+     */
+    @Query(
+        "UPDATE documents SET can_park = :canPark, can_resume = :canResume, " +
+            "tracking_number = :trackingNumber, can_print_label = :canPrintLabel WHERE id = :documentId"
+    )
+    suspend fun applyServerVerdicts(
+        documentId: String,
+        canPark: Boolean,
+        canResume: Boolean,
+        trackingNumber: String?,
+        canPrintLabel: Boolean
+    )
+
     @Query("UPDATE documents SET assigned_user_id = :userId, taken_at = :takenAt, state = :state, is_dirty = 1, last_modified = :lastModified WHERE id = :documentId")
     suspend fun takeDocumentIntoWork(documentId: String, userId: String, takenAt: Long, state: String, lastModified: Long)
 

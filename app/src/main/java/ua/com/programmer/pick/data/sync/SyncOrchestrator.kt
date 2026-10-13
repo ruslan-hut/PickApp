@@ -2294,8 +2294,19 @@ class SyncOrchestrator @Inject constructor(
                         "server_line_count" to (dto.lines?.size ?: 0),
                         "server_state" to dto.state,
                         "can_park" to dto.canPark,
-                        "can_resume" to dto.canResume
+                        "can_resume" to dto.canResume,
+                        "can_print_label" to dto.canPrintLabel
                     )
+                )
+                // Suppression guards the worker's data, not the server's
+                // verdicts: can_print_label only turns true once the document
+                // is PACKING, i.e. exactly while this branch drops payloads.
+                documentDao.applyServerVerdicts(
+                    documentId = dto.id,
+                    canPark = dto.canPark,
+                    canResume = dto.canResume,
+                    trackingNumber = dto.trackingNumber,
+                    canPrintLabel = dto.canPrintLabel
                 )
                 return@forEach
             }
