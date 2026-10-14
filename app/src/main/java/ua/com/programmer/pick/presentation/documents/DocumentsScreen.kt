@@ -41,6 +41,7 @@ import ua.com.programmer.pick.domain.model.DocumentState
 import ua.com.programmer.pick.presentation.common.EmptyState
 import ua.com.programmer.pick.presentation.common.PickAppBar
 import ua.com.programmer.pick.presentation.common.SearchBar
+import ua.com.programmer.pick.presentation.common.SessionBanner
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -115,6 +116,8 @@ fun DocumentsScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            SessionBanner(sessionLost = uiState.sessionLost)
+
             // Search bar
             SearchBar(
                 query = searchQuery,

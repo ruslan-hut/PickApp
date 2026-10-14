@@ -43,6 +43,7 @@ import ua.com.programmer.pick.domain.model.OpenTask
 import ua.com.programmer.pick.domain.model.UserRole
 import ua.com.programmer.pick.presentation.common.DestructiveConfirmDialog
 import ua.com.programmer.pick.presentation.common.OfflineBanner
+import ua.com.programmer.pick.presentation.common.SessionBanner
 import ua.com.programmer.pick.presentation.common.PickAppBar
 import ua.com.programmer.pick.presentation.common.PickElevatedCard
 import ua.com.programmer.pick.presentation.common.SectionHeader
@@ -87,6 +88,7 @@ fun HomeScreen(
         ) {
             // Offline banner
             OfflineBanner(isOffline = !uiState.isOnline)
+            SessionBanner(sessionLost = uiState.sessionLost)
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),

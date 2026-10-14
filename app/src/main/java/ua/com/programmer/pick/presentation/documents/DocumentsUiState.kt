@@ -7,6 +7,7 @@ data class DocumentsUiState(
     val documents: List<Document> = emptyList(),
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
+    val sessionLost: Boolean = false,
     val query: String? = null,
     val errorMessage: String? = null,
     // Per-type capability flags keyed by document type code. Populated from

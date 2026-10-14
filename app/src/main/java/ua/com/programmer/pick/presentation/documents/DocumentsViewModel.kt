@@ -23,6 +23,7 @@ import ua.com.programmer.pick.core.util.AppLog
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.repository.DocumentTypeConfigProvider
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
+import ua.com.programmer.pick.data.sync.sessionLost
 import ua.com.programmer.pick.domain.repository.DocumentRepository
 import ua.com.programmer.pick.presentation.navigation.Screen
 import javax.inject.Inject
@@ -54,6 +55,13 @@ class DocumentsViewModel @Inject constructor(
     init {
         observeDocuments()
         observeSelection()
+        observeSession()
+    }
+
+    private fun observeSession() {
+        syncOrchestrator.sessionLost()
+            .onEach { lost -> _uiState.update { it.copy(sessionLost = lost) } }
+            .launchIn(viewModelScope)
     }
 
     private fun observeSelection() {

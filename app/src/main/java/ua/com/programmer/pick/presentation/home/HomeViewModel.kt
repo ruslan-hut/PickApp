@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import ua.com.programmer.pick.data.sync.sessionLost
 import ua.com.programmer.pick.core.util.NetworkMonitor
 import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.remote.transport.AvailableDocumentTypeDto
@@ -179,6 +180,11 @@ class HomeViewModel @Inject constructor(
      * back to the login screen so they can re-authenticate.
      */
     private fun observeAuthState() {
+        viewModelScope.launch {
+            syncOrchestrator.sessionLost().collect { lost ->
+                _uiState.update { it.copy(sessionLost = lost) }
+            }
+        }
         viewModelScope.launch {
             var wasAuthenticated = false
             syncOrchestrator.syncState

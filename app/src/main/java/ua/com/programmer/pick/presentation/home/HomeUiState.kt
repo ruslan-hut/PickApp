@@ -14,6 +14,7 @@ data class HomeUiState(
     val openTasks: List<OpenTask> = emptyList(),
     val syncStates: List<SyncState> = emptyList(),
     val isOnline: Boolean = true,
+    val sessionLost: Boolean = false,
     val lastSyncTime: Long? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
