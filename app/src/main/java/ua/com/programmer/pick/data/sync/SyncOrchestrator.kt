@@ -594,6 +594,9 @@ class SyncOrchestrator @Inject constructor(
      * Request delta sync for all entities via transport.
      * Requires user authentication (per protocol).
      */
+    /** False for the demo transport, which has no server and so no session to lose. */
+    val hasServerSession: Boolean get() = transport.requiresPolling
+
     suspend fun requestDeltaSync(): Result<Unit> {
         AppLog.d(TAG, "Requesting delta sync")
 

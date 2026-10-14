@@ -12,7 +12,7 @@ private const val SESSION_GRACE_MS = 2_000L
 /**
  * True once the device has stayed without a server session for a moment. The
  * grace period keeps the warning off the screen while the auto-login of a cold
- * start or a foreground resume is still in flight.
+ * start or a foreground resume is still in flight. Never true in demo mode.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 fun SyncOrchestrator.sessionLost(): Flow<Boolean> =
@@ -20,7 +20,7 @@ fun SyncOrchestrator.sessionLost(): Flow<Boolean> =
         .map { it.isUserAuthenticated }
         .distinctUntilChanged()
         .mapLatest { authenticated ->
-            if (authenticated) {
+            if (authenticated || !hasServerSession) {
                 false
             } else {
                 delay(SESSION_GRACE_MS)

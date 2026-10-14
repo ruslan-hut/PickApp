@@ -7,7 +7,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import ua.com.programmer.pick.core.di.IoDispatcher
@@ -24,6 +27,11 @@ import javax.inject.Singleton
  * is signed in, and emits the documents the server reports as new in that
  * worker's queue. Everything is server-decided — whether the option is on for
  * the worker, which documents count, and the cursor; the app only shows them.
+ *
+ * While the server keeps the option on, polling carries on in the background
+ * too ([active] drives [QueueNoticeService], which keeps the process alive), so
+ * a locked or switched-off screen still gets the notice. With the option off
+ * it stops when the app leaves the foreground — nothing to wait for.
  *
  * The cursor lives in memory per signed-in worker: a new session, or the
  * option switched off, starts from the moment of its first poll, so documents
@@ -46,6 +54,11 @@ class NewDocumentNotifier @Inject constructor(
     @Volatile private var cursor: String? = null
     @Volatile private var cursorUserId: String? = null
 
+    private val _active = MutableStateFlow(false)
+
+    /** True while a signed-in worker has the notice option on: the service runs. */
+    val active: StateFlow<Boolean> = _active.asStateFlow()
+
     private val _notices = MutableSharedFlow<List<NewDocumentNotice>>(extraBufferCapacity = 8)
     val notices: SharedFlow<List<NewDocumentNotice>> = _notices.asSharedFlow()
 
@@ -60,8 +73,16 @@ class NewDocumentNotifier @Inject constructor(
         }
     }
 
-    /** Stops polling; the cursor is kept, so a return to the foreground catches up. */
-    fun stop() {
+    /**
+     * The app left the foreground. Polling goes on while the option is on;
+     * otherwise it stops, and the cursor is kept for the return.
+     */
+    fun onBackgrounded() {
+        if (_active.value) return
+        stop()
+    }
+
+    private fun stop() {
         pollJob?.cancel()
         pollJob = null
     }
@@ -71,6 +92,7 @@ class NewDocumentNotifier @Inject constructor(
         // The demo transport has no server to ask.
         if (auth == null || !transport.requiresPolling) {
             cursor = null
+            _active.value = false
             return
         }
         if (auth.userId != cursorUserId) {
@@ -80,6 +102,7 @@ class NewDocumentNotifier @Inject constructor(
         client.queueNew(cursor)
             .onSuccess { r ->
                 cursor = if (r.enabled) r.cursor else null
+                _active.value = r.enabled
                 if (r.documents.isNotEmpty()) {
                     _notices.emit(r.documents.map {
                         NewDocumentNotice(it.id, it.number, it.salesChannel?.takeIf { ch -> ch.isNotBlank() })

@@ -11,6 +11,15 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- New-document notice buzz -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- New-document notice while the app is in the background or the screen is
+         off: a system notification (Android 13+ asks at runtime) and the
+         foreground service that keeps the poll alive. specialUse, not dataSync:
+         dataSync services are cut after six hours on Android 15. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Lights the screen for a few seconds when a notice arrives on a sleeping terminal. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-feature
         android:name="android.hardware.camera.any"
         android:required="false" />
@@ -36,6 +45,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".data.notice.QueueNoticeService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Polls the server for documents that enter the worker's queue and raises a notification while the app is in the background" />
+        </service>
 
         <!-- FileProvider for sharing exported log bundles from cacheDir -->
         <provider

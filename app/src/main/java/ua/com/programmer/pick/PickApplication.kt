@@ -3,6 +3,7 @@ package ua.com.programmer.pick
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration
@@ -10,6 +11,9 @@ import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import ua.com.programmer.pick.core.scanner.BarcodeService
 import ua.com.programmer.pick.core.util.AppLog
@@ -17,6 +21,8 @@ import ua.com.programmer.pick.core.util.CrashReporter
 import ua.com.programmer.pick.core.util.FileLogger
 import ua.com.programmer.pick.data.debug.AppStartReporter
 import ua.com.programmer.pick.data.notice.NewDocumentNotifier
+import ua.com.programmer.pick.data.notice.QueueNoticeNotifier
+import ua.com.programmer.pick.data.notice.QueueNoticeService
 import ua.com.programmer.pick.data.remote.transport.SyncTransport
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.data.sync.SyncScheduler
@@ -49,6 +55,9 @@ class PickApplication : Application(), Configuration.Provider {
 
     @Inject
     lateinit var newDocumentNotifier: NewDocumentNotifier
+
+    @Inject
+    lateinit var queueNoticeNotifier: QueueNoticeNotifier
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -88,6 +97,18 @@ class PickApplication : Application(), Configuration.Provider {
         // request a delta sync. Covers the gap when WorkManager periodic sync
         // is throttled by Doze/app-standby and ERP-side box catalog updates
         // would otherwise be invisible until the next 15-min cycle.
+        // The notice poll is the service's reason to exist: it starts once the
+        // server reports the option on (an answer that arrives with the app in
+        // front, which is the only place Android lets a foreground service start).
+        newDocumentNotifier.active
+            .filter { it }
+            .onEach {
+                if (ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                    QueueNoticeService.start(this)
+                }
+            }
+            .launchIn(appScope)
+
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {
                 // Probe the transport first: a long Doze sleep freezes the PING
@@ -109,11 +130,12 @@ class PickApplication : Application(), Configuration.Provider {
                         AppLog.w("PickApplication", "foreground resync failed: ${e.message}")
                     }
                 }
+                queueNoticeNotifier.clear()
                 newDocumentNotifier.start()
             }
 
             override fun onStop(owner: LifecycleOwner) {
-                newDocumentNotifier.stop()
+                newDocumentNotifier.onBackgrounded()
             }
         })
     }

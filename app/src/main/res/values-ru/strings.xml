@@ -392,8 +392,12 @@
     <!-- New-document notice banner -->
     <string name="new_document_title">Новый документ</string>
     <string name="new_documents_title">Новые документы: %1$d</string>
-    <string name="new_document_line_channel">№%1$s · %2$s</string>
-    <string name="new_document_line">№%1$s</string>
+    <string name="new_document_line_channel">%1$s · %2$s</string>
+    <string name="new_document_line">%1$s</string>
     <string name="new_documents_more">и ещё %1$d</string>
     <string name="session_lost">Сессия не установлена — данные не синхронизируются. Войдите снова</string>
+    <string name="queue_notice_service_title">Ожидание новых документов</string>
+    <string name="queue_notice_service_text">О новых документах сообщим здесь</string>
+    <string name="queue_notice_channel_documents">Новые документы</string>
+    <string name="queue_notice_channel_service">Фоновый режим</string>
 </resources>

@@ -411,8 +411,12 @@
     <!-- New-document notice banner -->
     <string name="new_document_title">New document</string>
     <string name="new_documents_title">New documents: %1$d</string>
-    <string name="new_document_line_channel">№%1$s · %2$s</string>
-    <string name="new_document_line">№%1$s</string>
+    <string name="new_document_line_channel">%1$s · %2$s</string>
+    <string name="new_document_line">%1$s</string>
     <string name="new_documents_more">and %1$d more</string>
     <string name="session_lost">Session not established — data is not syncing. Sign in again</string>
+    <string name="queue_notice_service_title">Waiting for new documents</string>
+    <string name="queue_notice_service_text">New documents will be announced here</string>
+    <string name="queue_notice_channel_documents">New documents</string>
+    <string name="queue_notice_channel_service">Background watch</string>
 </resources>
