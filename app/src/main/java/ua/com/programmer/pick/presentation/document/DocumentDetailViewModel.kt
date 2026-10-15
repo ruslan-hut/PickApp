@@ -1,5 +1,6 @@
 package ua.com.programmer.pick.presentation.document
 
+import androidx.annotation.StringRes
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.core.util.AppLog
 import androidx.lifecycle.SavedStateHandle
@@ -51,6 +52,8 @@ import ua.com.programmer.pick.domain.repository.LabelPrintRepository
 import ua.com.programmer.pick.domain.repository.ParkingRepository
 import ua.com.programmer.pick.domain.repository.PrinterNotSelectedException
 import ua.com.programmer.pick.domain.repository.PrinterUnreachableException
+import ua.com.programmer.pick.domain.repository.LabelPrintRefusal
+import ua.com.programmer.pick.domain.repository.LabelPrintRefusedException
 import ua.com.programmer.pick.domain.repository.ProductRepository
 import ua.com.programmer.pick.domain.repository.GuidedTaskRepository
 import ua.com.programmer.pick.core.util.NetworkMonitor
@@ -1390,6 +1393,8 @@ class DocumentDetailViewModel @Inject constructor(
                         }
                         is PrinterUnreachableException ->
                             _uiEvents.emit(DocumentDetailUiEvent.ShowText(R.string.label_printer_unreachable_fmt, listOf(e.printer.name, e.printer.address)))
+                        is LabelPrintRefusedException ->
+                            _uiEvents.emit(DocumentDetailUiEvent.ShowText(e.reason.messageRes()))
                         else ->
                             _uiEvents.emit(DocumentDetailUiEvent.ShowText(R.string.label_print_failed_fmt, listOf(e.message.orEmpty())))
                     }
@@ -1820,4 +1825,17 @@ class DocumentDetailViewModel @Inject constructor(
         }
         completeDocument()
     }
+}
+
+/** The worker-facing text of a refused label print. */
+@StringRes
+private fun LabelPrintRefusal.messageRes(): Int = when (this) {
+    LabelPrintRefusal.CARRIER_UNAVAILABLE -> R.string.label_print_carrier_unavailable
+    LabelPrintRefusal.CARRIER_NOT_CONFIGURED -> R.string.label_print_carrier_not_configured
+    LabelPrintRefusal.WAYBILL_REJECTED -> R.string.label_print_waybill_rejected
+    LabelPrintRefusal.NO_SHIPMENT -> R.string.label_print_no_shipment
+    LabelPrintRefusal.SEAT_NOT_FOUND -> R.string.label_print_seat_not_found
+    LabelPrintRefusal.PRINTER_SETUP_INVALID -> R.string.label_print_printer_setup_invalid
+    LabelPrintRefusal.LABEL_RENDER_FAILED -> R.string.label_print_render_failed
+    LabelPrintRefusal.SERVER_UNREACHABLE -> R.string.label_print_server_unreachable
 }

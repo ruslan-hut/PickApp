@@ -12,10 +12,13 @@ import ua.com.programmer.pick.data.remote.api.DeviceRestClient
 import ua.com.programmer.pick.data.remote.dto.DeviceDto
 import ua.com.programmer.pick.domain.model.LabelPrinter
 import ua.com.programmer.pick.domain.repository.LabelPrintOutcome
+import ua.com.programmer.pick.domain.repository.LabelPrintRefusal
+import ua.com.programmer.pick.domain.repository.LabelPrintRefusedException
 import ua.com.programmer.pick.domain.repository.LabelPrintRepository
 import ua.com.programmer.pick.domain.repository.PrinterChoice
 import ua.com.programmer.pick.domain.repository.PrinterNotSelectedException
 import ua.com.programmer.pick.domain.repository.PrinterUnreachableException
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -47,10 +50,8 @@ class LabelPrintRepositoryImpl @Inject constructor(
     override suspend fun printLabel(documentId: String, seats: List<Int>?): Result<LabelPrintOutcome> =
         withContext(ioDispatcher) {
             val job = client.shipmentPrintJob(documentId, seats).getOrElse { e ->
-                if (e is DeviceApiException && e.code == PRINTER_NOT_SELECTED) {
-                    return@withContext Result.failure(PrinterNotSelectedException(e.message.orEmpty()))
-                }
-                return@withContext Result.failure(e)
+                AppLog.w(TAG, "print job for $documentId refused: ${(e as? DeviceApiException)?.code} ${e.message}")
+                return@withContext Result.failure(jobFailure(e))
             }
             val printer = job.printer.toDomain()
             val bytes = Base64.decode(job.data, Base64.DEFAULT)
@@ -60,6 +61,17 @@ class LabelPrintRepositoryImpl @Inject constructor(
             sent.map { LabelPrintOutcome(printer, job.seats, job.seatCount, job.trackingNumber) }
                 .recoverCatching { throw PrinterUnreachableException(printer, it) }
         }
+
+    /** Turns a failed print-job call into what the worker is told. */
+    private fun jobFailure(e: Throwable): Throwable {
+        if (e is IOException) {
+            return LabelPrintRefusedException(LabelPrintRefusal.SERVER_UNREACHABLE, e.message.orEmpty(), e)
+        }
+        if (e !is DeviceApiException) return e
+        if (e.code == PRINTER_NOT_SELECTED) return PrinterNotSelectedException(e.message.orEmpty())
+        val reason = LabelPrintRefusal.fromCode(e.code) ?: return e
+        return LabelPrintRefusedException(reason, e.message.orEmpty(), e)
+    }
 
     /** One retry after a short pause: a printer waking up or a Wi-Fi hiccup. */
     private suspend fun sendWithRetry(printer: LabelPrinter, bytes: ByteArray): Result<Unit> {
