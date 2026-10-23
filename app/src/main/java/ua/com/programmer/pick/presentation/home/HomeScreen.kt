@@ -99,28 +99,20 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(vertical = 8.dp)
             ) {
-                // Welcome section
+                // Welcome section. With the timesheet module it also carries
+                // the shift: its state next to the connection, and the key.
+                // Working without a started shift is not blocked.
                 item {
                     WelcomeCard(
                         userName = uiState.currentUser?.name ?: stringResource(R.string.user_default),
-                        isOnline = uiState.isOnline
+                        isOnline = uiState.isOnline,
+                        shift = uiState.shift,
+                        onShiftStart = { onShiftMark(ShiftAction.START) },
+                        onShiftEnd = {
+                            val doc = uiState.shift.collectingDocument
+                            if (doc != null) shiftEndDocument = doc else onShiftMark(ShiftAction.END)
+                        }
                     )
-                }
-
-                // Shift marks: invisible without the timesheet module. Working
-                // without a started shift is not blocked — only the banner.
-                if (uiState.shift.enabled) {
-                    item {
-                        ShiftCard(
-                            shift = uiState.shift,
-                            isOnline = uiState.isOnline,
-                            onStart = { onShiftMark(ShiftAction.START) },
-                            onEnd = {
-                                val doc = uiState.shift.collectingDocument
-                                if (doc != null) shiftEndDocument = doc else onShiftMark(ShiftAction.END)
-                            }
-                        )
-                    }
                 }
 
                 // Unfinished guided tasks (F-4): continue or cancel. Empty —
@@ -290,91 +282,63 @@ private fun startedAgo(startedAt: Long): String {
 }
 
 /**
- * No open shift: a warning banner with *Почати зміну*. Open: the server's
- * "shift started at HH:MM" with *Завершити зміну*. Both keys need the network.
+ * The worker, the connection and — where shift marks are on — the shift:
+ * "Онлайн · Зміну розпочато о 09:02" with *Завершити зміну*, or
+ * "Онлайн · Зміну не розпочато" with *Почати зміну*. The key needs the network.
  */
-@Composable
-private fun ShiftCard(
-    shift: ShiftStatus,
-    isOnline: Boolean,
-    onStart: () -> Unit,
-    onEnd: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val open = shift.isOpen
-    OutlinedCard(
-        modifier = modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-        colors = CardDefaults.outlinedCardColors(
-            containerColor = if (open) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.errorContainer
-        ),
-        border = BorderStroke(
-            1.dp,
-            if (open) MaterialTheme.colorScheme.outlineVariant else MaterialTheme.colorScheme.error
-        )
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = if (open) {
-                    shift.startedText ?: stringResource(R.string.shift_started)
-                } else {
-                    stringResource(R.string.shift_not_started)
-                },
-                style = MaterialTheme.typography.titleMedium,
-                color = if (open) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onErrorContainer
-            )
-            if (!isOnline) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = stringResource(R.string.shift_offline_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (open) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onErrorContainer
-                )
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            if (open) {
-                OutlinedButton(onClick = onEnd, enabled = isOnline, modifier = Modifier.fillMaxWidth()) {
-                    Text(text = stringResource(R.string.shift_end), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            } else {
-                Button(onClick = onStart, enabled = isOnline, modifier = Modifier.fillMaxWidth()) {
-                    Text(text = stringResource(R.string.shift_start), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-        }
-    }
-}
-
 @Composable
 private fun WelcomeCard(
     userName: String,
     isOnline: Boolean,
+    shift: ShiftStatus,
+    onShiftStart: () -> Unit,
+    onShiftEnd: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     PickElevatedCard(
         modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         containerColor = MaterialTheme.colorScheme.primaryContainer
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(16.dp)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.welcome_fmt, userName),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StatusIndicator(isOnline = isOnline, size = 10.dp)
+                Spacer(modifier = Modifier.width(6.dp))
+                val connection = if (isOnline) stringResource(R.string.online) else stringResource(R.string.offline)
+                val shiftText = when {
+                    !shift.enabled -> null
+                    shift.isOpen -> shift.startedText ?: stringResource(R.string.shift_started)
+                    else -> stringResource(R.string.shift_not_started)
+                }
                 Text(
-                    text = stringResource(R.string.welcome_fmt, userName),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    text = if (shiftText != null) "$connection · $shiftText" else connection,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (shift.enabled && !shift.isOpen) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    }
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    StatusIndicator(isOnline = isOnline, size = 10.dp)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (isOnline) stringResource(R.string.online) else stringResource(R.string.offline),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                    )
+            }
+            if (shift.enabled) {
+                Spacer(modifier = Modifier.height(12.dp))
+                if (shift.isOpen) {
+                    OutlinedButton(onClick = onShiftEnd, enabled = isOnline, modifier = Modifier.fillMaxWidth()) {
+                        Text(text = stringResource(R.string.shift_end), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                } else {
+                    Button(onClick = onShiftStart, enabled = isOnline, modifier = Modifier.fillMaxWidth()) {
+                        Text(text = stringResource(R.string.shift_start), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
         }
