@@ -427,4 +427,19 @@
     <string name="queue_notice_service_text">New documents will be announced here</string>
     <string name="queue_notice_channel_documents">New documents</string>
     <string name="queue_notice_channel_service">Background watch</string>
+
+    <!-- Shift marks (timesheet) -->
+    <string name="shift_not_started">Shift not started</string>
+    <string name="shift_start">Start shift</string>
+    <string name="shift_end">End shift</string>
+    <string name="shift_started">Shift started</string>
+    <string name="shift_ended">Shift ended</string>
+    <string name="shift_scan_title">Scan the QR code</string>
+    <string name="shift_scan_hint">Scan the QR code on the warehouse screen with this device\'s scanner.</string>
+    <string name="shift_offline_hint">No connection: shift marks need the network.</string>
+    <string name="shift_admin_code_title">Administrator code</string>
+    <string name="shift_admin_code_submit">Confirm</string>
+    <string name="shift_admin_code_hint">If the screen is off, ask the administrator for a one-time code.</string>
+    <string name="shift_error_unreachable">No connection to the server. Try again.</string>
+    <string name="shift_end_collecting_fmt">You are collecting document %1$s. End the shift anyway? The document stays as it is.</string>
 </resources>

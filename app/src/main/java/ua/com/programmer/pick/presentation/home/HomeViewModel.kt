@@ -24,6 +24,7 @@ import ua.com.programmer.pick.data.remote.transport.AvailableDocumentTypeDto
 import ua.com.programmer.pick.data.sync.SyncOrchestrator
 import ua.com.programmer.pick.domain.model.AvailableDocumentType
 import ua.com.programmer.pick.domain.repository.GuidedTaskRepository
+import ua.com.programmer.pick.domain.repository.ShiftRepository
 import ua.com.programmer.pick.domain.repository.UserRepository
 import javax.inject.Inject
 
@@ -36,6 +37,7 @@ class HomeViewModel @Inject constructor(
     private val guidedTaskRepository: GuidedTaskRepository,
     private val gson: Gson,
     private val documentRepository: DocumentRepository,
+    private val shiftRepository: ShiftRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -49,6 +51,7 @@ class HomeViewModel @Inject constructor(
         loadCurrentUser()
         loadAvailableDocumentTypes()
         observeOpenTasks()
+        observeShift()
         observeAuthState()
     }
 
@@ -144,6 +147,22 @@ class HomeViewModel @Inject constructor(
         if (state.availableDocumentTypes.none { it.isGuided } && state.openTasks.isEmpty()) return
         viewModelScope.launch {
             guidedTaskRepository.refreshOpen()
+        }
+    }
+
+    private fun observeShift() {
+        viewModelScope.launch {
+            shiftRepository.status.collect { shift ->
+                _uiState.update { it.copy(shift = shift) }
+            }
+        }
+    }
+
+    /** Re-read the shift on resume: it may have been marked or auto-closed elsewhere. */
+    fun refreshShift() {
+        if (!_uiState.value.isOnline) return
+        viewModelScope.launch {
+            shiftRepository.refresh()
         }
     }
 

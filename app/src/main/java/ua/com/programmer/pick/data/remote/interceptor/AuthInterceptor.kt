@@ -17,8 +17,9 @@ class AuthInterceptor @Inject constructor(
         // build would map that unknown state to LOADED, so it never gets them.
         // "document_type": every list and sync request carries the selected
         // type, so the server returns no documents when it is missing.
+        // "shift": the build marks shift start / end (timesheet module).
         const val FEATURES_HEADER = "X-Device-Features"
-        const val FEATURES = "parking,document_type"
+        const val FEATURES = "parking,document_type,shift"
     }
 
     override fun intercept(chain: Interceptor.Chain): Response {

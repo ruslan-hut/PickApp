@@ -1,6 +1,7 @@
 package ua.com.programmer.pick.presentation.navigation
 
 import android.net.Uri
+import ua.com.programmer.pick.domain.model.ShiftAction
 
 sealed class Screen(val route: String) {
 
@@ -42,10 +43,16 @@ sealed class Screen(val route: String) {
         fun byDocument(documentId: String) = "task?taskId=&type=&documentId=$documentId"
     }
 
+    /** Shift start / end; [SHIFT_ACTION_ARG] is a `ShiftAction` name. */
+    data object ShiftMark : Screen("shift_mark?action={action}") {
+        fun create(action: ShiftAction) = "shift_mark?action=${action.name}"
+    }
+
     companion object {
         const val DOCUMENT_ID_ARG = "documentId"
         const val TASK_ID_ARG = "taskId"
         const val TASK_TYPE_ARG = "type"
         const val ENROLL_QR_ARG = "qr"
+        const val SHIFT_ACTION_ARG = "action"
     }
 }

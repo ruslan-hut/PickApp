@@ -13,6 +13,7 @@ import ua.com.programmer.pick.data.repository.DocumentRepositoryImpl
 import ua.com.programmer.pick.data.repository.GuidedTaskRepositoryImpl
 import ua.com.programmer.pick.data.repository.OutgoingOperationRepositoryImpl
 import ua.com.programmer.pick.data.repository.ProductRepositoryImpl
+import ua.com.programmer.pick.data.repository.ShiftRepositoryImpl
 import ua.com.programmer.pick.data.repository.UserRepositoryImpl
 import ua.com.programmer.pick.data.repository.WarehouseRepositoryImpl
 import ua.com.programmer.pick.domain.repository.BoxRepository
@@ -24,6 +25,7 @@ import ua.com.programmer.pick.domain.repository.DocumentRepository
 import ua.com.programmer.pick.domain.repository.GuidedTaskRepository
 import ua.com.programmer.pick.domain.repository.OutgoingOperationRepository
 import ua.com.programmer.pick.domain.repository.ProductRepository
+import ua.com.programmer.pick.domain.repository.ShiftRepository
 import ua.com.programmer.pick.domain.repository.UserRepository
 import ua.com.programmer.pick.domain.repository.WarehouseRepository
 import javax.inject.Singleton
@@ -97,4 +99,10 @@ abstract class RepositoryModule {
     abstract fun bindBoxRepository(
         boxRepositoryImpl: BoxRepositoryImpl
     ): BoxRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindShiftRepository(
+        shiftRepositoryImpl: ShiftRepositoryImpl
+    ): ShiftRepository
 }

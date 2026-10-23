@@ -408,4 +408,19 @@
     <string name="queue_notice_service_text">О новых документах сообщим здесь</string>
     <string name="queue_notice_channel_documents">Новые документы</string>
     <string name="queue_notice_channel_service">Фоновый режим</string>
+
+    <!-- Shift marks (timesheet) -->
+    <string name="shift_not_started">Смена не начата</string>
+    <string name="shift_start">Начать смену</string>
+    <string name="shift_end">Завершить смену</string>
+    <string name="shift_started">Смена начата</string>
+    <string name="shift_ended">Смена завершена</string>
+    <string name="shift_scan_title">Отсканируйте QR-код</string>
+    <string name="shift_scan_hint">Отсканируйте сканером терминала QR-код на экране склада.</string>
+    <string name="shift_offline_hint">Нет связи: отметка смены возможна только онлайн.</string>
+    <string name="shift_admin_code_title">Код администратора</string>
+    <string name="shift_admin_code_submit">Подтвердить</string>
+    <string name="shift_admin_code_hint">Если экран не работает, попросите у администратора одноразовый код.</string>
+    <string name="shift_error_unreachable">Нет связи с сервером. Попробуйте ещё раз.</string>
+    <string name="shift_end_collecting_fmt">Вы собираете документ %1$s. Завершить смену? Документ останется как есть.</string>
 </resources>

@@ -202,6 +202,17 @@ class DeviceRestClient @Inject constructor(
     suspend fun taskCancel(taskId: String, operationId: String?): Result<DeviceDto.TaskResponse> =
         envelopeCall { deviceApi.taskCancel(taskId, DeviceDto.TaskCancelRequest(operationId)) }
 
+    // --- Shift marks ---
+
+    suspend fun shift(): Result<DeviceDto.ShiftStatusResponse> =
+        envelopeCall { deviceApi.shift() }
+
+    suspend fun shiftStart(request: DeviceDto.ShiftMarkRequest): Result<DeviceDto.ShiftMarkResponse> =
+        envelopeCall { deviceApi.shiftStart(request) }
+
+    suspend fun shiftEnd(request: DeviceDto.ShiftMarkRequest): Result<DeviceDto.ShiftMarkResponse> =
+        envelopeCall { deviceApi.shiftEnd(request) }
+
     // --- Diagnostics ---
 
     /** Fire-and-forget; the backend replies 204. */

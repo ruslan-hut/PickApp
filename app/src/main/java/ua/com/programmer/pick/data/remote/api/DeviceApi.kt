@@ -193,6 +193,17 @@ interface DeviceApi {
         @Body request: DeviceDto.TaskCancelRequest,
     ): Response<ApiEnvelope<DeviceDto.TaskResponse>>
 
+    // --- Shift marks (timesheet module) ---
+
+    @GET("device/shift")
+    suspend fun shift(): Response<ApiEnvelope<DeviceDto.ShiftStatusResponse>>
+
+    @POST("device/shift/start")
+    suspend fun shiftStart(@Body request: DeviceDto.ShiftMarkRequest): Response<ApiEnvelope<DeviceDto.ShiftMarkResponse>>
+
+    @POST("device/shift/end")
+    suspend fun shiftEnd(@Body request: DeviceDto.ShiftMarkRequest): Response<ApiEnvelope<DeviceDto.ShiftMarkResponse>>
+
     // --- Diagnostics ---
 
     @POST("device/error-report")

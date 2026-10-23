@@ -139,6 +139,22 @@ repo `docs/device-api.md` § "Device linking".
 - Linking calls `DeviceRestClient` directly (`DeviceLinkRepository`), not the
   sync transport: it happens before login and never in the demo session.
 
+### Shift Marks (timesheet module)
+
+Contract: server repo `docs/device-api.md` § "Shift marks". Invisible where
+`GET /device/shift` answers `enabled: false` (no module, point off, demo).
+
+- **Online-only, never queued.** Only the server's time counts; offline the
+  Home keys and the mark screen are disabled. `ShiftRepositoryImpl` calls
+  `DeviceRestClient` directly (like device linking); retries a failure without
+  a server code 3× with the same `operation_id`, never a server verdict.
+- **Nothing persisted.** Status is read on sign-in and every Home resume.
+- **Not a gate.** Without a started shift work goes on; Home shows the banner.
+- **The app does not parse the QR.** Any scan on `ShiftMarkScreen` goes to the
+  server as-is; refusal texts are server-authored and shown verbatim.
+- `collecting_document` → confirmation before *End shift* (document untouched).
+- Builds send `shift` in `X-Device-Features`.
+
 ### Document Workflow
 
 Core domain concept — documents flow through states:

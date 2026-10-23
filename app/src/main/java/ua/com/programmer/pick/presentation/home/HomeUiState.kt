@@ -2,6 +2,7 @@ package ua.com.programmer.pick.presentation.home
 
 import ua.com.programmer.pick.domain.model.AvailableDocumentType
 import ua.com.programmer.pick.domain.model.OpenTask
+import ua.com.programmer.pick.domain.model.ShiftStatus
 import ua.com.programmer.pick.domain.model.SyncState
 import ua.com.programmer.pick.domain.model.User
 
@@ -12,6 +13,8 @@ data class HomeUiState(
     // The worker's unfinished guided tasks (continue / cancel). Always empty
     // on a tenant without the WMS addressing module.
     val openTasks: List<OpenTask> = emptyList(),
+    // Shift marks; DISABLED (nothing shown) without the timesheet module.
+    val shift: ShiftStatus = ShiftStatus.DISABLED,
     val syncStates: List<SyncState> = emptyList(),
     val isOnline: Boolean = true,
     val sessionLost: Boolean = false,

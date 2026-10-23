@@ -393,6 +393,37 @@ object DeviceDto {
         @SerializedName("operation_id") val operationId: String? = null,
     )
 
+    // --- Shift marks (timesheet module) ---
+
+    data class Shift(
+        @SerializedName("id") val id: String,
+        @SerializedName("status") val status: String,
+        @SerializedName("warehouse_id") val warehouseId: String? = null,
+        @SerializedName("started_at") val startedAt: String? = null,
+        @SerializedName("start_source") val startSource: String? = null,
+        @SerializedName("ended_at") val endedAt: String? = null,
+        @SerializedName("end_source") val endSource: String? = null,
+    )
+
+    data class ShiftStatusResponse(
+        @SerializedName("enabled") val enabled: Boolean = false,
+        @SerializedName("shift") val shift: Shift? = null,
+        @SerializedName("started_text") val startedText: String? = null,
+        @SerializedName("collecting_document") val collectingDocument: String? = null,
+    )
+
+    /** Exactly one of [qr] / [adminCode]. */
+    data class ShiftMarkRequest(
+        @SerializedName("qr") val qr: String? = null,
+        @SerializedName("admin_code") val adminCode: String? = null,
+        @SerializedName("operation_id") val operationId: String,
+    )
+
+    data class ShiftMarkResponse(
+        @SerializedName("shift") val shift: Shift? = null,
+        @SerializedName("message") val message: String? = null,
+    )
+
     data class TaskResponse(
         @SerializedName("task") val task: Task? = null,
         @SerializedName("step") val step: TaskStep? = null,

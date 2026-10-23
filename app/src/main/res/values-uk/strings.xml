@@ -427,4 +427,19 @@
     <string name="queue_notice_service_text">Про нові документи повідомимо тут</string>
     <string name="queue_notice_channel_documents">Нові документи</string>
     <string name="queue_notice_channel_service">Фоновий режим</string>
+
+    <!-- Shift marks (timesheet) -->
+    <string name="shift_not_started">Зміну не розпочато</string>
+    <string name="shift_start">Почати зміну</string>
+    <string name="shift_end">Завершити зміну</string>
+    <string name="shift_started">Зміну розпочато</string>
+    <string name="shift_ended">Зміну завершено</string>
+    <string name="shift_scan_title">Відскануйте QR-код</string>
+    <string name="shift_scan_hint">Відскануйте сканером терміналу QR-код на екрані складу.</string>
+    <string name="shift_offline_hint">Немає зв\'язку: відмітка зміни можлива лише онлайн.</string>
+    <string name="shift_admin_code_title">Код адміністратора</string>
+    <string name="shift_admin_code_submit">Підтвердити</string>
+    <string name="shift_admin_code_hint">Якщо екран не працює, попросіть в адміністратора одноразовий код.</string>
+    <string name="shift_error_unreachable">Немає зв\'язку з сервером. Спробуйте ще раз.</string>
+    <string name="shift_end_collecting_fmt">Ви збираєте документ %1$s. Завершити зміну? Документ залишиться як є.</string>
 </resources>

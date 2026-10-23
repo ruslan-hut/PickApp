@@ -40,7 +40,10 @@ import androidx.compose.ui.unit.dp
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.domain.model.AvailableDocumentType
 import ua.com.programmer.pick.domain.model.OpenTask
+import ua.com.programmer.pick.domain.model.ShiftAction
+import ua.com.programmer.pick.domain.model.ShiftStatus
 import ua.com.programmer.pick.domain.model.UserRole
+import ua.com.programmer.pick.presentation.common.ConfirmDialog
 import ua.com.programmer.pick.presentation.common.DestructiveConfirmDialog
 import ua.com.programmer.pick.presentation.common.OfflineBanner
 import ua.com.programmer.pick.presentation.common.SessionBanner
@@ -59,10 +62,12 @@ fun HomeScreen(
     onContinueTask: (OpenTask) -> Unit = {},
     onCancelTask: (OpenTask) -> Unit = {},
     taskTypeLabel: (String) -> String = { it },
+    onShiftMark: (ShiftAction) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
     var taskToCancel by remember { mutableStateOf<OpenTask?>(null) }
+    var shiftEndDocument by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -100,6 +105,22 @@ fun HomeScreen(
                         userName = uiState.currentUser?.name ?: stringResource(R.string.user_default),
                         isOnline = uiState.isOnline
                     )
+                }
+
+                // Shift marks: invisible without the timesheet module. Working
+                // without a started shift is not blocked — only the banner.
+                if (uiState.shift.enabled) {
+                    item {
+                        ShiftCard(
+                            shift = uiState.shift,
+                            isOnline = uiState.isOnline,
+                            onStart = { onShiftMark(ShiftAction.START) },
+                            onEnd = {
+                                val doc = uiState.shift.collectingDocument
+                                if (doc != null) shiftEndDocument = doc else onShiftMark(ShiftAction.END)
+                            }
+                        )
+                    }
                 }
 
                 // Unfinished guided tasks (F-4): continue or cancel. Empty —
@@ -177,6 +198,21 @@ fun HomeScreen(
         }
     }
 
+    // The document is not touched by ending the shift — the worker only
+    // confirms they meant to leave it.
+    shiftEndDocument?.let { doc ->
+        ConfirmDialog(
+            title = stringResource(R.string.shift_end),
+            message = stringResource(R.string.shift_end_collecting_fmt, doc),
+            confirmText = stringResource(R.string.shift_end),
+            onConfirm = {
+                shiftEndDocument = null
+                onShiftMark(ShiftAction.END)
+            },
+            onDismiss = { shiftEndDocument = null },
+        )
+    }
+
     taskToCancel?.let { task ->
         DestructiveConfirmDialog(
             title = stringResource(R.string.task_cancel_title),
@@ -250,6 +286,61 @@ private fun startedAgo(startedAt: Long): String {
         minutes < 1 -> stringResource(R.string.task_started_just_now)
         minutes < 60 -> stringResource(R.string.task_started_minutes_fmt, minutes)
         else -> stringResource(R.string.task_started_hours_fmt, minutes / 60)
+    }
+}
+
+/**
+ * No open shift: a warning banner with *Почати зміну*. Open: the server's
+ * "shift started at HH:MM" with *Завершити зміну*. Both keys need the network.
+ */
+@Composable
+private fun ShiftCard(
+    shift: ShiftStatus,
+    isOnline: Boolean,
+    onStart: () -> Unit,
+    onEnd: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val open = shift.isOpen
+    OutlinedCard(
+        modifier = modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = if (open) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.errorContainer
+        ),
+        border = BorderStroke(
+            1.dp,
+            if (open) MaterialTheme.colorScheme.outlineVariant else MaterialTheme.colorScheme.error
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = if (open) {
+                    shift.startedText ?: stringResource(R.string.shift_started)
+                } else {
+                    stringResource(R.string.shift_not_started)
+                },
+                style = MaterialTheme.typography.titleMedium,
+                color = if (open) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onErrorContainer
+            )
+            if (!isOnline) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.shift_offline_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (open) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            if (open) {
+                OutlinedButton(onClick = onEnd, enabled = isOnline, modifier = Modifier.fillMaxWidth()) {
+                    Text(text = stringResource(R.string.shift_end), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            } else {
+                Button(onClick = onStart, enabled = isOnline, modifier = Modifier.fillMaxWidth()) {
+                    Text(text = stringResource(R.string.shift_start), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
     }
 }
 

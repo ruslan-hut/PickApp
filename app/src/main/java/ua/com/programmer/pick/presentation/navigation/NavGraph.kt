@@ -42,6 +42,9 @@ import ua.com.programmer.pick.presentation.home.HomeScreen
 import ua.com.programmer.pick.presentation.home.HomeViewModel
 import ua.com.programmer.pick.presentation.pairing.DevicePairingScreen
 import ua.com.programmer.pick.presentation.pairing.DevicePairingViewModel
+import ua.com.programmer.pick.presentation.shift.ShiftMarkScreen
+import ua.com.programmer.pick.presentation.shift.ShiftMarkViewModel
+import ua.com.programmer.pick.domain.model.ShiftAction
 import ua.com.programmer.pick.presentation.debug.DebugJournalScreen
 import ua.com.programmer.pick.presentation.profile.ProfileScreen
 import ua.com.programmer.pick.presentation.courier.CourierScreen
@@ -191,8 +194,10 @@ fun PickNavGraph(
 
                 // Nothing about a task is persisted (D6): the unfinished-task
                 // list is re-read from the server every time Home comes up.
+                // Same for the shift — it may have been auto-closed meanwhile.
                 LifecycleResumeEffect(Unit) {
                     viewModel.refreshOpenTasks()
+                    viewModel.refreshShift()
                     onPauseOrDispose {}
                 }
 
@@ -227,7 +232,28 @@ fun PickNavGraph(
                         viewModel.continueTask(task) { route -> navController.navigate(route) }
                     },
                     onCancelTask = { task -> viewModel.cancelTask(task.id) },
-                    taskTypeLabel = viewModel::taskTypeLabel
+                    taskTypeLabel = viewModel::taskTypeLabel,
+                    onShiftMark = { action -> navController.navigate(Screen.ShiftMark.create(action)) }
+                )
+            }
+
+            composable(
+                route = Screen.ShiftMark.route,
+                arguments = listOf(navArgument(Screen.SHIFT_ACTION_ARG) { defaultValue = ShiftAction.START.name })
+            ) {
+                val viewModel: ShiftMarkViewModel = hiltViewModel()
+                val uiState by viewModel.uiState.collectAsState()
+
+                LifecycleResumeEffect(Unit) {
+                    viewModel.setScreenActive(true)
+                    onPauseOrDispose { viewModel.setScreenActive(false) }
+                }
+
+                ShiftMarkScreen(
+                    uiState = uiState,
+                    onAdminCodeChange = viewModel::onAdminCodeChange,
+                    onSubmitAdminCode = viewModel::submitAdminCode,
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
 
