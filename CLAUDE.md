@@ -38,7 +38,7 @@ runtime server setting — the server is fixed per build.
 - **Async**: Kotlin Coroutines + Flow + StateFlow
 - **Background**: WorkManager (15-min periodic sync)
 - **Scanning**: CameraX + ML Kit barcode, hardware scanner via KeyEvent interception
-- **Storage**: DataStore (encrypted) for credentials, Room for app data
+- **Storage**: DataStore for settings; credentials in `SecureStringStore` (SharedPreferences, values AES-GCM-encrypted with an Android Keystore key); Room for app data
 - **Versions**: Managed via `gradle/libs.versions.toml` version catalog
 
 ## Architecture

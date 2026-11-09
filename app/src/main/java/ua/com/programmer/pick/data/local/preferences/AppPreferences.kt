@@ -1,7 +1,6 @@
 package ua.com.programmer.pick.data.local.preferences
 
 import android.content.Context
-import android.content.SharedPreferences
 import ua.com.programmer.pick.core.util.AppLog
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -10,8 +9,6 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -49,32 +46,35 @@ class AppPreferences @Inject constructor(
         private val USER_LOGIN = stringPreferencesKey("user_login")
         private val USER_PASSWORD = stringPreferencesKey("user_password")
 
-        // Encrypted SharedPreferences keys
-        private const val ENCRYPTED_PREFS_NAME = "encrypted_credentials"
+        // Credentials store: plain SharedPreferences, values encrypted with a Keystore AES-GCM key
+        private const val SECURE_PREFS_NAME = "secure_credentials"
+        private const val SECURE_KEY_ALIAS = "pick_credentials_key"
         private const val KEY_ENCRYPTED_LOGIN = "user_login"
         private const val KEY_ENCRYPTED_PASSWORD = "user_password"
+
+        // Written by androidx EncryptedSharedPreferences up to 1.0.384; migrated once, then deleted
+        private const val LEGACY_ENCRYPTED_PREFS_NAME = "encrypted_credentials"
     }
 
-    private val encryptedPrefs: SharedPreferences? by lazy {
-        try {
-            val masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-            EncryptedSharedPreferences.create(
-                context,
-                ENCRYPTED_PREFS_NAME,
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    private val encryptedPrefs: SecureStringStore? by lazy {
+        val store = try {
+            SecureStringStore(
+                context.getSharedPreferences(SECURE_PREFS_NAME, Context.MODE_PRIVATE),
+                KeystoreAesGcmCipher(SECURE_KEY_ALIAS)
             )
         } catch (e: Exception) {
-            AppLog.e(TAG, "Failed to create EncryptedSharedPreferences: ${e.message}", e)
-            null
+            AppLog.e(TAG, "Failed to create the encrypted credentials store: ${e.message}", e)
+            return@lazy null
         }
+        LegacyCredentialMigration.migrate(
+            LegacyEncryptedPrefsReader(context, LEGACY_ENCRYPTED_PREFS_NAME),
+            store
+        )
+        store
     }
 
     init {
-        // Migrate plaintext credentials to encrypted storage
+        // Migrate older credential stores (legacy encrypted file, then plaintext DataStore)
         migratePlaintextCredentials()
     }
 
@@ -86,10 +86,12 @@ class AppPreferences @Inject constructor(
                 val password = prefs[USER_PASSWORD]
                 if (login != null && password != null) {
                     // Move to encrypted storage
-                    encryptedPrefs?.edit()
-                        ?.putString(KEY_ENCRYPTED_LOGIN, login)
-                        ?.putString(KEY_ENCRYPTED_PASSWORD, password)
-                        ?.apply()
+                    val store = encryptedPrefs ?: return@runBlocking
+                    if (!store.putAll(
+                            mapOf(KEY_ENCRYPTED_LOGIN to login, KEY_ENCRYPTED_PASSWORD to password),
+                            sync = true
+                        )
+                    ) return@runBlocking
                     // Remove from plaintext DataStore
                     context.dataStore.edit { mutable ->
                         mutable.remove(USER_LOGIN)
@@ -218,7 +220,7 @@ class AppPreferences @Inject constructor(
             preferences.remove(TENANT_ID)
             preferences.remove(DEMO_MODE)
         }
-        encryptedPrefs?.edit()?.clear()?.apply()
+        encryptedPrefs?.clear()
     }
 
     /**
@@ -300,10 +302,7 @@ class AppPreferences @Inject constructor(
      * These are used to re-authenticate after transport reconnects.
      */
     fun setUserCredentials(login: String, password: String) {
-        encryptedPrefs?.edit()
-            ?.putString(KEY_ENCRYPTED_LOGIN, login)
-            ?.putString(KEY_ENCRYPTED_PASSWORD, password)
-            ?.apply()
+        encryptedPrefs?.putAll(mapOf(KEY_ENCRYPTED_LOGIN to login, KEY_ENCRYPTED_PASSWORD to password))
     }
 
     /**
@@ -311,8 +310,8 @@ class AppPreferences @Inject constructor(
      * Returns Pair(login, password) or null if not stored.
      */
     fun getUserCredentialsSync(): Pair<String, String>? {
-        val login = encryptedPrefs?.getString(KEY_ENCRYPTED_LOGIN, null)
-        val password = encryptedPrefs?.getString(KEY_ENCRYPTED_PASSWORD, null)
+        val login = encryptedPrefs?.getString(KEY_ENCRYPTED_LOGIN)
+        val password = encryptedPrefs?.getString(KEY_ENCRYPTED_PASSWORD)
         return if (login != null && password != null) {
             Pair(login, password)
         } else {
@@ -324,9 +323,6 @@ class AppPreferences @Inject constructor(
      * Clear stored user credentials
      */
     fun clearUserCredentials() {
-        encryptedPrefs?.edit()
-            ?.remove(KEY_ENCRYPTED_LOGIN)
-            ?.remove(KEY_ENCRYPTED_PASSWORD)
-            ?.apply()
+        encryptedPrefs?.remove(KEY_ENCRYPTED_LOGIN, KEY_ENCRYPTED_PASSWORD)
     }
 }

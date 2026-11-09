@@ -177,8 +177,8 @@ dependencies {
     // DataStore
     implementation(libs.datastore.preferences)
 
-    // Security - Encrypted credential storage
-    implementation(libs.security.crypto)
+    // Security - reads the legacy EncryptedSharedPreferences file once, for migration
+    implementation(libs.tink.android)
 
     // WorkManager
     implementation(libs.workmanager.runtime.ktx)
