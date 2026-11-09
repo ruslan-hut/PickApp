@@ -127,7 +127,7 @@ class TokenAuthenticator @Inject constructor(
             val response = client.newCall(request).execute()
 
             if (response.isSuccessful) {
-                response.body?.string()?.let { body ->
+                response.body.string().let { body ->
                     gson.fromJson(body, AuthDto.LoginResponse::class.java)
                 }
             } else {

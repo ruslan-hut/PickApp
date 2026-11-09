@@ -42,7 +42,7 @@ import javax.inject.Singleton
 class NewDocumentNotifier @Inject constructor(
     private val client: DeviceRestClient,
     private val transport: SyncTransport,
-    @param:IoDispatcher ioDispatcher: CoroutineDispatcher,
+    @IoDispatcher ioDispatcher: CoroutineDispatcher,
 ) {
     private companion object {
         const val TAG = "NewDocumentNotifier"

@@ -177,7 +177,7 @@ class HomeViewModel @Inject constructor(
             val docId = task.documentId
             val cached = docId != null && runCatching { documentRepository.getDocumentById(docId) }.getOrNull() != null
             navigate(
-                if (cached) Screen.DocumentDetail.createRoute(docId!!) else Screen.Task.byTaskId(task.id)
+                if (cached) Screen.DocumentDetail.createRoute(docId) else Screen.Task.byTaskId(task.id)
             )
         }
     }

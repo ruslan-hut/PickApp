@@ -185,7 +185,7 @@ class GuidedTaskRepositoryImpl @Inject constructor(
 
             debugJournal.log(
                 eventType = DebugEventType.TASK_ACTION_FAILED,
-                message = "attempt ${attempt + 1}/$MAX_ATTEMPTS: ${lastMessage ?: "failed"}",
+                message = "attempt ${attempt + 1}/$MAX_ATTEMPTS: $lastMessage",
                 documentId = documentId ?: taskId?.let { "task:$it" },
                 severity = DebugJournal.SEVERITY_WARN,
             )

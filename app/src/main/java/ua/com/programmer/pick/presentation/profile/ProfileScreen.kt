@@ -42,7 +42,7 @@ import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.domain.model.UserRole
 import ua.com.programmer.pick.presentation.common.PickAppBar

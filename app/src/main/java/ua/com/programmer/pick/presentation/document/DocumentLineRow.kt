@@ -124,6 +124,10 @@ fun DocumentLineRow(
                 submitted = false
             }
         }
+        // confirmValueChange is deprecated without a drop-in replacement; the veto
+        // (always false, card snaps back) is the swipe-as-button behaviour we
+        // rely on. Move to SwipeToDismissBox(onDismiss) + reset() with a device test.
+        @Suppress("DEPRECATION")
         val dismissState = rememberSwipeToDismissBoxState(
             confirmValueChange = { value ->
                 if (!submitted) {

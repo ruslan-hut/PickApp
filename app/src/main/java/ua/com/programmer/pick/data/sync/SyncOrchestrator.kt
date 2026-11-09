@@ -3283,7 +3283,7 @@ class SyncOrchestrator @Inject constructor(
                         // If edits raced in, leave the doc dirty and its version
                         // stale so the next pass re-confirms.
                         val stillDirty = documentLineDao.getLinesByDocumentIdSync(doc.id).any { it.isDirty }
-                        val version = ack?.version
+                        val version = ack.version
                         if (!stillDirty && version != null) {
                             documentDao.updateDocumentVersion(doc.id, version.toInt(), System.currentTimeMillis())
                         } else if (!stillDirty) {

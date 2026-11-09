@@ -203,6 +203,9 @@ class HardwareScannerManager @Inject constructor(
         val extras = intent.extras ?: return
         val sb = StringBuilder("Intent extras for ${intent.action}: ")
         for (key in extras.keySet()) {
+            // Diagnostics dump of extras of any type: the typed getters need
+            // the type up front, so the untyped (deprecated) get() is the tool.
+            @Suppress("DEPRECATION")
             val value = extras.get(key)
             val display = when (value) {
                 is ByteArray -> "ByteArray(${value.size})"

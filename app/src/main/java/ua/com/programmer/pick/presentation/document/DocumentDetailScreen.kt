@@ -55,7 +55,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -86,7 +86,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import kotlinx.coroutines.delay
 import ua.com.programmer.pick.R
 import ua.com.programmer.pick.domain.model.Box as DomainBox
@@ -671,7 +671,7 @@ fun DocumentDetailScreen(
                                         R.string.tab_boxes
                                     ) + " (" + uiState.documentBoxes.size + ")"
                                 )
-                                TabRow(
+                                PrimaryTabRow(
                                     selectedTabIndex = tabs.indexOfFirst { it.first == uiState.activeTab }
                                         .coerceAtLeast(0)
                                 ) {
@@ -1304,6 +1304,10 @@ private fun BoxesTab(
                             submitted = false
                         }
                     }
+                    // confirmValueChange is deprecated without a drop-in replacement; the veto
+                    // (always false, card snaps back) is the swipe-as-button behaviour we
+                    // rely on. Move to SwipeToDismissBox(onDismiss) + reset() with a device test.
+                    @Suppress("DEPRECATION")
                     val dismissState = rememberSwipeToDismissBoxState(
                         confirmValueChange = { value ->
                             if (value != SwipeToDismissBoxValue.Settled && !submitted) {

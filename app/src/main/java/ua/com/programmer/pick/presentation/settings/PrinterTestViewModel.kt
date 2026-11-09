@@ -45,7 +45,7 @@ enum class PrinterTestAction { STATUS, SELF_TEST, TEXT_LABEL, BITMAP_LABEL, GAP_
  */
 @HiltViewModel
 class PrinterTestViewModel @Inject constructor(
-    @param:ApplicationContext context: Context
+    @ApplicationContext context: Context
 ) : ViewModel() {
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -80,20 +80,20 @@ class PrinterTestViewModel @Inject constructor(
                 when (action) {
                     PrinterTestAction.STATUS -> {
                         log("→ ${s.host}:$port status query")
-                        val status = RawPrinterClient.queryStatus(s.host, port!!)
+                        val status = RawPrinterClient.queryStatus(s.host, port)
                         log(
                             if (status == null) "✓ connected, no status answer (link OK)"
                             else "✓ connected, status $status"
                         )
                     }
-                    PrinterTestAction.SELF_TEST -> send(s.host, port!!, "SELFTEST", TsplBuilder.selfTest())
-                    PrinterTestAction.GAP_DETECT -> send(s.host, port!!, "GAPDETECT", TsplBuilder.gapDetect())
+                    PrinterTestAction.SELF_TEST -> send(s.host, port, "SELFTEST", TsplBuilder.selfTest())
+                    PrinterTestAction.GAP_DETECT -> send(s.host, port, "GAPDETECT", TsplBuilder.gapDetect())
                     PrinterTestAction.TEXT_LABEL ->
-                        send(s.host, port!!, "text label ${spec!!.widthMm}x${spec.heightMm}", TestLabels.textLabel(spec))
+                        send(s.host, port, "text label ${spec.widthMm}x${spec.heightMm}", TestLabels.textLabel(spec))
                     PrinterTestAction.BITMAP_LABEL -> {
-                        val bytes = withContext(Dispatchers.Default) { TestLabels.bitmapLabel(spec!!, s.blackIsZero) }
+                        val bytes = withContext(Dispatchers.Default) { TestLabels.bitmapLabel(spec, s.blackIsZero) }
                         val polarity = if (s.blackIsZero) "0=black" else "1=black"
-                        send(s.host, port!!, "bitmap ${spec!!.widthDots}x${spec.heightDots} dots, $polarity", bytes)
+                        send(s.host, port, "bitmap ${spec.widthDots}x${spec.heightDots} dots, $polarity", bytes)
                     }
                 }
                 log("  ${System.currentTimeMillis() - started} ms")

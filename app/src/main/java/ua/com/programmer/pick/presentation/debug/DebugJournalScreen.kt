@@ -35,7 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import ua.com.programmer.pick.data.debug.DebugJournal
 import ua.com.programmer.pick.data.local.database.entity.DebugJournalEntity
 import java.text.SimpleDateFormat

@@ -9,7 +9,6 @@ val appVersionName = versionProps["VERSION_NAME"].toString()
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
@@ -39,7 +38,7 @@ if (file("google-services.json").exists() && localServer == null) {
 
 android {
     namespace = "ua.com.programmer.pick"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "ua.com.programmer.pick"
@@ -158,7 +157,7 @@ dependencies {
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
-    implementation(libs.hilt.navigation.compose)
+    implementation(libs.hilt.lifecycle.viewmodel.compose)
 
     // Room
     implementation(libs.room.runtime)
