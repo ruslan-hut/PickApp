@@ -1379,9 +1379,11 @@ class SyncOrchestrator @Inject constructor(
         val lineEntities = documentLineDao.getLinesByDocumentIdSync(documentId)
         if (lineEntities.isEmpty()) return
 
+        val externalIds = outboundProductIds(lineEntities)
         val lines = lineEntities.map { line ->
             DocumentLineUpdate(
                 lineNumber = line.lineNumber,
+                productId = externalIds[line.productId],
                 actualQuantity = line.actualQuantity,
                 batchNumber = line.batchNumber,
                 batches = LineBatchJson.decode(line.batches),
@@ -2683,6 +2685,24 @@ class SyncOrchestrator @Inject constructor(
             .toMap()
     }
 
+    /**
+     * Local product id → ERP external_id for the lines' outbound product_id.
+     * The reverse of [resolveExternalProductIds]: lines hold the local id,
+     * the server keys products by external_id. A product without an
+     * external_id is known to the server by the local id itself. Chunked
+     * under SQLite's bound-variable limit — a count can carry thousands of
+     * lines.
+     */
+    private suspend fun outboundProductIds(
+        lines: List<ua.com.programmer.pick.data.local.database.entity.DocumentLineEntity>
+    ): Map<String, String> {
+        val ids = lines.mapNotNull { it.productId.takeIf { id -> id.isNotBlank() } }.distinct()
+        if (ids.isEmpty()) return emptyMap()
+        return ids.chunked(500)
+            .flatMap { productDao.findByIds(it) }
+            .associate { p -> p.id to (p.externalId?.takeIf { it.isNotBlank() } ?: p.id) }
+    }
+
     private fun translateLineEntity(
         entity: ua.com.programmer.pick.data.local.database.entity.DocumentLineEntity,
         productIdMap: Map<String, String>
@@ -3189,9 +3209,11 @@ class SyncOrchestrator @Inject constructor(
                 val lineEntities = documentLineDao.getLinesByDocumentIdSync(doc.id)
                 if (lineEntities.isEmpty()) continue
 
+                val externalIds = outboundProductIds(lineEntities)
                 val lines = lineEntities.map { line ->
                     DocumentLineUpdate(
                         lineNumber = line.lineNumber,
+                        productId = externalIds[line.productId],
                         actualQuantity = line.actualQuantity,
                         batchNumber = line.batchNumber,
                         batches = LineBatchJson.decode(line.batches),

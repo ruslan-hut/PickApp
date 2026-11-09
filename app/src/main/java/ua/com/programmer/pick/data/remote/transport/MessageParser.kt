@@ -51,6 +51,7 @@ class MessageParser @Inject constructor(
         private const val FIELD_STATE = "state"
         private const val FIELD_LINES = "lines"
         private const val FIELD_LINE_NUMBER = "line_number"
+        private const val FIELD_PRODUCT_ID = "product_id"
         private const val FIELD_ACTUAL_QUANTITY = "actual_quantity"
         private const val FIELD_BATCH_NUMBER = "batch_number"
         private const val FIELD_IS_COMPLETED = "is_completed"
@@ -239,6 +240,7 @@ class MessageParser @Inject constructor(
                 message.lines.forEach { line ->
                     val lineObj = JsonObject().apply {
                         addProperty(FIELD_LINE_NUMBER, line.lineNumber)
+                        line.productId?.let { addProperty(FIELD_PRODUCT_ID, it) }
                         addProperty(FIELD_ACTUAL_QUANTITY, line.actualQuantity)
                         line.batchNumber?.let { addProperty(FIELD_BATCH_NUMBER, it) }
                         addProperty(FIELD_IS_COMPLETED, line.isCompleted)

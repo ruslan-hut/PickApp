@@ -197,6 +197,7 @@ class RestTransport @Inject constructor(
                 val lines = message.lines.map {
                     DeviceDto.DocumentLineUpdate(
                         lineNumber = it.lineNumber,
+                        productId = it.productId,
                         actualQuantity = it.actualQuantity,
                         batchNumber = it.batchNumber,
                         batches = it.batches?.map { b -> LineBatchDto(b.batchId, b.qty) },

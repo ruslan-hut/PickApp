@@ -856,6 +856,10 @@ data class DebugEventPayload(
  */
 data class DocumentLineUpdate(
     val lineNumber: Int,
+    // Product external_id. The server turns an update for a line_number it
+    // does not hold into a new line of this product (allows_extra_lines);
+    // on its own lines it ignores the field.
+    val productId: String? = null,
     val actualQuantity: Double,
     val batchNumber: String? = null,
     // Batch-label breakdown, full-state; null = omit (the server keeps its own).

@@ -222,6 +222,8 @@ object DeviceDto {
 
     data class DocumentLineUpdate(
         @SerializedName("line_number") val lineNumber: Int,
+        /** Product external_id; lets the server keep a line added on the terminal (allows_extra_lines). */
+        @SerializedName("product_id") val productId: String? = null,
         @SerializedName("actual_quantity") val actualQuantity: Double,
         @SerializedName("batch_number") val batchNumber: String? = null,
         /** Full-state batch-label breakdown; null = omitted, the server keeps its own. */

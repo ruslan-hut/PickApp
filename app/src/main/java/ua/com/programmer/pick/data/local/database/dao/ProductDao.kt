@@ -23,6 +23,13 @@ interface ProductDao {
     @Query("SELECT * FROM products WHERE external_id IN (:externalIds)")
     suspend fun findByExternalIds(externalIds: List<String>): List<ProductEntity>
 
+    /**
+     * Batch-fetch products by local id. Used by SyncOrchestrator to send a
+     * line's product as its ERP external_id (PATCH product_id).
+     */
+    @Query("SELECT * FROM products WHERE id IN (:ids)")
+    suspend fun findByIds(ids: List<String>): List<ProductEntity>
+
     @Query("SELECT * FROM products WHERE code = :code")
     suspend fun getProductByCode(code: String): ProductEntity?
 
