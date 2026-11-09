@@ -1,5 +1,6 @@
 package ua.com.programmer.pick.data.notice
 
+import androidx.annotation.VisibleForTesting
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -82,7 +83,9 @@ class NewDocumentNotifier @Inject constructor(
         stop()
     }
 
-    private fun stop() {
+    /** Stops polling; outside tests only via [onBackgrounded]. */
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    internal fun stop() {
         pollJob?.cancel()
         pollJob = null
     }
