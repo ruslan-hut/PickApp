@@ -20,6 +20,7 @@ import ua.com.programmer.pick.data.mapper.toDomain
 import ua.com.programmer.pick.data.remote.transport.ConnectionState
 import ua.com.programmer.pick.data.remote.transport.SyncTransport
 import ua.com.programmer.pick.domain.model.DeviceNotLinkedException
+import ua.com.programmer.pick.data.session.SessionGuard
 import ua.com.programmer.pick.domain.model.LoginRefusedException
 import ua.com.programmer.pick.domain.model.User
 import ua.com.programmer.pick.data.remote.transport.demo.DemoVariant
@@ -38,6 +39,7 @@ class UserRepositoryImpl @Inject constructor(
     private val appDatabase: AppDatabase,
     private val passwordHasher: PasswordHasher,
     private val networkMonitor: NetworkMonitor,
+    private val sessionGuard: SessionGuard,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : UserRepository {
 
@@ -143,7 +145,13 @@ class UserRepositoryImpl @Inject constructor(
             return@withContext null
         }
         AppLog.i(TAG, "DOC_TRACE autoLogin: re-authenticating stored session for ${creds.first}")
-        login(creds.first, creds.second)
+        val result = login(creds.first, creds.second)
+        // Nobody is on the login screen to route this one: the device was
+        // unlinked while the session was stored (cold start / resume).
+        ((result as? Result.Error)?.exception as? DeviceNotLinkedException)?.let {
+            sessionGuard.reportUnlinked(it.code)
+        }
+        result
     }
 
     /**

@@ -10,6 +10,11 @@ import ua.com.programmer.pick.data.local.preferences.AppPreferences
 import ua.com.programmer.pick.data.remote.dto.ApiEnvelope
 import ua.com.programmer.pick.data.remote.dto.ApiError
 import ua.com.programmer.pick.data.remote.dto.DeviceDto
+import ua.com.programmer.pick.data.session.SessionGuard
+import ua.com.programmer.pick.domain.model.DeviceNotLinkedException
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -32,11 +37,23 @@ class DeviceRestClient @Inject constructor(
     private val deviceApi: DeviceApi,
     private val appPreferences: AppPreferences,
     private val gson: Gson,
+    private val sessionGuard: SessionGuard,
 ) {
     private companion object {
         const val TAG = "DeviceRestClient"
         const val HTTP_UNAUTHORIZED = 401
     }
+
+    private val _authLost = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /**
+     * The server refused to renew the session (401 on refresh: the worker was
+     * deactivated, the refresh token expired, or the device now belongs to
+     * another tenant). The transport drops its authenticated state, which sends
+     * the worker back to login. A device-unlink verdict goes to [SessionGuard]
+     * instead.
+     */
+    val authLost: SharedFlow<Unit> = _authLost.asSharedFlow()
 
     // --- Auth ---
 
@@ -234,17 +251,44 @@ class DeviceRestClient @Inject constructor(
      * and retrying, then unwraps the envelope: `status=ok` with non-null data →
      * success; an HTTP error or error envelope → failure carrying the code.
      */
+    private fun reportIfUnlinked(code: String) {
+        if (code in DeviceNotLinkedException.CODES) sessionGuard.reportUnlinked(code)
+    }
+
+    /**
+     * A refresh the server answered with a verdict. Network failures (no
+     * [DeviceApiException]) and a missing refresh token (no code) leave the
+     * session alone — the next poll tries again.
+     */
+    private fun onRefreshRefused(error: Throwable?) {
+        val code = (error as? DeviceApiException)?.code ?: return
+        if (code in DeviceNotLinkedException.CODES) {
+            sessionGuard.reportUnlinked(code)
+        } else {
+            AppLog.w(TAG, "refresh refused ($code): session lost")
+            _authLost.tryEmit(Unit)
+        }
+    }
+
     private suspend fun <T> envelopeCall(
         allowRefresh: Boolean = true,
         block: suspend () -> Response<ApiEnvelope<T>>,
     ): Result<T> = try {
         var response = block()
-        if (response.code() == HTTP_UNAUTHORIZED && allowRefresh && refresh().isSuccess) {
-            response = block()
+        if (response.code() == HTTP_UNAUTHORIZED && allowRefresh) {
+            val refreshed = refresh()
+            if (refreshed.isSuccess) {
+                response = block()
+            } else {
+                onRefreshRefused(refreshed.exceptionOrNull())
+            }
         }
 
         if (!response.isSuccessful) {
             val err = parseError(response)
+            // Only calls of a live session report: login and the linking
+            // endpoints answer these codes by design and route on them.
+            if (allowRefresh) err?.code?.let(::reportIfUnlinked)
             Result.failure(DeviceApiException(err?.code, err?.message ?: "HTTP ${response.code()}"))
         } else {
             val body = response.body()

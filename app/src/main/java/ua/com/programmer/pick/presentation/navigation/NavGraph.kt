@@ -65,6 +65,23 @@ fun PickNavGraph(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
+    // The server said this device is no longer linked to a tenant (released in
+    // the tenant UI, rejected by the admin): leave whatever screen is up for the
+    // pairing screen, with login under it for when the new link lands. Waits
+    // out the splash, whose own navigation would otherwise land on top.
+    val sessionGuard: SessionGuardViewModel = hiltViewModel()
+    val unlinked by sessionGuard.unlinked.collectAsState()
+    LaunchedEffect(unlinked, currentRoute) {
+        if (unlinked == null || currentRoute == null || currentRoute == Screen.Splash.route) return@LaunchedEffect
+        if (currentRoute != Screen.DevicePairing.route) {
+            navController.navigate(Screen.Login.route) {
+                popUpTo(navController.graph.id) { inclusive = true }
+            }
+            navController.navigate(Screen.DevicePairing.create())
+        }
+        sessionGuard.onUnlinkHandled()
+    }
+
     // Determine if bottom nav should be shown
     val showBottomBar = currentRoute in listOf(
         Screen.Home.route,

@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import ua.com.programmer.pick.core.di.IoDispatcher
@@ -65,6 +67,20 @@ class RestTransport @Inject constructor(
 
     // REST has no push — the orchestrator actively polls while a doc is held.
     override val requiresPolling: Boolean = true
+
+    init {
+        // A refused refresh ends the session: drop the authenticated state so
+        // the sync gates stop and Home sends the worker back to login, instead
+        // of polling on with a dead token while the screen looks signed in.
+        client.authLost
+            .onEach {
+                if (_userAuthState.value is UserAuthState.Authenticated) {
+                    AppLog.w(TAG, "session refused by the server -> NotAuthenticated")
+                    _userAuthState.value = UserAuthState.NotAuthenticated
+                }
+            }
+            .launchIn(scope)
+    }
 
     // --- Connection (no socket; "connected" == reachable over HTTP) ---
 
