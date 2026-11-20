@@ -713,6 +713,7 @@ fun DocumentDetailScreen(
                                                 clientLanguage = uiState.document?.clientLanguage,
                                                 isGuided = uiState.isGuidedCollect,
                                                 warehouseName = uiState.document?.warehouseName ?: "",
+                                                waybillForeign = uiState.document?.waybillForeign == true,
                                                 notes = uiState.document?.notes,
                                                 totalPlanned = uiState.document?.totalPlanned ?: 0.0,
                                                 totalActual = uiState.document?.totalActual ?: 0.0,
@@ -893,6 +894,7 @@ private fun DocumentHeaderCard(
     clientLanguage: String?,
     isGuided: Boolean,
     warehouseName: String,
+    waybillForeign: Boolean,
     notes: String?,
     totalPlanned: Double,
     totalActual: Double,
@@ -978,6 +980,24 @@ private fun DocumentHeaderCard(
                             contentColor = MaterialTheme.colorScheme.onPrimary
                         )
                     }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            if (waybillForeign) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        painter = painterResource(R.drawable.outline_error_24),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.waybill_foreign_notice),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
                 Spacer(modifier = Modifier.height(12.dp))
             }

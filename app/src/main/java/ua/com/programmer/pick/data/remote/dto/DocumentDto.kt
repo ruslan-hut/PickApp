@@ -123,6 +123,11 @@ data class DocumentDto(
     @SerializedName("can_print_label")
     val canPrintLabel: Boolean = false,
 
+    // The waybill was issued from another carrier account: the label will
+    // not print until 1C fixes the firm. Server-decided, shown as sent.
+    @SerializedName("waybill_foreign")
+    val waybillForeign: Boolean = false,
+
     // Present while the document is PARKED: why and since when.
     @SerializedName("parking")
     val parking: DocumentParkingDto? = null,

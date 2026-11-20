@@ -2300,7 +2300,8 @@ class SyncOrchestrator @Inject constructor(
                         "server_state" to dto.state,
                         "can_park" to dto.canPark,
                         "can_resume" to dto.canResume,
-                        "can_print_label" to dto.canPrintLabel
+                        "can_print_label" to dto.canPrintLabel,
+                        "waybill_foreign" to dto.waybillForeign
                     )
                 )
                 // Suppression guards the worker's data, not the server's
@@ -2311,7 +2312,8 @@ class SyncOrchestrator @Inject constructor(
                     canPark = dto.canPark,
                     canResume = dto.canResume,
                     trackingNumber = dto.trackingNumber,
-                    canPrintLabel = dto.canPrintLabel
+                    canPrintLabel = dto.canPrintLabel,
+                    waybillForeign = dto.waybillForeign
                 )
                 return@forEach
             }

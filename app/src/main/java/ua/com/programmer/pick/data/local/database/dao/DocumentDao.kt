@@ -106,14 +106,15 @@ interface DocumentDao {
      */
     @Query(
         "UPDATE documents SET can_park = :canPark, can_resume = :canResume, " +
-            "tracking_number = :trackingNumber, can_print_label = :canPrintLabel WHERE id = :documentId"
+            "tracking_number = :trackingNumber, can_print_label = :canPrintLabel, waybill_foreign = :waybillForeign WHERE id = :documentId"
     )
     suspend fun applyServerVerdicts(
         documentId: String,
         canPark: Boolean,
         canResume: Boolean,
         trackingNumber: String?,
-        canPrintLabel: Boolean
+        canPrintLabel: Boolean,
+        waybillForeign: Boolean
     )
 
     @Query("UPDATE documents SET assigned_user_id = :userId, taken_at = :takenAt, state = :state, is_dirty = 1, last_modified = :lastModified WHERE id = :documentId")

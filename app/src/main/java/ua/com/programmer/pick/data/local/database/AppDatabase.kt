@@ -51,7 +51,7 @@ import ua.com.programmer.pick.data.local.database.entity.WarehouseLocationEntity
         DocumentBoxEntity::class,
         DebugJournalEntity::class
     ],
-    version = 22, // Version 22: carrier label printing (tracking number, can_print_label, box seat)
+    version = 23, // Version 23: waybill_foreign (waybill from another carrier account)
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -335,6 +335,13 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE documents ADD COLUMN tracking_number TEXT DEFAULT NULL")
                 db.execSQL("ALTER TABLE documents ADD COLUMN can_print_label INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE document_boxes ADD COLUMN seat INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        // Foreign waybill mark: server-owned column, refilled on the next document sync.
+        val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE documents ADD COLUMN waybill_foreign INTEGER NOT NULL DEFAULT 0")
             }
         }
 

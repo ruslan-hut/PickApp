@@ -1454,6 +1454,7 @@ class DocumentDetailViewModel @Inject constructor(
                             // the server's next poll after "Take into work".
                             trackingNumber = fresh.trackingNumber,
                             canPrintLabel = fresh.canPrintLabel,
+                            waybillForeign = fresh.waybillForeign,
                         )
                     )
                 }

@@ -113,5 +113,8 @@ data class DocumentEntity(
     val trackingNumber: String? = null,
 
     @ColumnInfo(name = "can_print_label", defaultValue = "0")
-    val canPrintLabel: Boolean = false
+    val canPrintLabel: Boolean = false,
+
+    @ColumnInfo(name = "waybill_foreign", defaultValue = "0")
+    val waybillForeign: Boolean = false
 )

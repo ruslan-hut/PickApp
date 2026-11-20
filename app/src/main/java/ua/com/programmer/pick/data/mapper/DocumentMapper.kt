@@ -47,7 +47,8 @@ class DocumentMapper @Inject constructor() {
             parkingNote = dto.parking?.note,
             parkedAt = dto.parking?.parkedAt,
             trackingNumber = dto.trackingNumber,
-            canPrintLabel = dto.canPrintLabel
+            canPrintLabel = dto.canPrintLabel,
+            waybillForeign = dto.waybillForeign
         )
     }
 
@@ -113,7 +114,8 @@ fun DocumentEntity.toDomain(): Document {
         parkingNote = parkingNote,
         parkedAt = parkedAt,
         trackingNumber = trackingNumber,
-        canPrintLabel = canPrintLabel
+        canPrintLabel = canPrintLabel,
+        waybillForeign = waybillForeign
     )
 }
 
@@ -149,7 +151,8 @@ fun Document.toEntity(): DocumentEntity {
         parkingNote = parkingNote,
         parkedAt = parkedAt,
         trackingNumber = trackingNumber,
-        canPrintLabel = canPrintLabel
+        canPrintLabel = canPrintLabel,
+        waybillForeign = waybillForeign
     )
 }
 

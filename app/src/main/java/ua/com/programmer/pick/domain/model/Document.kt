@@ -35,7 +35,9 @@ data class Document(
     val parkedAt: Long? = null,
     // Carrier waybill and the server-decided "print label" action.
     val trackingNumber: String? = null,
-    val canPrintLabel: Boolean = false
+    val canPrintLabel: Boolean = false,
+    // Waybill from another carrier account (server verdict, never derived).
+    val waybillForeign: Boolean = false
 ) {
     val isGuidedCollect: Boolean get() = collectMode == AvailableDocumentType.GUIDED_MODE
 }
