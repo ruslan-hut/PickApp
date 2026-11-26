@@ -52,6 +52,10 @@ data class DocumentDetailUiState(
     // only after a successful STAGE_LOCK_RESULT, and back to false on pause,
     // release, completion, or any server rejection that invalidates the lock.
     val hasStageLock: Boolean = false,
+    // The server refused "Take into work" for the snapshot on screen. The
+    // button stays hidden until the server sends a different state for the
+    // document (or removes it, which closes the screen).
+    val lockRefused: Boolean = false,
     // Resolved from the current document's type against the user's
     // available_document_types capability flags. `true` means actual quantity
     // may legitimately exceed plan — manual/scan caps and over-plan swipe
@@ -117,7 +121,7 @@ data class DocumentDetailUiState(
      * user is told why.
      */
     val canTakeIntoWork: Boolean
-        get() = document != null && !hasStageLock && !isGuidedCollect && !isParked
+        get() = document != null && !hasStageLock && !lockRefused && !isGuidedCollect && !isParked
 
     /** Set aside between Collect and Pack: no stage to lock until it is resumed. */
     val isParked: Boolean

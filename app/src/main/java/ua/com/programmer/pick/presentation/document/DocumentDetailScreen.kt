@@ -85,6 +85,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import kotlinx.coroutines.delay
@@ -573,6 +574,8 @@ fun DocumentDetailScreen(
                         onResume = { viewModel.resumeParkedDocument() }
                     )
                 }
+                // Refused: no button to press again while the refresh runs.
+                uiState.lockRefused && !uiState.hasStageLock -> LockRefusedBar()
                 // A collected document back at PACK: the server may offer "Park".
                 uiState.canTakeIntoWork && uiState.canPark -> TakeIntoWorkOrParkBar(
                     isProcessing = uiState.isProcessingAction,
@@ -1145,6 +1148,25 @@ private fun TakeIntoWorkBar(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun LockRefusedBar(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        tonalElevation = 3.dp,
+        shadowElevation = 8.dp
+    ) {
+        Text(
+            text = stringResource(R.string.document_already_taken),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.error,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        )
     }
 }
 

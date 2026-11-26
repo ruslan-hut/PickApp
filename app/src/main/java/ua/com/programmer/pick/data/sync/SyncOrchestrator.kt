@@ -1026,7 +1026,11 @@ class SyncOrchestrator @Inject constructor(
     /**
      * Lock a document for editing ("Take into work")
      */
-    suspend fun lockForStage(documentId: String, stage: String): Result<StageLockResult> {
+    suspend fun lockForStage(
+        documentId: String,
+        stage: String,
+        refreshOnRefusal: Boolean = true,
+    ): Result<StageLockResult> {
         AppLog.d(TAG, "Locking document $documentId for stage: $stage")
 
         if (!transport.isConnected()) {
@@ -1116,6 +1120,18 @@ class SyncOrchestrator @Inject constructor(
                 heldStageLocks.add(documentId)
             } else {
                 heldStageLocks.remove(documentId)
+                // A refusal means the local copy is stale (taken by another
+                // worker, or moved on). Nothing else polls while no lock is
+                // held, so ask now: the reply's visible_ids purges the
+                // document or brings its current state.
+                if (refreshOnRefusal) {
+                    AppLog.i(TAG, "Stage lock refused for $documentId (${response.error}), requesting delta sync")
+                    scope.launch {
+                        try { requestDeltaSync() } catch (e: Exception) {
+                            AppLog.w(TAG, "Refresh after lock refusal failed: ${e.message}")
+                        }
+                    }
+                }
             }
             response.lockedBy?.let { userId ->
                 documentDao.updateAssignedUser(documentId, userId, System.currentTimeMillis())
@@ -1955,7 +1971,8 @@ class SyncOrchestrator @Inject constructor(
         while (attempt < LOCK_LOSS_MAX_ATTEMPTS) {
             attempt++
             val result = try {
-                lockForStage(roomDocumentId, stage)
+                // The give-up branch refreshes the document itself.
+                lockForStage(roomDocumentId, stage, refreshOnRefusal = false)
             } catch (e: Exception) {
                 AppLog.w(TAG, "Lock-loss recovery attempt $attempt failed with exception: ${e.message}")
                 Result.Error(e)

@@ -1205,7 +1205,8 @@ class DocumentDetailViewModel @Inject constructor(
                             it.copy(
                                 document = updatedDoc,
                                 isProcessingAction = false,
-                                hasStageLock = data.success
+                                hasStageLock = data.success,
+                                lockRefused = !data.success
                             )
                         }
 
@@ -1215,7 +1216,7 @@ class DocumentDetailViewModel @Inject constructor(
                             // Server rejected the lock — most commonly because
                             // another worker holds it (ForceReleaseLock / race)
                             // or the doc state has advanced since our last sync.
-                            val toast = if (data.error?.contains("locked", ignoreCase = true) == true) {
+                            val toast = if (isTakenByOtherError(data.error)) {
                                 ToastMessage.DOCUMENT_TAKEN_BY_OTHER
                             } else {
                                 ToastMessage.ERROR_TAKE_INTO_WORK
@@ -1424,7 +1425,25 @@ class DocumentDetailViewModel @Inject constructor(
         parkingFlagsJob?.cancel()
         parkingFlagsJob = documentRepository.observeDocument(documentId)
             .onEach { fresh ->
-                if (fresh == null) return@onEach
+                val refused = _uiState.value.lockRefused
+                if (fresh == null) {
+                    // The refresh after a refused lock dropped the document:
+                    // it is no longer this worker's to take.
+                    if (refused) _uiEvents.emit(DocumentDetailUiEvent.NavigateBack)
+                    return@onEach
+                }
+                if (refused) {
+                    val current = _uiState.value.document
+                    if (current != null && current.id == fresh.id &&
+                        (current.state != fresh.state || current.version != fresh.version)
+                    ) {
+                        // The server sent a new state: show it, and let the
+                        // worker try again only on that basis.
+                        _uiState.update { it.copy(document = fresh, lockRefused = false) }
+                        reloadLinesFromCache()
+                        return@onEach
+                    }
+                }
                 _uiState.update { state ->
                     val current = state.document ?: return@update state
                     if (current.id != fresh.id || current.state != fresh.state) return@update state
@@ -1827,6 +1846,13 @@ class DocumentDetailViewModel @Inject constructor(
         completeDocument()
     }
 }
+
+/** "already locked" / "assigned to another worker": someone else has the document. */
+internal fun isTakenByOtherError(error: String?): Boolean =
+    error != null && (
+        error.contains("locked", ignoreCase = true) ||
+            error.contains("another worker", ignoreCase = true)
+    )
 
 /** The worker-facing text of a refused label print. */
 @StringRes
