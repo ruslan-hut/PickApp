@@ -38,7 +38,9 @@ if (file("google-services.json").exists() && localServer == null) {
 
 android {
     namespace = "ua.com.programmer.pick"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) { minorApiLevel = 2 }
+    }
 
     defaultConfig {
         applicationId = "ua.com.programmer.pick"
