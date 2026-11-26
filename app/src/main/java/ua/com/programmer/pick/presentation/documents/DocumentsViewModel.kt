@@ -38,6 +38,10 @@ class DocumentsViewModel @Inject constructor(
 
     companion object {
         const val ERROR_LOADING_DOCUMENTS = "ERROR_LOADING_DOCUMENTS"
+
+        /** Same cadence as the orchestrator's active poll while a lock is held. */
+        const val LIST_POLL_INTERVAL_MS = 8_000L
+        const val LIST_POLL_SKIP_IF_FRESH_MS = LIST_POLL_INTERVAL_MS / 2
     }
 
     private val _uiState = MutableStateFlow(DocumentsUiState())
@@ -112,6 +116,17 @@ class DocumentsViewModel @Inject constructor(
 
             _uiState.update { it.copy(isRefreshing = false) }
         }
+    }
+
+    /**
+     * One tick of the list poll. Without a held lock nothing else asks the
+     * server, so a document another worker took would stay on the list as
+     * free (T76b54084); the delta sync's visible_ids purges it.
+     */
+    suspend fun pollDocuments() {
+        // lastSyncTime is stamped when a sync completes, so a full interval
+        // here would skip every other tick; skip only right after another sync.
+        syncOrchestrator.requestDeltaSyncIfStale(LIST_POLL_SKIP_IF_FRESH_MS)
     }
 
     fun onDocumentClick(documentId: String, onNavigate: (String) -> Unit) {

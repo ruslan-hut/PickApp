@@ -23,7 +23,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -62,6 +66,15 @@ fun DocumentsScreen(
     LifecycleResumeEffect(Unit) {
         viewModel.onRefresh()
         onPauseOrDispose { }
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                delay(DocumentsViewModel.LIST_POLL_INTERVAL_MS)
+                viewModel.pollDocuments()
+            }
+        }
     }
     var searchQuery by remember { mutableStateOf("") }
     var showOverflow by remember { mutableStateOf(false) }
