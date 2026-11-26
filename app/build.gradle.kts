@@ -96,25 +96,6 @@ room {
     schemaDirectory("$projectDir/schemas")
 }
 
-tasks.register("incrementVersion") {
-    doLast {
-        val props = Properties().apply { versionPropsFile.inputStream().use { load(it) } }
-        val code = props["VERSION_CODE"].toString().toInt() + 1
-        val nameParts = props["VERSION_NAME"].toString().split(".").toMutableList()
-        nameParts[nameParts.lastIndex] = nameParts.last().toInt().plus(1).toString()
-        val name = nameParts.joinToString(".")
-        props["VERSION_CODE"] = code.toString()
-        props["VERSION_NAME"] = name
-        versionPropsFile.outputStream().use { props.store(it, null) }
-        println("Version incremented to $name ($code)")
-    }
-}
-
-// A -PlocalServer build is never shipped: it keeps the version as it is.
-tasks.matching { it.name.startsWith("assemble") || it.name.startsWith("bundle") }.configureEach {
-    if (localServer == null) dependsOn("incrementVersion")
-}
-
 // The server of a -PlocalServer debug build. Registered after the secrets
 // plugin, so this value replaces the BACK_BASE_URL it read from local.properties.
 androidComponents {

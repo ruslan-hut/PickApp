@@ -23,8 +23,8 @@ Single-module project — all code lives in `:app`.
 
 `-PlocalServer=<url>` changes only the debug build: it talks to `<url>` instead
 of `BACK_BASE_URL`, may use plain HTTP, installs next to the real app
-(`ua.com.programmer.pick.local`, version `…-local`), runs without Firebase and
-does not bump `version.properties`. `10.0.2.2` is the host machine from the
+(`ua.com.programmer.pick.local`, version `…-local`) and runs without Firebase.
+`10.0.2.2` is the host machine from the
 emulator; a device on the LAN takes the machine's address. The app has no
 runtime server setting — the server is fixed per build.
 
